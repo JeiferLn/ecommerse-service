@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState, useTransition } from "reac
 import { Trash2 } from "lucide-react";
 
 const fieldClassName =
-  "rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground outline-none transition placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-ring/30";
+  "rounded-md border border-border bg-surface px-3 py-2.5 text-foreground outline-none transition placeholder:text-muted/70 focus:border-border-strong focus:ring-2 focus:ring-ring/20";
 
 type Member = {
   id: string;
@@ -105,10 +105,10 @@ export default function TeamPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Equipo
         </h1>
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-1 text-sm text-muted">
           Usuarios de tu empresa. Los miembros solo se agregan por invitación.
         </p>
       </div>
@@ -131,7 +131,7 @@ export default function TeamPage() {
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover disabled:opacity-60"
+            className="rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover disabled:opacity-60"
           >
             {isPending ? "Enviando..." : "Invitar"}
           </button>
@@ -139,54 +139,66 @@ export default function TeamPage() {
       ) : null}
 
       {inviteLink ? (
-        <p className="rounded-lg border border-border bg-primary-soft/40 px-4 py-3 text-sm text-foreground">
-          En desarrollo (sin SMTP). Link de invitación:{" "}
-          <a href={inviteLink} className="font-medium text-primary underline">
+        <p className="rounded-md border border-border bg-background px-4 py-3 text-sm text-foreground">
+          En desarrollo (sin SMTP). Link:{" "}
+          <a
+            href={inviteLink}
+            className="font-medium underline underline-offset-4"
+          >
             {inviteLink}
           </a>
         </p>
       ) : null}
 
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Miembros
-        </h2>
-        <ul className="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
-          {members.map((member) => (
-            <li
-              key={member.id}
-              className="flex items-center justify-between gap-3 px-4 py-3"
-            >
-              <div>
-                <p className="font-medium text-foreground">{member.name}</p>
-                <p className="text-sm text-muted">{member.email}</p>
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wide text-primary">
-                {member.role}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-sm font-medium text-foreground">Miembros</h2>
+          <span className="text-xs text-muted">{members.length}</span>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-border bg-background text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3 font-medium">Nombre</th>
+                <th className="px-4 py-3 font-medium">Correo</th>
+                <th className="px-4 py-3 font-medium text-right">Rol</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member) => (
+                <tr
+                  key={member.id}
+                  className="border-b border-border last:border-0"
+                >
+                  <td className="px-4 py-3 font-medium">{member.name}</td>
+                  <td className="px-4 py-3 text-muted">{member.email}</td>
+                  <td className="px-4 py-3 text-right font-mono text-xs">
+                    {member.role}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {isOwner ? (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-            Invitaciones
-          </h2>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-medium text-foreground">Invitaciones</h2>
+            <span className="text-xs text-muted">{invitations.length}</span>
+          </div>
           {invitations.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">No hay invitaciones.</p>
+            <p className="text-sm text-muted">No hay invitaciones.</p>
           ) : (
-            <ul className="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
               {invitations.map((invitation) => (
                 <li
                   key={invitation.id}
                   className="flex items-center justify-between gap-3 px-4 py-3"
                 >
                   <div>
-                    <p className="font-medium text-foreground">
-                      {invitation.email}
-                    </p>
+                    <p className="font-medium">{invitation.email}</p>
                     <p className="text-sm text-muted">
                       {invitation.status} · expira{" "}
                       {new Date(invitation.expiresAt).toLocaleDateString("es")}

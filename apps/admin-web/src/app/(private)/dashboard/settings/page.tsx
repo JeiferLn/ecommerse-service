@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState, useTransition } from "react";
 import { COMPANY_TYPES } from "@/lib/routes";
 
 const fieldClassName =
-  "rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground outline-none transition placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-ring/30";
+  "rounded-md border border-border bg-surface px-3 py-2.5 text-foreground outline-none transition placeholder:text-muted/70 focus:border-border-strong focus:ring-2 focus:ring-ring/20";
 
 type Company = {
   id: string;
@@ -82,16 +82,19 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-        Configuración de empresa
+      <h1 className="text-xl font-semibold tracking-tight text-foreground">
+        Empresa
       </h1>
-      <p className="mt-2 text-sm text-muted">
+      <p className="mt-1 text-sm text-muted">
         {isOwner
           ? "Actualiza los datos iniciales de tu negocio."
           : "Solo el dueño puede editar esta información."}
       </p>
 
-      <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
+      <form
+        onSubmit={onSubmit}
+        className="mt-8 flex flex-col gap-4 rounded-lg border border-border bg-surface p-5"
+      >
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium text-foreground">Nombre</span>
           <input
@@ -163,7 +166,7 @@ export default function SettingsPage() {
           <button
             type="submit"
             disabled={isPending}
-            className="mt-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover disabled:opacity-60"
+            className="mt-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover disabled:opacity-60"
           >
             {isPending ? "Guardando..." : "Guardar"}
           </button>
