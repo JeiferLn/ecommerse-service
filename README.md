@@ -721,6 +721,7 @@ Incluye:
 - Roles
 - Permisos
 - Configuración inicial
+- Configuración Enviar Emails de usuarios
 
 ---
 

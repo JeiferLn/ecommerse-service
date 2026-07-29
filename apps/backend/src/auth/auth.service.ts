@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { CompaniesService } from '../companies/companies.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -89,6 +90,27 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  async acceptInvite(dto: AcceptInviteDto) {
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const user = await this.companiesService.acceptInvitation({
+      rawToken: dto.token,
+      name: dto.name,
+      passwordHash,
+    });
+
+    const tokens = await this.issueTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.companyId,
+    );
+
+    return {
+      user,
+      ...tokens,
+    };
   }
 
   async login(dto: LoginDto) {

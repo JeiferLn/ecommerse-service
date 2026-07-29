@@ -23,32 +23,62 @@ enum CompanyType {
   OTHER
 }
 
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
 model Company {
-  id        String      @id @default(cuid())
-  name      String
-  type      CompanyType
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  users     User[]
+  id           String              @id @default(cuid())
+  name         String
+  type         CompanyType
+  phone        String?
+  address      String?
+  timezone     String              @default("America/Bogota")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  users        User[]
+  invitations  CompanyInvitation[]
 
   @@map("companies")
 }
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  passwordHash  String
-  name          String
-  role          Role
-  isActive      Boolean        @default(true)
-  companyId     String?
-  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
+  id               String              @id @default(cuid())
+  email            String              @unique
+  passwordHash     String
+  name             String
+  role             Role
+  isActive         Boolean             @default(true)
+  companyId        String?
+  company          Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  refreshTokens    RefreshToken[]
+  invitationsSent  CompanyInvitation[] @relation("InvitationsSent")
 
   @@index([companyId])
   @@map("users")
+}
+
+model CompanyInvitation {
+  id          String           @id @default(cuid())
+  email       String
+  tokenHash   String           @unique
+  companyId   String
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedById String
+  invitedBy   User             @relation("InvitationsSent", fields: [invitedById], references: [id], onDelete: Cascade)
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([companyId])
+  @@index([email])
+  @@map("company_invitations")
 }
 
 model RefreshToken {

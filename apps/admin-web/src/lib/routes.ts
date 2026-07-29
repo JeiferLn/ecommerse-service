@@ -6,7 +6,10 @@ export const ROUTES = {
   login: "/login",
   register: "/register",
   dashboard: "/dashboard",
+  team: "/dashboard/team",
+  settings: "/dashboard/settings",
   admin: "/admin",
+  invite: "/invite",
 } as const;
 
 export const AUTH_ROUTES = [ROUTES.login, ROUTES.register] as const;

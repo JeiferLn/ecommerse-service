@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { ROUTES } from "@/lib/routes";
@@ -25,8 +26,7 @@ export default function DashboardPage() {
             Panel de empresa
           </h1>
           <p className="mt-2 text-muted">
-            Espacio para dueños y usuarios de empresa. Las restricciones del
-            miembro se aplicarán en las siguientes fases.
+            Gestiona tu equipo y la configuración de tu negocio.
           </p>
         </div>
 
@@ -39,6 +39,27 @@ export default function DashboardPage() {
           <LogOut className="size-4" />
           {isPending ? "Saliendo..." : "Cerrar sesión"}
         </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link
+          href={ROUTES.team}
+          className="rounded-xl border border-border bg-surface px-5 py-4 transition hover:border-border-strong"
+        >
+          <p className="font-medium text-foreground">Equipo</p>
+          <p className="mt-1 text-sm text-muted">
+            Miembros e invitaciones por correo
+          </p>
+        </Link>
+        <Link
+          href={ROUTES.settings}
+          className="rounded-xl border border-border bg-surface px-5 py-4 transition hover:border-border-strong"
+        >
+          <p className="font-medium text-foreground">Empresa</p>
+          <p className="mt-1 text-sm text-muted">
+            Nombre, tipo y datos iniciales
+          </p>
+        </Link>
       </div>
     </div>
   );
