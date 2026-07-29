@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useTransition } from "react";
-import { ROUTES } from "@/lib/routes";
+import { ROUTES, homePathByRole } from "@/lib/routes";
 
 const fieldClassName =
   "rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground outline-none transition placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-ring/30";
@@ -30,6 +30,7 @@ export default function LoginPage() {
 
       const data = (await res.json().catch(() => null)) as {
         message?: string;
+        user?: { role?: string };
       } | null;
 
       if (!res.ok) {
@@ -37,7 +38,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace(ROUTES.dashboard);
+      router.replace(homePathByRole(data?.user?.role));
       router.refresh();
     });
   }

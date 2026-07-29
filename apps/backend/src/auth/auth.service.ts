@@ -5,8 +5,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { Role } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
+import { CompaniesService } from '../companies/companies.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -26,6 +28,7 @@ export class AuthService {
 
   constructor(
     private readonly usersService: UsersService,
+    private readonly companiesService: CompaniesService,
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
@@ -46,16 +49,38 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     try {
-      const user = await this.usersService.create({
-        email,
-        name: dto.name.trim(),
-        passwordHash,
+      const result = await this.prisma.$transaction(async (tx) => {
+        const company = await this.companiesService.create(
+          {
+            name: dto.companyName.trim(),
+            type: dto.companyType,
+          },
+          tx,
+        );
+
+        const user = await this.usersService.create(
+          {
+            email,
+            name: dto.name.trim(),
+            passwordHash,
+            role: Role.OWNER,
+            companyId: company.id,
+          },
+          tx,
+        );
+
+        return { user, company };
       });
 
-      const tokens = await this.issueTokens(user.id, user.email, user.role);
+      const tokens = await this.issueTokens(
+        result.user.id,
+        result.user.email,
+        result.user.role,
+        result.user.companyId,
+      );
 
       return {
-        user,
+        user: result.user,
         ...tokens,
       };
     } catch (error) {
@@ -79,7 +104,12 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    const tokens = await this.issueTokens(user.id, user.email, user.role);
+    const tokens = await this.issueTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.companyId,
+    );
 
     return {
       user: {
@@ -87,7 +117,9 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        companyId: user.companyId,
         createdAt: user.createdAt,
+        company: user.company,
       },
       ...tokens,
     };
@@ -103,6 +135,7 @@ export class AuthService {
             id: true,
             email: true,
             role: true,
+            companyId: true,
             isActive: true,
           },
         },
@@ -127,6 +160,7 @@ export class AuthService {
       stored.user.id,
       stored.user.email,
       stored.user.role,
+      stored.user.companyId,
     );
   }
 
@@ -151,10 +185,11 @@ export class AuthService {
   private async issueTokens(
     userId: string,
     email: string,
-    role: string,
+    role: Role,
+    companyId: string | null,
   ): Promise<TokenPair> {
     const accessToken = await this.jwtService.signAsync(
-      { sub: userId, email, role },
+      { sub: userId, email, role, companyId },
       {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
         expiresIn: this.accessExpiresIn as `${number}${'s' | 'm' | 'h' | 'd'}`,

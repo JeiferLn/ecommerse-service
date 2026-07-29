@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { AUTH_COOKIE } from "@/lib/routes";
+import { AUTH_COOKIE, ROLE_COOKIE, type AppRole } from "@/lib/routes";
 
 export const REFRESH_COOKIE = "refresh_token";
 
@@ -11,8 +11,14 @@ type AuthResponse = {
     id: string;
     email: string;
     name: string;
-    role: string;
+    role: AppRole;
+    companyId?: string | null;
     createdAt: string;
+    company?: {
+      id: string;
+      name: string;
+      type: string;
+    } | null;
   };
   accessToken: string;
   refreshToken: string;
@@ -22,6 +28,7 @@ type AuthResponse = {
 export async function setAuthCookies(
   accessToken: string,
   refreshToken: string,
+  role: string,
 ) {
   const cookieStore = await cookies();
 
@@ -40,18 +47,28 @@ export async function setAuthCookies(
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
+
+  cookieStore.set(ROLE_COOKIE, role, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
 }
 
 export async function clearAuthCookies(response?: NextResponse) {
   if (response) {
     response.cookies.set(AUTH_COOKIE, "", { maxAge: 0, path: "/" });
     response.cookies.set(REFRESH_COOKIE, "", { maxAge: 0, path: "/" });
+    response.cookies.set(ROLE_COOKIE, "", { maxAge: 0, path: "/" });
     return response;
   }
 
   const cookieStore = await cookies();
   cookieStore.set(AUTH_COOKIE, "", { maxAge: 0, path: "/" });
   cookieStore.set(REFRESH_COOKIE, "", { maxAge: 0, path: "/" });
+  cookieStore.set(ROLE_COOKIE, "", { maxAge: 0, path: "/" });
 }
 
 export async function backendAuth(

@@ -1,11 +1,11 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { ROUTES } from "@/lib/routes";
 
-export default function DashboardPage() {
+export default function AdminPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -21,12 +21,17 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
+          <div className="mb-2 inline-flex items-center gap-2 text-primary">
+            <Shield className="size-4" />
+            <span className="text-xs font-semibold uppercase tracking-wide">
+              Plataforma
+            </span>
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Panel de empresa
+            Panel de administrador
           </h1>
           <p className="mt-2 text-muted">
-            Espacio para dueños y usuarios de empresa. Las restricciones del
-            miembro se aplicarán en las siguientes fases.
+            Gestión de usuarios y empresas que usan Commerce AI.
           </p>
         </div>
 

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     );
   }
 
-  await setAuthCookies(data.accessToken, data.refreshToken);
+  await setAuthCookies(data.accessToken, data.refreshToken, data.user.role);
 
   return NextResponse.json({ user: data.user });
 }

@@ -15,6 +15,7 @@ async function main() {
       passwordHash,
       role: Role.ADMIN,
       isActive: true,
+      companyId: null,
     },
     create: {
       email,

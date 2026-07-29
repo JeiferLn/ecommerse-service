@@ -9,20 +9,45 @@ datasource db {
 
 enum Role {
   ADMIN
-  USER
+  OWNER
+  MEMBER
+}
+
+enum CompanyType {
+  RETAIL
+  WHOLESALE
+  SERVICES
+  FOOD_BEVERAGE
+  HEALTH_BEAUTY
+  TECHNOLOGY
+  OTHER
+}
+
+model Company {
+  id        String      @id @default(cuid())
+  name      String
+  type      CompanyType
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  users     User[]
+
+  @@map("companies")
 }
 
 model User {
-  id           String         @id @default(cuid())
-  email        String         @unique
-  passwordHash String
-  name         String
-  role         Role           @default(USER)
-  isActive     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  role          Role
+  isActive      Boolean        @default(true)
+  companyId     String?
+  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   refreshTokens RefreshToken[]
 
+  @@index([companyId])
   @@map("users")
 }
 

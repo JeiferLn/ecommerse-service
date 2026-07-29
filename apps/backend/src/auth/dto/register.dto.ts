@@ -1,9 +1,11 @@
 import {
   IsEmail,
+  IsEnum,
   IsString,
-  MinLength,
   MaxLength,
+  MinLength,
 } from 'class-validator';
+import { CompanyType } from '@prisma/client';
 
 export class RegisterDto {
   @IsString()
@@ -18,4 +20,12 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  companyName: string;
+
+  @IsEnum(CompanyType)
+  companyType: CompanyType;
 }

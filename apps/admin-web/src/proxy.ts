@@ -3,7 +3,9 @@ import {
   AUTH_COOKIE,
   AUTH_ROUTES,
   PRIVATE_PREFIXES,
+  ROLE_COOKIE,
   ROUTES,
+  homePathByRole,
 } from "@/lib/routes";
 
 function isAuthRoute(pathname: string) {
@@ -21,6 +23,7 @@ function isPrivateRoute(pathname: string) {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(AUTH_COOKIE)?.value;
+  const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
 
   if (isPrivateRoute(pathname) && !isAuthenticated) {
@@ -29,8 +32,23 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isAuthRoute(pathname) && isAuthenticated) {
-    return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
+  if (isAuthenticated) {
+    const home = homePathByRole(role);
+
+    if (isAuthRoute(pathname)) {
+      return NextResponse.redirect(new URL(home, request.url));
+    }
+
+    if (pathname.startsWith(ROUTES.admin) && role !== "ADMIN") {
+      return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
+    }
+
+    if (
+      pathname.startsWith(ROUTES.dashboard) &&
+      role === "ADMIN"
+    ) {
+      return NextResponse.redirect(new URL(ROUTES.admin, request.url));
+    }
   }
 
   return NextResponse.next();
