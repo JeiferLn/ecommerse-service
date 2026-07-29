@@ -7,6 +7,7 @@ import {
   Building2,
   LayoutDashboard,
   LogOut,
+  Package,
   Shield,
   Users,
 } from "lucide-react";
@@ -33,6 +34,7 @@ export function PrivateShell({
     ? [{ href: ROUTES.admin, label: "Plataforma", icon: Shield }]
     : [
         { href: ROUTES.dashboard, label: "Resumen", icon: LayoutDashboard },
+        { href: ROUTES.products, label: "Productos", icon: Package },
         { href: ROUTES.team, label: "Equipo", icon: Users },
         { href: ROUTES.settings, label: "Empresa", icon: Building2 },
       ];
