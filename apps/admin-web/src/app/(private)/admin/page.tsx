@@ -1,9 +1,6 @@
 "use client";
 
-import { LogOut, Shield } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { ROUTES } from "@/lib/routes";
+import { useEffect, useState } from "react";
 
 type CompanyRow = {
   id: string;
@@ -23,11 +20,9 @@ type UserRow = {
 };
 
 export default function AdminPage() {
-  const router = useRouter();
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     void (async () => {
@@ -46,41 +41,15 @@ export default function AdminPage() {
     })();
   }, []);
 
-  function handleLogout() {
-    startTransition(async () => {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.replace(ROUTES.login);
-      router.refresh();
-    });
-  }
-
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 text-primary">
-            <Shield className="size-4" />
-            <span className="text-xs font-semibold uppercase tracking-wide">
-              Plataforma
-            </span>
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Panel de administrador
-          </h1>
-          <p className="mt-2 text-muted">
-            Empresas y usuarios que usan Commerce AI.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleLogout}
-          disabled={isPending}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:border-border-strong hover:bg-primary-soft/40 disabled:opacity-60"
-        >
-          <LogOut className="size-4" />
-          {isPending ? "Saliendo..." : "Cerrar sesión"}
-        </button>
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          Plataforma
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Empresas y usuarios registrados en Commerce AI.
+        </p>
       </div>
 
       {error ? (
@@ -90,54 +59,82 @@ export default function AdminPage() {
       ) : null}
 
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Empresas ({companies.length})
-        </h2>
-        <ul className="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
-          {companies.length === 0 ? (
-            <li className="px-4 py-3 text-sm text-muted">Sin empresas aún</li>
-          ) : (
-            companies.map((company) => (
-              <li
-                key={company.id}
-                className="flex items-center justify-between gap-3 px-4 py-3"
-              >
-                <div>
-                  <p className="font-medium text-foreground">{company.name}</p>
-                  <p className="text-sm text-muted">{company.type}</p>
-                </div>
-                <span className="text-sm text-muted">
-                  {company._count.users} usuarios
-                </span>
-              </li>
-            ))
-          )}
-        </ul>
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-sm font-medium text-foreground">Empresas</h2>
+          <span className="text-xs text-muted">{companies.length}</span>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-border bg-background text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3 font-medium">Nombre</th>
+                <th className="px-4 py-3 font-medium">Tipo</th>
+                <th className="px-4 py-3 font-medium text-right">Usuarios</th>
+              </tr>
+            </thead>
+            <tbody>
+              {companies.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-muted">
+                    Sin empresas aún
+                  </td>
+                </tr>
+              ) : (
+                companies.map((company) => (
+                  <tr
+                    key={company.id}
+                    className="border-b border-border last:border-0"
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground">
+                      {company.name}
+                    </td>
+                    <td className="px-4 py-3 text-muted">{company.type}</td>
+                    <td className="px-4 py-3 text-right text-muted">
+                      {company._count.users}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Usuarios ({users.length})
-        </h2>
-        <ul className="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
-          {users.map((user) => (
-            <li
-              key={user.id}
-              className="flex items-center justify-between gap-3 px-4 py-3"
-            >
-              <div>
-                <p className="font-medium text-foreground">{user.name}</p>
-                <p className="text-sm text-muted">
-                  {user.email}
-                  {user.company ? ` · ${user.company.name}` : ""}
-                </p>
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wide text-primary">
-                {user.role}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-sm font-medium text-foreground">Usuarios</h2>
+          <span className="text-xs text-muted">{users.length}</span>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-border bg-background text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3 font-medium">Usuario</th>
+                <th className="px-4 py-3 font-medium">Empresa</th>
+                <th className="px-4 py-3 font-medium text-right">Rol</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr
+                  key={user.id}
+                  className="border-b border-border last:border-0"
+                >
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-foreground">{user.name}</p>
+                    <p className="text-xs text-muted">{user.email}</p>
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {user.company?.name ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-xs text-foreground">
+                    {user.role}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
