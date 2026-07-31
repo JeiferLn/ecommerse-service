@@ -31,12 +31,12 @@ export default function TeamPage() {
   const [isPending, startTransition] = useTransition();
 
   const load = useCallback(async () => {
-    setError(null);
     const membersRes = await fetch("/api/companies/me/members");
     if (!membersRes.ok) {
       setError("No se pudo cargar el equipo");
       return;
     }
+    setError(null);
     setMembers((await membersRes.json()) as Member[]);
 
     const invitesRes = await fetch("/api/companies/me/invitations");
@@ -50,7 +50,9 @@ export default function TeamPage() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void (async () => {
+      await load();
+    })();
   }, [load]);
 
   function onInvite(event: FormEvent<HTMLFormElement>) {

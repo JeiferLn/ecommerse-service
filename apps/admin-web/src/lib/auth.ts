@@ -1,8 +1,14 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE, ROLE_COOKIE, type AppRole } from "@/lib/routes";
+import {
+  ACCESS_COOKIE_MAX_AGE,
+  AUTH_COOKIE_OPTIONS,
+  REFRESH_COOKIE,
+  REFRESH_COOKIE_MAX_AGE,
+} from "@/lib/session";
 
-export const REFRESH_COOKIE = "refresh_token";
+export { REFRESH_COOKIE };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -33,42 +39,35 @@ export async function setAuthCookies(
   const cookieStore = await cookies();
 
   cookieStore.set(AUTH_COOKIE, accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 15,
+    ...AUTH_COOKIE_OPTIONS,
+    maxAge: ACCESS_COOKIE_MAX_AGE,
   });
 
   cookieStore.set(REFRESH_COOKIE, refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    ...AUTH_COOKIE_OPTIONS,
+    maxAge: REFRESH_COOKIE_MAX_AGE,
   });
 
   cookieStore.set(ROLE_COOKIE, role, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    ...AUTH_COOKIE_OPTIONS,
+    maxAge: REFRESH_COOKIE_MAX_AGE,
   });
 }
 
 export async function clearAuthCookies(response?: NextResponse) {
+  const expire = { maxAge: 0, path: "/" };
+
   if (response) {
-    response.cookies.set(AUTH_COOKIE, "", { maxAge: 0, path: "/" });
-    response.cookies.set(REFRESH_COOKIE, "", { maxAge: 0, path: "/" });
-    response.cookies.set(ROLE_COOKIE, "", { maxAge: 0, path: "/" });
+    response.cookies.set(AUTH_COOKIE, "", expire);
+    response.cookies.set(REFRESH_COOKIE, "", expire);
+    response.cookies.set(ROLE_COOKIE, "", expire);
     return response;
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(AUTH_COOKIE, "", { maxAge: 0, path: "/" });
-  cookieStore.set(REFRESH_COOKIE, "", { maxAge: 0, path: "/" });
-  cookieStore.set(ROLE_COOKIE, "", { maxAge: 0, path: "/" });
+  cookieStore.set(AUTH_COOKIE, "", expire);
+  cookieStore.set(REFRESH_COOKIE, "", expire);
+  cookieStore.set(ROLE_COOKIE, "", expire);
 }
 
 export async function backendAuth(

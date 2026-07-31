@@ -192,7 +192,9 @@ export class ProductsService {
   async removeImage(user: AuthUser, productId: string, imageId: string) {
     const product = await this.getOwned(user, productId);
     if (product.images.length <= 1) {
-      throw new BadRequestException('El producto debe tener al menos una imagen');
+      throw new BadRequestException(
+        'El producto debe tener al menos una imagen',
+      );
     }
 
     const image = product.images.find((item) => item.id === imageId);

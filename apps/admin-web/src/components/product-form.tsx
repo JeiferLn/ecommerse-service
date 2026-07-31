@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, Upload } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
@@ -20,6 +20,7 @@ export function ProductForm({ mode, productId }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const previewUrlsRef = useRef<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -43,14 +44,19 @@ export function ProductForm({ mode, productId }: Props) {
   }, [mode, productId]);
 
   useEffect(() => {
-    const urls = files.map((file) => URL.createObjectURL(file));
-    setPreviews(urls);
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
-  }, [files]);
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   function onFilesChange(fileList: FileList | null) {
     if (!fileList) return;
-    setFiles((current) => [...current, ...Array.from(fileList)].slice(0, 8));
+    const nextFiles = [...files, ...Array.from(fileList)].slice(0, 8);
+    const urls = nextFiles.map((file) => URL.createObjectURL(file));
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current = urls;
+    setFiles(nextFiles);
+    setPreviews(urls);
   }
 
   function createCategory() {

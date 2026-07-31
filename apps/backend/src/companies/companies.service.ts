@@ -6,12 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  CompanyType,
-  InvitationStatus,
-  Prisma,
-  Role,
-} from '@prisma/client';
+import { CompanyType, InvitationStatus, Prisma, Role } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { MailService } from '../mail/mail.service';
@@ -77,7 +72,9 @@ export class CompaniesService {
         ...(dto.address !== undefined
           ? { address: dto.address.trim() || null }
           : {}),
-        ...(dto.timezone !== undefined ? { timezone: dto.timezone.trim() } : {}),
+        ...(dto.timezone !== undefined
+          ? { timezone: dto.timezone.trim() }
+          : {}),
       },
       select: companySelect,
     });
@@ -134,7 +131,9 @@ export class CompaniesService {
       if (existingUser.companyId === companyId) {
         throw new ConflictException('Este usuario ya pertenece a tu empresa');
       }
-      throw new ConflictException('Este correo ya está registrado en la plataforma');
+      throw new ConflictException(
+        'Este correo ya está registrado en la plataforma',
+      );
     }
 
     const pending = await this.prisma.companyInvitation.findFirst({
@@ -147,7 +146,9 @@ export class CompaniesService {
     });
 
     if (pending) {
-      throw new ConflictException('Ya existe una invitación pendiente para este correo');
+      throw new ConflictException(
+        'Ya existe una invitación pendiente para este correo',
+      );
     }
 
     const company = await this.prisma.company.findUnique({
@@ -179,7 +180,8 @@ export class CompaniesService {
       },
     });
 
-    const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
+    const appUrl =
+      this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
     const acceptUrl = `${appUrl}/invite/${rawToken}`;
 
     await this.mail.sendInvitationEmail({
@@ -191,8 +193,7 @@ export class CompaniesService {
     return {
       invitation,
       // Solo en desarrollo sin SMTP: útil para pruebas
-      acceptUrl:
-        process.env.NODE_ENV === 'production' ? undefined : acceptUrl,
+      acceptUrl: process.env.NODE_ENV === 'production' ? undefined : acceptUrl,
     };
   }
 
@@ -209,7 +210,9 @@ export class CompaniesService {
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException('Solo se pueden revocar invitaciones pendientes');
+      throw new BadRequestException(
+        'Solo se pueden revocar invitaciones pendientes',
+      );
     }
 
     return this.prisma.companyInvitation.update({
@@ -354,7 +357,9 @@ export class CompaniesService {
 
   private requireOwner(user: AuthUser) {
     if (user.role !== Role.OWNER) {
-      throw new ForbiddenException('Solo el dueño de la empresa puede hacer esto');
+      throw new ForbiddenException(
+        'Solo el dueño de la empresa puede hacer esto',
+      );
     }
   }
 

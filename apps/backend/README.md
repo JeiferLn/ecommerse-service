@@ -47,10 +47,10 @@ $ npm run start:prod
 ## Run tests
 
 ```bash
-# unit tests
+# unit tests (no requieren base de datos)
 $ npm run test
 
-# e2e tests
+# e2e tests (requieren PostgreSQL: `docker compose up -d` en la raíz del repo + `npm run prisma:migrate`)
 $ npm run test:e2e
 
 # test coverage

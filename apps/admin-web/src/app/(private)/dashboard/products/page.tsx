@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import {
   LayoutGrid,
   List,
@@ -18,6 +18,19 @@ type ViewMode = "list" | "grid";
 
 const VIEW_KEY = "commerce-ai-products-view";
 
+function subscribeView(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function getViewSnapshot() {
+  return window.localStorage.getItem(VIEW_KEY);
+}
+
+function getServerViewSnapshot() {
+  return null;
+}
+
 function productThumb(product: Product) {
   return (
     product.images.find((image) => image.isPrimary)?.url ??
@@ -31,16 +44,16 @@ export default function ProductsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [view, setView] = useState<ViewMode>("list");
+  const storedView = useSyncExternalStore(
+    subscribeView,
+    getViewSnapshot,
+    getServerViewSnapshot,
+  );
+  const [view, setView] = useState<ViewMode>(
+    storedView === "list" || storedView === "grid" ? storedView : "list",
+  );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(VIEW_KEY);
-    if (saved === "list" || saved === "grid") {
-      setView(saved);
-    }
-  }, []);
 
   function changeView(next: ViewMode) {
     setView(next);
