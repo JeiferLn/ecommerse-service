@@ -3,14 +3,17 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
+import type { Company } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
 import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
+import { CreateCompanyDto } from "./dto/create-company.dto";
 
 @Injectable()
 export class CompaniesService {
@@ -81,6 +84,38 @@ export class CompaniesService {
       status: "cancelled",
       message: "Invitación cancelada",
     };
+  }
+
+  async createCompany(userId: string, dto: CreateCompanyDto): Promise<Company> {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException("Usuario no encontrado");
+    }
+
+    if (user.role === "admin") {
+      throw new BadRequestException("Un administrador de la plataforma no puede crear una empresa");
+    }
+
+    const ownerMembership = await this.prisma.companyMembership.findFirst({
+      where: { userId, role: "owner" },
+    });
+
+    if (ownerMembership) {
+      throw new ConflictException("Ya eres dueño de una empresa");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: { name: dto.name, type: dto.companyType, ownerId: userId },
+      });
+
+      await tx.companyMembership.create({
+        data: { userId, companyId: company.id, role: "owner" },
+      });
+
+      return company;
+    });
   }
 
   private get invitationTtlSeconds(): number {

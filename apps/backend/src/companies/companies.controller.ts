@@ -25,6 +25,7 @@ import { setSessionCookies } from "../common/session-cookies";
 import { AuthService } from "../auth/auth.service";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CompaniesService } from "./companies.service";
+import { CreateCompanyDto } from "./dto/create-company.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { SwitchCompanyDto } from "./dto/switch-company.dto";
 
@@ -35,6 +36,18 @@ export class CompaniesController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
   ) {}
+
+  @Post()
+  async createCompany(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateCompanyDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ApiResponse<AuthUser>> {
+    const company = await this.companiesService.createCompany(user.id, dto);
+    const session = await this.authService.switchCompany(user.id, company.id);
+    this.setSessionCookies(res, session.accessToken, session.refreshToken);
+    return { status: "success", data: session.user };
+  }
 
   @Get("members")
   async members(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponse<CompanyMember[]>> {
@@ -87,17 +100,19 @@ export class CompaniesController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<ApiResponse<AuthUser>> {
     const session = await this.authService.switchCompany(user.id, dto.companyId);
+    this.setSessionCookies(res, session.accessToken, session.refreshToken);
+    return { status: "success", data: session.user };
+  }
 
+  private setSessionCookies(res: Response, accessToken: string, refreshToken: string): void {
     const accessTtl = this.configService.getOrThrow<number>("ACCESS_TOKEN_TTL_SECONDS");
     const refreshTtl = this.configService.getOrThrow<number>("REFRESH_TOKEN_TTL_SECONDS");
     const secure = this.configService.get<boolean>("COOKIE_SECURE") ?? false;
 
-    setSessionCookies(res, session.accessToken, session.refreshToken, {
+    setSessionCookies(res, accessToken, refreshToken, {
       accessTtlSeconds: accessTtl,
       refreshTtlSeconds: refreshTtl,
       secure,
     });
-
-    return { status: "success", data: session.user };
   }
 }

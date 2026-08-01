@@ -706,6 +706,67 @@ describe("Auth & Companies (e2e)", () => {
       expect(leftover).toBeNull();
     });
 
+    it("un invitado sin empresa propia crea la suya desde el dashboard", async () => {
+      const invitedCookies = await login(tokenEmail);
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Cookie", invitedCookies)
+        .expect(200);
+      const meBody = me.body as ApiResponse<AuthUser>;
+      expect(meBody.data.role).toBe("user");
+      expect(meBody.data.companies).toHaveLength(1);
+
+      const res = await request(server())
+        .post("/api/v1/company")
+        .set("Cookie", invitedCookies)
+        .send({ name: "Mi Empresa Propia", companyType: "technology" })
+        .expect(201);
+
+      const body = res.body as ApiResponse<AuthUser>;
+      expect(body.data.role).toBe("owner");
+      expect(body.data.companies).toHaveLength(2);
+      const ownCompany = body.data.companies.find((company) => company.role === "owner");
+      expect(ownCompany?.name).toBe("Mi Empresa Propia");
+      expect(body.data.companyId).toBe(ownCompany?.id);
+
+      const createdCookies = extractCookies(res.headers["set-cookie"] as unknown as string[]);
+      const meAfter = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Cookie", createdCookies)
+        .expect(200);
+      const meAfterBody = meAfter.body as ApiResponse<AuthUser>;
+      expect(meAfterBody.data.role).toBe("owner");
+      expect(meAfterBody.data.companyId).toBe(ownCompany?.id);
+    });
+
+    it("rechaza crear una segunda empresa siendo dueño", async () => {
+      const res = await request(server())
+        .post("/api/v1/company")
+        .set("Cookie", ownerCookies)
+        .send({ name: "Otra Empresa", companyType: "retail" })
+        .expect(409);
+
+      const body = res.body as ApiResponse<null>;
+      expect(body.status).toBe("error");
+    });
+
+    it("rechaza crear empresa a un administrador", async () => {
+      const adminRes = await request(server())
+        .post("/api/v1/auth/login")
+        .send({ email: "admin@admin.com", password: "admin@admin.com" })
+        .expect(200);
+      const adminCookies = extractCookies(adminRes.headers["set-cookie"] as unknown as string[]);
+
+      const res = await request(server())
+        .post("/api/v1/company")
+        .set("Cookie", adminCookies)
+        .send({ name: "Empresa Admin", companyType: "retail" })
+        .expect(400);
+
+      const body = res.body as ApiResponse<null>;
+      expect(body.status).toBe("error");
+    });
+
     it("rechaza un token de invitaci�n inv�lido", async () => {
       const res = await request(server())
         .get("/api/v1/auth/invitation?token=token-inexistente")

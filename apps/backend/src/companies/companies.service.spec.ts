@@ -1,6 +1,11 @@
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
-import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { Prisma, type User } from "@prisma/client";
 
 import { MailService } from "../mail/mail.service";
@@ -20,11 +25,19 @@ const mockUser: User = {
 
 describe("CompaniesService", () => {
   let service: CompaniesService;
-  let usersService: { findByEmail: jest.Mock<Promise<User | null>, [email: string]> };
+  let usersService: {
+    findByEmail: jest.Mock<Promise<User | null>, [email: string]>;
+    findById: jest.Mock<Promise<User | null>, [id: string]>;
+  };
   let prisma: {
+    $transaction: jest.Mock<
+      Promise<unknown>,
+      [callback: (tx: Prisma.TransactionClient) => Promise<unknown>]
+    >;
     companyMembership: {
       findMany: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindManyArgs]>;
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindUniqueArgs]>;
+      findFirst: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindFirstArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipCreateArgs]>;
     };
     invitation: {
@@ -36,6 +49,7 @@ describe("CompaniesService", () => {
     };
     company: {
       findUniqueOrThrow: jest.Mock<Promise<unknown>, [args: Prisma.CompanyFindUniqueOrThrowArgs]>;
+      create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyCreateArgs]>;
     };
   };
   let mailService: {
@@ -48,14 +62,19 @@ describe("CompaniesService", () => {
   beforeEach(async () => {
     usersService = {
       findByEmail: jest.fn<Promise<User | null>, [email: string]>().mockResolvedValue(null),
+      findById: jest.fn<Promise<User | null>, [id: string]>(),
     };
 
     prisma = {
+      $transaction: jest.fn((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
+        callback(prisma as unknown as Prisma.TransactionClient),
+      ),
       companyMembership: {
         findMany: jest
           .fn<Promise<unknown>, [Prisma.CompanyMembershipFindManyArgs]>()
           .mockResolvedValue([]),
         findUnique: jest.fn<Promise<unknown>, [Prisma.CompanyMembershipFindUniqueArgs]>(),
+        findFirst: jest.fn<Promise<unknown>, [Prisma.CompanyMembershipFindFirstArgs]>(),
         create: jest
           .fn<Promise<unknown>, [Prisma.CompanyMembershipCreateArgs]>()
           .mockResolvedValue({}),
@@ -82,6 +101,14 @@ describe("CompaniesService", () => {
         findUniqueOrThrow: jest
           .fn<Promise<unknown>, [Prisma.CompanyFindUniqueOrThrowArgs]>()
           .mockResolvedValue({ name: "Empresa A" }),
+        create: jest.fn<Promise<unknown>, [Prisma.CompanyCreateArgs]>((args) =>
+          Promise.resolve({
+            id: "company-new",
+            name: args.data.name ?? "Nueva",
+            type: args.data.type,
+            ownerId: "user-2",
+          }),
+        ),
       },
     };
 
@@ -121,6 +148,51 @@ describe("CompaniesService", () => {
     }).compile();
 
     service = module.get(CompaniesService);
+  });
+
+  describe("createCompany", () => {
+    const dto = { name: "Mi Nueva Empresa", companyType: "retail" } as const;
+
+    it("crea la empresa y la membership owner para un usuario sin empresa", async () => {
+      usersService.findById.mockResolvedValue(mockUser);
+      prisma.companyMembership.findFirst.mockResolvedValue(null);
+
+      const company = await service.createCompany("user-2", dto);
+
+      const companyArgs = prisma.company.create.mock.calls[0]?.[0];
+      expect(companyArgs?.data).toMatchObject({
+        name: "Mi Nueva Empresa",
+        type: "retail",
+        ownerId: "user-2",
+      });
+      const membershipArgs = prisma.companyMembership.create.mock.calls[0]?.[0];
+      expect(membershipArgs?.data).toMatchObject({
+        userId: "user-2",
+        companyId: "company-new",
+        role: "owner",
+      });
+      expect(company.id).toBe("company-new");
+    });
+
+    it("rechaza crear una segunda empresa si el usuario ya es dueño", async () => {
+      usersService.findById.mockResolvedValue(mockUser);
+      prisma.companyMembership.findFirst.mockResolvedValue({ role: "owner" });
+
+      await expect(service.createCompany("user-2", dto)).rejects.toThrow(ConflictException);
+      expect(prisma.company.create).not.toHaveBeenCalled();
+    });
+
+    it("rechaza crear empresa a un admin", async () => {
+      usersService.findById.mockResolvedValue({ ...mockUser, role: "admin" });
+
+      await expect(service.createCompany("user-2", dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it("lanza UnauthorizedException si el usuario no existe", async () => {
+      usersService.findById.mockResolvedValue(null);
+
+      await expect(service.createCompany("user-2", dto)).rejects.toThrow(UnauthorizedException);
+    });
   });
 
   describe("listMembers", () => {
