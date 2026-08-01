@@ -28,27 +28,64 @@ describe("Auth (e2e)", () => {
     await app.close();
   });
 
-  it("registra un usuario con rol owner", async () => {
+  it("registra un usuario owner con su empresa", async () => {
     const res = await request(server())
       .post("/api/v1/auth/register")
-      .send({ name: "E2E User", email, password })
+      .send({
+        name: "E2E User",
+        email,
+        password,
+        companyName: "Tienda E2E",
+        companyType: "retail",
+      })
       .expect(201);
 
     const body = res.body as ApiResponse<AuthUser>;
     expect(body.status).toBe("success");
     expect(body.data.email).toBe(email);
     expect(body.data.role).toBe("owner");
+    expect(body.data.companyId).not.toBeNull();
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    expect(user?.companyId).toBe(body.data.companyId);
+    const company = await prisma.company.findUnique({ where: { id: user!.companyId! } });
+    expect(company).not.toBeNull();
+    expect(company?.name).toBe("Tienda E2E");
+    expect(company?.type).toBe("retail");
+    expect(company?.ownerId).toBe(user!.id);
   });
 
   it("rechaza el registro con email duplicado", async () => {
     const res = await request(server())
       .post("/api/v1/auth/register")
-      .send({ name: "Otro", email, password })
+      .send({
+        name: "Otro",
+        email,
+        password,
+        companyName: "Otra Tienda",
+        companyType: "technology",
+      })
       .expect(409);
 
     const body = res.body as ApiResponse<null>;
     expect(body.status).toBe("error");
     expect(body.message).toBe("Ya existe una cuenta con ese email");
+  });
+
+  it("rechaza el registro con tipo de empresa inválido", async () => {
+    const res = await request(server())
+      .post("/api/v1/auth/register")
+      .send({
+        name: "Tipo Invalido",
+        email: `invalid-${Date.now()}@test.com`,
+        password,
+        companyName: "Tienda X",
+        companyType: "aerolinea",
+      })
+      .expect(400);
+
+    const body = res.body as ApiResponse<null>;
+    expect(body.status).toBe("error");
   });
 
   it("rechaza el login con contraseña incorrecta", async () => {
@@ -87,6 +124,7 @@ describe("Auth (e2e)", () => {
 
     const meBody = me.body as ApiResponse<AuthUser>;
     expect(meBody.data.email).toBe(email);
+    expect(meBody.data.companyId).not.toBeNull();
   });
 
   it("rechaza /auth/me sin sesión", async () => {
@@ -212,7 +250,13 @@ describe("Auth (e2e)", () => {
     try {
       await request(server())
         .post("/api/v1/auth/register")
-        .send({ name: "Reset User", email: resetEmail, password })
+        .send({
+          name: "Reset User",
+          email: resetEmail,
+          password,
+          companyName: "Tienda Reset",
+          companyType: "education",
+        })
         .expect(201);
 
       const user = await prisma.user.findUnique({ where: { email: resetEmail } });

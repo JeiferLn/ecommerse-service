@@ -50,8 +50,9 @@ scripts/       # Utilidades de desarrollo
 
 ## Autenticación
 
-- Roles: `admin` (administradores de la plataforma), `owner` (creadores de empresa), `user` (invitados por owners). Se definen en `packages/types` (`UserRole`) y se asignan en el registro.
-- Registro público crea usuarios con rol `owner`. El usuario `admin` se crea con el seed (`prisma/seed.ts`).
+- Roles: `admin` (administradores de la plataforma), `owner` (dueños de empresa), `user` (invitados por owners). Se definen en `packages/types` (`UserRole`).
+- Registro público crea usuarios con rol `owner` y su empresa en una única transacción (`$transaction`): primero `User`, luego `Company` (con `ownerId`), y por último vincula `user.companyId`. `AuthUser` expone `companyId`. El usuario `admin` se crea con el seed (`prisma/seed.ts`) y no tiene empresa.
+- Tipos de empresa (`CompanyType`): `retail`, `health_beauty`, `technology`, `education`. Definidos en el schema Prisma y en `packages/types` (`COMPANY_TYPES` + `COMPANY_TYPE_LABELS` para el select del registro).
 - Sesión con dos cookies httpOnly (`sameSite: lax`):
   - `access_token` — JWT de 15 min (valor por defecto, `ACCESS_TOKEN_TTL_SECONDS`), path `/`.
   - `refresh_token` — opaco de 64 hex (32 bytes aleatorios), 7 días (`REFRESH_TOKEN_TTL_SECONDS`), path `/api/v1/auth`; se guarda hasheado (sha256) en `RefreshToken`.

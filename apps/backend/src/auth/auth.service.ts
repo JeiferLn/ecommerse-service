@@ -1,8 +1,13 @@
-import { Injectable, BadRequestException, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  BadRequestException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import type { AuthUser } from "@commerce-ai/types";
-import type { User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -70,14 +75,34 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<AuthUser> {
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.usersService.create({
-      name: dto.name,
-      email: dto.email,
-      passwordHash,
-      role: "owner",
-    });
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            name: dto.name,
+            email: dto.email,
+            passwordHash,
+            role: "owner",
+          },
+        });
 
-    return this.usersService.toPublicUser(user);
+        const company = await tx.company.create({
+          data: { name: dto.companyName, type: dto.companyType, ownerId: created.id },
+        });
+
+        return tx.user.update({
+          where: { id: created.id },
+          data: { companyId: company.id },
+        });
+      });
+
+      return this.usersService.toPublicUser(user);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Ya existe una cuenta con ese email");
+      }
+      throw error;
+    }
   }
 
   async login(dto: LoginDto): Promise<AuthSession> {

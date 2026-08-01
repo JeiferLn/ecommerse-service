@@ -1,9 +1,9 @@
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { Test, TestingModule } from "@nestjs/testing";
-import { BadRequestException, UnauthorizedException } from "@nestjs/common";
-import type { Prisma, User } from "@prisma/client";
-import type { AuthUser, UserRole } from "@commerce-ai/types";
+import { BadRequestException, ConflictException, UnauthorizedException } from "@nestjs/common";
+import { Prisma, type User } from "@prisma/client";
+import type { AuthUser } from "@commerce-ai/types";
 import bcrypt from "bcryptjs";
 
 import { PrismaService } from "../prisma/prisma.service";
@@ -17,6 +17,7 @@ const mockUser: User = {
   email: "test@test.com",
   passwordHash: "hash",
   role: "owner",
+  companyId: "company-1",
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -26,13 +27,13 @@ describe("AuthService", () => {
   let usersService: {
     findByEmail: jest.Mock<Promise<User | null>, [email: string]>;
     findById: jest.Mock<Promise<User | null>, [id: string]>;
-    create: jest.Mock<
-      Promise<User>,
-      [{ name: string; email: string; passwordHash: string; role: UserRole }]
-    >;
     toPublicUser: jest.Mock<AuthUser, [user: User]>;
   };
   let prisma: {
+    $transaction: jest.Mock<
+      Promise<unknown>,
+      [callback: (tx: Prisma.TransactionClient) => Promise<unknown>]
+    >;
     refreshToken: {
       create: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenCreateArgs]>;
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenFindUniqueArgs]>;
@@ -57,19 +58,19 @@ describe("AuthService", () => {
     usersService = {
       findByEmail: jest.fn<Promise<User | null>, [email: string]>(),
       findById: jest.fn<Promise<User | null>, [id: string]>(),
-      create: jest.fn<
-        Promise<User>,
-        [{ name: string; email: string; passwordHash: string; role: UserRole }]
-      >(),
       toPublicUser: jest.fn((user: User) => ({
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
+        companyId: user.companyId,
       })),
     };
 
     prisma = {
+      $transaction: jest.fn((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
+        callback(prisma as unknown as Prisma.TransactionClient),
+      ),
       refreshToken: {
         create: jest.fn<Promise<unknown>, [Prisma.RefreshTokenCreateArgs]>().mockResolvedValue({}),
         findUnique: jest.fn<Promise<unknown>, [Prisma.RefreshTokenFindUniqueArgs]>(),
@@ -134,19 +135,74 @@ describe("AuthService", () => {
   });
 
   describe("register", () => {
-    it("crea un usuario con rol owner y contraseña hasheada", async () => {
-      usersService.create.mockResolvedValue(mockUser);
+    it("crea un usuario owner con su empresa en una transacción", async () => {
+      prisma.$transaction.mockResolvedValue(mockUser);
+      const txCreate = jest.fn<Promise<User>, [args: Prisma.UserCreateArgs]>(() =>
+        Promise.resolve(mockUser),
+      );
+      const txCompanyCreate = jest.fn<Promise<unknown>, [args: Prisma.CompanyCreateArgs]>(() =>
+        Promise.resolve({ id: "company-1" }),
+      );
+      const txUserUpdate = jest.fn<Promise<User>, [args: Prisma.UserUpdateArgs]>(() =>
+        Promise.resolve(mockUser),
+      );
 
       const result = await service.register({
         name: "Test User",
         email: "test@test.com",
         password: "password123",
+        companyName: "Mi Tienda",
+        companyType: "retail",
       });
 
-      expect(usersService.create).toHaveBeenCalledWith(expect.objectContaining({ role: "owner" }));
-      const created = usersService.create.mock.calls[0]?.[0];
-      expect(created?.passwordHash).not.toBe("password123");
+      const tx = {
+        user: { create: txCreate, update: txUserUpdate },
+        company: { create: txCompanyCreate },
+      } as unknown as Prisma.TransactionClient;
+      await prisma.$transaction.mock.calls[0]?.[0](tx);
+      expect(txCreate).toHaveBeenCalledTimes(1);
+      expect(txCompanyCreate).toHaveBeenCalledTimes(1);
+      expect(txUserUpdate).toHaveBeenCalledTimes(1);
+
+      const createdData = txCreate.mock.calls[0]?.[0].data as {
+        role: string;
+        passwordHash: string;
+      };
+      expect(createdData.role).toBe("owner");
+      expect(createdData.passwordHash).not.toBe("password123");
+
+      const companyData = txCompanyCreate.mock.calls[0]?.[0].data as {
+        name: string;
+        type: string;
+        ownerId: string;
+      };
+      expect(companyData).toEqual({
+        name: "Mi Tienda",
+        type: "retail",
+        ownerId: "user-1",
+      });
+
       expect(result.role).toBe("owner");
+      expect(result.companyId).toBe("company-1");
+    });
+
+    it("lanza ConflictException si el email ya existe", async () => {
+      prisma.$transaction.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+          code: "P2002",
+          clientVersion: Prisma.prismaVersion.client,
+        }),
+      );
+
+      await expect(
+        service.register({
+          name: "Test User",
+          email: "test@test.com",
+          password: "password123",
+          companyName: "Mi Tienda",
+          companyType: "retail",
+        }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -172,6 +228,7 @@ describe("AuthService", () => {
         name: "Test User",
         email: "test@test.com",
         role: "owner",
+        companyId: "company-1",
       });
       const expectedCreateData = expect.objectContaining({
         userId: "user-1",

@@ -27,7 +27,7 @@ src/
   health/    # endpoint de salud (GET /api/v1/health)
   mail/      # envío de correos (Nodemailer + SMTP, modo preview en dev)
   prisma/    # PrismaModule y PrismaService (global)
-  users/     # consultas y creación de usuarios
+  users/     # consultas de usuarios y mapeo a AuthUser público
 test/        # e2e tests (jest + supertest)
 ```
 
@@ -36,7 +36,7 @@ test/        # e2e tests (jest + supertest)
 | Método | Ruta                           | Acceso      | Descripción                                                                    |
 | ------ | ------------------------------ | ----------- | ------------------------------------------------------------------------------ |
 | GET    | `/api/v1/health`               | Público     | Estado del servicio y de la base de datos.                                     |
-| POST   | `/api/v1/auth/register`        | Público     | Registro (crea usuario con rol `owner`).                                       |
+| POST   | `/api/v1/auth/register`        | Público     | Registro: crea usuario con rol `owner` + su empresa (transaccional).           |
 | POST   | `/api/v1/auth/login`           | Público     | Login, establece cookies httpOnly.                                             |
 | POST   | `/api/v1/auth/refresh`         | Público     | Rota el refresh token y renueva la sesión.                                     |
 | POST   | `/api/v1/auth/forgot-password` | Público     | Genera token de reset y envía el enlace por correo.                            |

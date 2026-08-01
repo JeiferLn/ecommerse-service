@@ -1,14 +1,22 @@
 "use client";
 
+import { COMPANY_TYPES, COMPANY_TYPE_LABELS, type CompanyType } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import type { SessionUser } from "@/lib/session";
 
@@ -18,6 +26,10 @@ const registerSchema = z
     email: z.string().email("Ingresa un email válido"),
     password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
     confirmPassword: z.string(),
+    companyName: z.string().min(2, "El nombre de la empresa debe tener al menos 2 caracteres"),
+    companyType: z.enum(COMPANY_TYPES as [CompanyType, ...CompanyType[]], {
+      message: "Selecciona el tipo de empresa",
+    }),
   })
   .refine((values) => values.password === values.confirmPassword, {
     path: ["confirmPassword"],
@@ -32,10 +44,18 @@ export function RegisterForm() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      companyName: "",
+      companyType: undefined,
+    },
   });
 
   const mutation = useMutation({
@@ -46,6 +66,8 @@ export function RegisterForm() {
           name: values.name,
           email: values.email,
           password: values.password,
+          companyName: values.companyName,
+          companyType: values.companyType,
         }),
       }),
     onSuccess: () => {
@@ -60,7 +82,7 @@ export function RegisterForm() {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-2">
-        <Label htmlFor="name">Nombre</Label>
+        <Label htmlFor="name">Tu nombre</Label>
         <Input id="name" placeholder="Tu nombre" autoComplete="name" {...register("name")} />
         {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
       </div>
@@ -75,6 +97,47 @@ export function RegisterForm() {
           {...register("email")}
         />
         {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="companyName">Nombre de la empresa</Label>
+        <Input
+          id="companyName"
+          placeholder="Ej. Moda Bella"
+          autoComplete="organization"
+          {...register("companyName")}
+        />
+        {errors.companyName && (
+          <p className="text-sm text-destructive">{errors.companyName.message}</p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Tipo de empresa</Label>
+        <Controller
+          name="companyType"
+          control={control}
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger
+                aria-label="Tipo de empresa"
+                aria-invalid={Boolean(errors.companyType)}
+              >
+                <SelectValue placeholder="Selecciona el tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {COMPANY_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {COMPANY_TYPE_LABELS[type]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+        {errors.companyType && (
+          <p className="text-sm text-destructive">{errors.companyType.message}</p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">
