@@ -1,7 +1,7 @@
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { Test, TestingModule } from "@nestjs/testing";
-import { UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, UnauthorizedException } from "@nestjs/common";
 import type { Prisma, User } from "@prisma/client";
 import type { AuthUser, UserRole } from "@commerce-ai/types";
 import bcrypt from "bcryptjs";
@@ -42,6 +42,10 @@ describe("AuthService", () => {
     passwordResetToken: {
       create: jest.Mock<Promise<unknown>, [args: Prisma.PasswordResetTokenCreateArgs]>;
       deleteMany: jest.Mock<Promise<unknown>, [args: Prisma.PasswordResetTokenDeleteManyArgs]>;
+      findUnique: jest.Mock<Promise<unknown>, [args: Prisma.PasswordResetTokenFindUniqueArgs]>;
+    };
+    user: {
+      update: jest.Mock<Promise<unknown>, [args: Prisma.UserUpdateArgs]>;
     };
   };
   let jwtService: { signAsync: jest.Mock<Promise<string>, [payload: object]> };
@@ -81,6 +85,10 @@ describe("AuthService", () => {
         deleteMany: jest
           .fn<Promise<unknown>, [Prisma.PasswordResetTokenDeleteManyArgs]>()
           .mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn<Promise<unknown>, [Prisma.PasswordResetTokenFindUniqueArgs]>(),
+      },
+      user: {
+        update: jest.fn<Promise<unknown>, [Prisma.UserUpdateArgs]>().mockResolvedValue(mockUser),
       },
     };
 
@@ -254,6 +262,75 @@ describe("AuthService", () => {
       expect(prisma.passwordResetToken.deleteMany).not.toHaveBeenCalled();
       expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
       expect(mailService.sendPasswordReset).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("resetPassword", () => {
+    const validToken = "a".repeat(64);
+
+    beforeEach(() => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: "reset-1",
+        tokenHash: validToken,
+        userId: "user-1",
+        expiresAt: new Date(Date.now() + 60_000),
+        createdAt: new Date(),
+        user: mockUser,
+      });
+    });
+
+    it("actualiza la contraseña, borra los tokens y revoca las sesiones", async () => {
+      await service.resetPassword({ token: validToken, password: "newpassword123" });
+
+      const expectedUserData = expect.objectContaining({
+        passwordHash: expect.any(String) as string,
+      }) as Prisma.UserUpdateInput;
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "user-1" },
+          data: expectedUserData,
+        }) as Prisma.UserUpdateArgs,
+      );
+
+      const updatedHash = (prisma.user.update.mock.calls[0]?.[0].data as Prisma.UserUpdateInput)
+        .passwordHash as string;
+      expect(updatedHash).not.toBe("newpassword123");
+
+      expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1" },
+        }) as Prisma.PasswordResetTokenDeleteManyArgs,
+      );
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1", revokedAt: null },
+        }) as Prisma.RefreshTokenUpdateManyArgs,
+      );
+    });
+
+    it("lanza BadRequestException si el token no existe", async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword({ token: "b".repeat(64), password: "newpassword123" }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("lanza BadRequestException si el token expiró", async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: "reset-1",
+        tokenHash: validToken,
+        userId: "user-1",
+        expiresAt: new Date(Date.now() - 60_000),
+        createdAt: new Date(),
+        user: mockUser,
+      });
+
+      await expect(
+        service.resetPassword({ token: validToken, password: "newpassword123" }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable, BadRequestException, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import type { AuthUser } from "@commerce-ai/types";
@@ -12,6 +12,7 @@ import { UsersService } from "../users/users.service";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 
 export interface AuthSession {
   user: AuthUser;
@@ -130,6 +131,30 @@ export class AuthService {
     }
 
     return this.usersService.toPublicUser(user);
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: this.hashToken(dto.token) },
+      include: { user: true },
+    });
+
+    if (!record || record.expiresAt < new Date()) {
+      throw new BadRequestException("El enlace es inválido o ha expirado");
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    await this.prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash },
+    });
+
+    await this.prisma.passwordResetToken.deleteMany({ where: { userId: record.userId } });
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: record.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private async createSession(user: User): Promise<AuthSession> {

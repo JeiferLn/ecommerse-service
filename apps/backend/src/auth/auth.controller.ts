@@ -11,6 +11,7 @@ import type { AuthenticatedUser } from "./auth.types";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 
 @Controller("auth")
 export class AuthController {
@@ -59,6 +60,18 @@ export class AuthController {
       data: null,
       message:
         "Si existe una cuenta con ese email, recibirás un enlace para restablecer tu contraseña",
+    };
+  }
+
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post("reset-password")
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<ApiResponse<null>> {
+    await this.authService.resetPassword(dto);
+    return {
+      status: "success",
+      data: null,
+      message: "Contraseña actualizada, inicia sesión nuevamente",
     };
   }
 

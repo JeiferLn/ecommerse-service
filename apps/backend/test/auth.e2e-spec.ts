@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import type { App } from "supertest/types";
 import type { ApiResponse, AuthUser } from "@commerce-ai/types";
+import { createHash, randomBytes } from "node:crypto";
 
 import { createApp } from "./../src/create-app";
 
@@ -201,6 +202,57 @@ describe("Auth (e2e)", () => {
 
     const body = res.body as ApiResponse<null>;
     expect(body.status).toBe("error");
+  });
+
+  it("restablece la contraseña con el token del correo", async () => {
+    const resetEmail = `reset-${Date.now()}@test.com`;
+    const newPassword = "newpassword123";
+    const realToken = randomBytes(32).toString("hex");
+
+    try {
+      await request(server())
+        .post("/api/v1/auth/register")
+        .send({ name: "Reset User", email: resetEmail, password })
+        .expect(201);
+
+      const user = await prisma.user.findUnique({ where: { email: resetEmail } });
+      expect(user).not.toBeNull();
+
+      await prisma.passwordResetToken.create({
+        data: {
+          tokenHash: createHash("sha256").update(realToken).digest("hex"),
+          userId: user!.id,
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+      });
+
+      const res = await request(server())
+        .post("/api/v1/auth/reset-password")
+        .send({ token: realToken, password: newPassword })
+        .expect(200);
+
+      const body = res.body as ApiResponse<null>;
+      expect(body.status).toBe("success");
+
+      await request(server())
+        .post("/api/v1/auth/login")
+        .send({ email: resetEmail, password: newPassword })
+        .expect(200);
+
+      await request(server())
+        .post("/api/v1/auth/login")
+        .send({ email: resetEmail, password })
+        .expect(401);
+
+      await request(server())
+        .post("/api/v1/auth/reset-password")
+        .send({ token: realToken, password: newPassword })
+        .expect(400);
+    } finally {
+      await prisma.refreshToken.deleteMany({ where: { user: { email: resetEmail } } });
+      await prisma.passwordResetToken.deleteMany({ where: { user: { email: resetEmail } } });
+      await prisma.user.deleteMany({ where: { email: resetEmail } });
+    }
   });
 });
 
