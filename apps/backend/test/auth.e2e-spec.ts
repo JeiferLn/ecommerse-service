@@ -26,6 +26,10 @@ describe("Auth & Companies (e2e)", () => {
   const server = (): App => app.getHttpServer() as App;
 
   beforeAll(async () => {
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_PORT;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
     app = await createApp();
     await app.init();
   });
