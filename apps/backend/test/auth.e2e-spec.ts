@@ -412,7 +412,7 @@ describe("Auth & Companies (e2e)", () => {
       expect(body.status).toBe("error");
     });
 
-    it("invita a un usuario existente y se une al instante", async () => {
+    it("invita a un usuario con cuenta y el invitado acepta desde el enlace", async () => {
       await register(memberEmail, "Tienda Member", "technology");
 
       const res = await request(server())
@@ -422,7 +422,61 @@ describe("Auth & Companies (e2e)", () => {
         .expect(201);
 
       const body = res.body as ApiResponse<InviteResult>;
-      expect(body.data.status).toBe("joined");
+      expect(body.data.status).toBe("pending");
+
+      const membersBefore = await request(server())
+        .get("/api/v1/company/members")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const membersBeforeBody = membersBefore.body as ApiResponse<CompanyMember[]>;
+      expect(membersBeforeBody.data).toHaveLength(1);
+
+      const invitation = await prisma.invitation.findUnique({
+        where: {
+          companyId_email: { companyId: await ownerCompanyId(), email: memberEmail },
+        },
+      });
+      expect(invitation).not.toBeNull();
+
+      const infoRes = await request(server())
+        .get(`/api/v1/auth/invitation?token=${invitation!.token}`)
+        .expect(200);
+      const infoBody = infoRes.body as ApiResponse<InvitationInfo>;
+      expect(infoBody.data.hasAccount).toBe(true);
+      expect(infoBody.data.email).toBe(memberEmail);
+
+      const conflict = await request(server())
+        .post("/api/v1/auth/register-invited")
+        .send({ name: "Invitado", password, token: invitation!.token })
+        .expect(409);
+      expect((conflict.body as ApiResponse<null>).status).toBe("error");
+
+      const memberCookies = await login(memberEmail);
+
+      const acceptRes = await request(server())
+        .post("/api/v1/auth/invitations/accept")
+        .set("Cookie", memberCookies)
+        .send({ token: invitation!.token })
+        .expect(200);
+
+      const acceptBody = acceptRes.body as ApiResponse<AuthUser>;
+      expect(acceptBody.data.role).toBe("user");
+      expect(acceptBody.data.companyId).toBe(await ownerCompanyId());
+
+      const acceptCookies = extractCookies(acceptRes.headers["set-cookie"] as unknown as string[]);
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Cookie", acceptCookies)
+        .expect(200);
+      const meBody = me.body as ApiResponse<AuthUser>;
+      expect(meBody.data.companies).toHaveLength(2);
+      const joinedCompany = meBody.data.companies.find((company) => company.role === "user");
+      expect(joinedCompany?.id).toBe(await ownerCompanyId());
+
+      const leftover = await prisma.invitation.findUnique({
+        where: { companyId_email: { companyId: await ownerCompanyId(), email: memberEmail } },
+      });
+      expect(leftover).toBeNull();
 
       const members = await request(server())
         .get("/api/v1/company/members")
@@ -480,6 +534,22 @@ describe("Auth & Companies (e2e)", () => {
 
       const body2 = res2.body as ApiResponse<null>;
       expect(body2.status).toBe("error");
+    });
+
+    it("rechaza aceptar una invitación con la sesión de otro email", async () => {
+      const invitation = await prisma.invitation.findUnique({
+        where: { companyId_email: { companyId: await ownerCompanyId(), email: pendingEmail } },
+      });
+      expect(invitation).not.toBeNull();
+
+      const res = await request(server())
+        .post("/api/v1/auth/invitations/accept")
+        .set("Cookie", ownerCookies)
+        .send({ token: invitation!.token })
+        .expect(403);
+
+      const body = res.body as ApiResponse<null>;
+      expect(body.status).toBe("error");
     });
 
     it("el owner ve las invitaciones pendientes y un miembro no", async () => {
@@ -605,6 +675,7 @@ describe("Auth & Companies (e2e)", () => {
       const infoBody = infoRes.body as ApiResponse<InvitationInfo>;
       expect(infoBody.data.email).toBe(tokenEmail);
       expect(infoBody.data.companyName).toBe("Tienda E2E");
+      expect(infoBody.data.hasAccount).toBe(false);
 
       const res = await request(server())
         .post("/api/v1/auth/register-invited")

@@ -170,7 +170,7 @@ describe("CompaniesService", () => {
       });
       expect(result).toEqual({
         status: "pending",
-        message: "Invitación enviada: al registrarse con ese email se unirá a la empresa",
+        message: "Invitación enviada: revisa el correo para aceptarla",
       });
     });
 
@@ -211,17 +211,31 @@ describe("CompaniesService", () => {
       expect(result.status).toBe("pending");
     });
 
-    it("une al usuario existente como miembro", async () => {
+    it("deja la invitación pendiente si el email ya tiene cuenta", async () => {
       usersService.findByEmail.mockResolvedValue(mockUser);
       prisma.companyMembership.findUnique.mockResolvedValue(null);
+      prisma.invitation.findUnique.mockResolvedValue(null);
 
       const result = await service.invite("company-1", "miembro@test.com");
 
-      expect(prisma.companyMembership.create).toHaveBeenCalledWith({
-        data: { userId: "user-2", companyId: "company-1", role: "user" },
+      expect(prisma.companyMembership.create).not.toHaveBeenCalled();
+      expect(prisma.invitation.create).toHaveBeenCalledTimes(1);
+      expect(mailService.sendCompanyInvitation).toHaveBeenCalledWith({
+        to: "miembro@test.com",
+        companyName: "Empresa A",
+        registerUrl: `http://localhost:3000/register/invitation?token=${"a".repeat(64)}`,
       });
-      expect(mailService.sendCompanyInvitation).not.toHaveBeenCalled();
-      expect(result.status).toBe("joined");
+      expect(result.status).toBe("pending");
+    });
+
+    it("rechaza invitar a un usuario que ya es miembro", async () => {
+      usersService.findByEmail.mockResolvedValue(mockUser);
+      prisma.companyMembership.findUnique.mockResolvedValue({ role: "user" });
+
+      await expect(service.invite("company-1", "miembro@test.com")).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.invitation.create).not.toHaveBeenCalled();
     });
 
     it("no permite invitar a un admin", async () => {

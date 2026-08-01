@@ -4,6 +4,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   GoneException,
   NotFoundException,
   UnauthorizedException,
@@ -59,6 +60,7 @@ describe("AuthService", () => {
       findMany: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindManyArgs]>;
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindUniqueArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipCreateArgs]>;
+      upsert: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipUpsertArgs]>;
     };
     refreshToken: {
       create: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenCreateArgs]>;
@@ -112,6 +114,9 @@ describe("AuthService", () => {
         create: jest
           .fn<Promise<unknown>, [Prisma.CompanyMembershipCreateArgs]>()
           .mockResolvedValue({}),
+        upsert: jest
+          .fn<Promise<unknown>, [Prisma.CompanyMembershipUpsertArgs]>()
+          .mockResolvedValue({ role: "user", companyId: "company-1" }),
       },
       refreshToken: {
         create: jest.fn<Promise<unknown>, [Prisma.RefreshTokenCreateArgs]>().mockResolvedValue({}),
@@ -352,7 +357,7 @@ describe("AuthService", () => {
   });
 
   describe("getInvitation", () => {
-    it("devuelve el email y la empresa de una invitación vigente", async () => {
+    it("devuelve el email y la empresa de una invitación vigente sin cuenta", async () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: "inv-1",
         token: "token-1",
@@ -362,10 +367,36 @@ describe("AuthService", () => {
         createdAt: new Date(),
         company: { name: "Mi Tienda" },
       });
+      usersService.findByEmail.mockResolvedValue(null);
 
       const info = await service.getInvitation("token-1");
 
-      expect(info).toEqual({ email: "invited@test.com", companyName: "Mi Tienda" });
+      expect(info).toEqual({
+        email: "invited@test.com",
+        companyName: "Mi Tienda",
+        hasAccount: false,
+      });
+    });
+
+    it("marca hasAccount si el email ya tiene cuenta", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: "inv-1",
+        token: "token-1",
+        email: "test@test.com",
+        companyId: "company-1",
+        expiresAt: new Date(Date.now() + 3600_000),
+        createdAt: new Date(),
+        company: { name: "Mi Tienda" },
+      });
+      usersService.findByEmail.mockResolvedValue(mockUser);
+
+      const info = await service.getInvitation("token-1");
+
+      expect(info).toEqual({
+        email: "test@test.com",
+        companyName: "Mi Tienda",
+        hasAccount: true,
+      });
     });
 
     it("lanza NotFoundException si la invitación no existe", async () => {
@@ -460,6 +491,89 @@ describe("AuthService", () => {
       await expect(
         service.registerInvited({ name: "Invitado", password: "password123", token: "token-1" }),
       ).rejects.toThrow(GoneException);
+      expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
+    });
+
+    it("lanza ConflictException si el email de la invitación ya tiene cuenta", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: "inv-1",
+        token: "token-1",
+        email: "test@test.com",
+        companyId: "company-1",
+        expiresAt: new Date(Date.now() + 3600_000),
+        createdAt: new Date(),
+      });
+      usersService.findByEmail.mockResolvedValue(mockUser);
+
+      await expect(
+        service.registerInvited({ name: "Invitado", password: "password123", token: "token-1" }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe("acceptInvitation", () => {
+    const invitation = {
+      id: "inv-1",
+      token: "token-1",
+      email: "test@test.com",
+      companyId: "company-1",
+      expiresAt: new Date(Date.now() + 3600_000),
+      createdAt: new Date(),
+    };
+
+    it("une al usuario con cuenta a la empresa y abre sesión en ella", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(invitation);
+      usersService.findById.mockResolvedValue(mockUser);
+
+      const session = await service.acceptInvitation("user-1", "token-1");
+
+      expect(prisma.companyMembership.upsert).toHaveBeenCalledWith({
+        where: { userId_companyId: { userId: "user-1", companyId: "company-1" } },
+        update: {},
+        create: { userId: "user-1", companyId: "company-1", role: "user" },
+      });
+      expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
+      expect(session.user.companyId).toBe("company-1");
+      expect(session.user.role).toBe("owner");
+    });
+
+    it("lanza ForbiddenException si el token es de otro email", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        ...invitation,
+        email: "otro@test.com",
+      });
+      usersService.findById.mockResolvedValue(mockUser);
+
+      await expect(service.acceptInvitation("user-1", "token-1")).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.companyMembership.upsert).not.toHaveBeenCalled();
+    });
+
+    it("lanza BadRequestException si el usuario es admin", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(invitation);
+      usersService.findById.mockResolvedValue({ ...mockUser, role: "admin" });
+
+      await expect(service.acceptInvitation("user-1", "token-1")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("lanza NotFoundException si la invitación no existe", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(null);
+
+      await expect(service.acceptInvitation("user-1", "token-x")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it("borra y rechaza una invitación expirada", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        ...invitation,
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+
+      await expect(service.acceptInvitation("user-1", "token-1")).rejects.toThrow(GoneException);
       expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
     });
   });

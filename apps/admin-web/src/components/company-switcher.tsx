@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 
 import {
   Select,
@@ -14,6 +15,7 @@ import type { SessionUser } from "@/lib/session";
 import { useSession } from "@/providers/session-provider";
 
 export function CompanySwitcher() {
+  const router = useRouter();
   const { user, refresh } = useSession();
   const companies = user?.companies ?? [];
 
@@ -25,6 +27,8 @@ export function CompanySwitcher() {
       }),
     onSuccess: async () => {
       await refresh();
+      router.push("/dashboard");
+      router.refresh();
     },
   });
 

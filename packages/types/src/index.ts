@@ -52,6 +52,7 @@ export interface CompanyInvitation {
 export interface InvitationInfo {
   email: string;
   companyName: string;
+  hasAccount: boolean;
 }
 
 export interface AuthUser {

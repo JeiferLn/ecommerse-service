@@ -7,8 +7,9 @@ import { clearSessionCookies, setSessionCookies } from "../common/session-cookie
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Public } from "../common/decorators/public.decorator";
 import { REFRESH_TOKEN_COOKIE } from "./auth.constants";
-import { AuthService } from "./auth.service";
 import type { AuthenticatedUser } from "./auth.types";
+import { AuthService } from "./auth.service";
+import { AcceptInvitationDto } from "./dto/accept-invitation.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
@@ -51,6 +52,18 @@ export class AuthController {
       status: "success",
       data: await this.authService.getInvitation(token),
     };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("invitations/accept")
+  async acceptInvitation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AcceptInvitationDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ApiResponse<AuthUser>> {
+    const session = await this.authService.acceptInvitation(user.id, dto.token);
+    this.setSessionCookies(res, session.accessToken, session.refreshToken);
+    return { status: "success", data: session.user };
   }
 
   @Public()

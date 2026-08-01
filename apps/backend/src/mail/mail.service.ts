@@ -66,7 +66,6 @@ export class MailService {
       "Commerce AI SaaS <no-reply@commerce-ai.local>";
     const subject = `${companyName} te ha invitado a unirte`;
     const html = this.renderCompanyInvitationHtml(companyName, registerUrl);
-
     if (!this.transporter) {
       this.logger.log(`[Preview] Para: ${to} | Asunto: ${subject}\n${html}`);
       return;
@@ -81,10 +80,11 @@ export class MailService {
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; color: #111827;">
         <h2 style="margin: 0 0 16px;">Te invitaron a unirte a ${companyName}</h2>
         <p style="margin: 0 0 24px; color: #4b5563;">
-          Crea tu cuenta para empezar a colaborar con el equipo de ${companyName}.
+          Confirma que quieres unirte al equipo de ${companyName}.
+          Si ya tienes una cuenta, solo debes aceptar la invitación para empezar a colaborar.
         </p>
         <a href="${registerUrl}" style="display: inline-block; padding: 12px 24px; background-color: #111827; color: #ffffff; text-decoration: none; border-radius: 8px;">
-          Crear cuenta
+          Aceptar invitación
         </a>
         <p style="margin: 24px 0 0; color: #6b7280; font-size: 13px;">
           Si no esperabas esta invitación, ignora este correo.

@@ -6,7 +6,6 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
-import type { User } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
 import { MailService } from "../mail/mail.service";
@@ -96,8 +95,18 @@ export class CompaniesService {
     const normalizedEmail = email.toLowerCase();
     const existing = await this.usersService.findByEmail(normalizedEmail);
 
+    if (existing?.role === "admin") {
+      throw new BadRequestException("No se puede invitar a un administrador de la plataforma");
+    }
+
     if (existing) {
-      return this.joinExistingUser(companyId, existing);
+      const existingMembership = await this.prisma.companyMembership.findUnique({
+        where: { userId_companyId: { userId: existing.id, companyId } },
+      });
+
+      if (existingMembership) {
+        throw new ConflictException("Ese usuario ya es miembro de esta empresa");
+      }
     }
 
     const pendingInvitation = await this.prisma.invitation.findUnique({
@@ -139,30 +148,7 @@ export class CompaniesService {
 
     return {
       status: "pending",
-      message: "Invitación enviada: al registrarse con ese email se unirá a la empresa",
-    };
-  }
-
-  private async joinExistingUser(companyId: string, user: User): Promise<InviteResult> {
-    if (user.role === "admin") {
-      throw new BadRequestException("No se puede invitar a un administrador de la plataforma");
-    }
-
-    const existingMembership = await this.prisma.companyMembership.findUnique({
-      where: { userId_companyId: { userId: user.id, companyId } },
-    });
-
-    if (existingMembership) {
-      throw new ConflictException("Ese usuario ya es miembro de esta empresa");
-    }
-
-    await this.prisma.companyMembership.create({
-      data: { userId: user.id, companyId, role: "user" },
-    });
-
-    return {
-      status: "joined",
-      message: "El usuario se unió a la empresa",
+      message: "Invitación enviada: revisa el correo para aceptarla",
     };
   }
 }

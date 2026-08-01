@@ -19,7 +19,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (matches(pathname, AUTH_ROUTES) && hasToken) {
+  if (
+    matches(pathname, AUTH_ROUTES) &&
+    hasToken &&
+    !pathname.startsWith("/register/invitation")
+  ) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

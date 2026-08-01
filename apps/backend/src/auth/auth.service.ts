@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   GoneException,
   Injectable,
   NotFoundException,
@@ -170,7 +171,13 @@ export class AuthService {
       throw new GoneException("La invitación expiró");
     }
 
-    return { email: invitation.email, companyName: invitation.company.name };
+    const account = await this.usersService.findByEmail(invitation.email);
+
+    return {
+      email: invitation.email,
+      companyName: invitation.company.name,
+      hasAccount: Boolean(account),
+    };
   }
 
   async registerInvited(dto: RegisterInvitedDto): Promise<AuthSession> {
@@ -187,8 +194,56 @@ export class AuthService {
       throw new GoneException("La invitación expiró");
     }
 
+    const existing = await this.usersService.findByEmail(invitation.email);
+    if (existing) {
+      throw new ConflictException(
+        "Ya existe una cuenta con ese email. Inicia sesión para aceptar la invitación",
+      );
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
     return this.registerInvitedMember(dto, passwordHash, invitation);
+  }
+
+  async acceptInvitation(userId: string, token: string): Promise<AuthSession> {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException("Invitación no encontrada");
+    }
+
+    if (invitation.expiresAt <= new Date()) {
+      await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      throw new GoneException("La invitación expiró");
+    }
+
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException("Usuario no encontrado");
+    }
+
+    if (user.role === "admin") {
+      throw new BadRequestException(
+        "Un administrador de la plataforma no puede unirse a una empresa",
+      );
+    }
+
+    if (user.email !== invitation.email) {
+      throw new ForbiddenException("Esta invitación es para otro email");
+    }
+
+    const membership = await this.prisma.companyMembership.upsert({
+      where: { userId_companyId: { userId, companyId: invitation.companyId } },
+      update: {},
+      create: { userId, companyId: invitation.companyId, role: "user" },
+    });
+
+    await this.prisma.invitation.delete({ where: { id: invitation.id } });
+
+    return this.createSession(user, invitation.companyId, membership.role);
   }
 
   async login(dto: LoginDto): Promise<AuthSession> {
