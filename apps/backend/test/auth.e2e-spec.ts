@@ -19,6 +19,7 @@ describe("Auth & Companies (e2e)", () => {
   const email = `e2e-${Date.now()}@test.com`;
   const memberEmail = `member-${Date.now()}@test.com`;
   const pendingEmail = `pending-${Date.now()}@test.com`;
+  const expiredEmail = `expired-${Date.now()}@test.com`;
   const resetEmail = `reset-${Date.now()}@test.com`;
   const password = "password123";
 
@@ -30,7 +31,7 @@ describe("Auth & Companies (e2e)", () => {
   });
 
   afterAll(async () => {
-    for (const mail of [email, memberEmail, pendingEmail, resetEmail]) {
+    for (const mail of [email, memberEmail, pendingEmail, expiredEmail, resetEmail]) {
       await prisma.refreshToken.deleteMany({ where: { user: { email: mail } } });
       await prisma.passwordResetToken.deleteMany({ where: { user: { email: mail } } });
       await prisma.companyMembership.deleteMany({ where: { user: { email: mail } } });
@@ -42,9 +43,9 @@ describe("Auth & Companies (e2e)", () => {
     await prisma.invitation.deleteMany({
       where: { companyId: { in: companies.map((company) => company.companyId) } },
     });
-    await prisma.invitation.deleteMany({ where: { email: pendingEmail } });
+    await prisma.invitation.deleteMany({ where: { email: { in: [pendingEmail, expiredEmail] } } });
     await prisma.user.deleteMany({
-      where: { email: { in: [email, memberEmail, pendingEmail, resetEmail] } },
+      where: { email: { in: [email, memberEmail, pendingEmail, expiredEmail, resetEmail] } },
     });
     await prisma.$disconnect();
     await app.close();
@@ -461,6 +462,76 @@ describe("Auth & Companies (e2e)", () => {
         .expect(403);
       const forbiddenBody = forbidden.body as ApiResponse<null>;
       expect(forbiddenBody.status).toBe("error");
+    });
+
+    it("las invitaciones expiradas desaparecen de la lista y permiten re-invitar", async () => {
+      const membership = await prisma.companyMembership.findFirst({
+        where: { user: { email }, role: "owner" },
+      });
+      expect(membership).not.toBeNull();
+
+      await prisma.invitation.create({
+        data: {
+          companyId: membership!.companyId,
+          email: expiredEmail,
+          expiresAt: new Date(Date.now() - 60_000),
+        },
+      });
+
+      const list = await request(server())
+        .get("/api/v1/company/invitations")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const listBody = list.body as ApiResponse<CompanyInvitation[]>;
+      expect(listBody.data.some((invitation) => invitation.email === expiredEmail)).toBe(false);
+
+      const res = await request(server())
+        .post("/api/v1/company/invitations")
+        .set("Cookie", ownerCookies)
+        .send({ email: expiredEmail })
+        .expect(201);
+      const body = res.body as ApiResponse<InviteResult>;
+      expect(body.data.status).toBe("pending");
+
+      const record = await prisma.invitation.findUnique({
+        where: { companyId_email: { companyId: membership!.companyId, email: expiredEmail } },
+      });
+      expect(record?.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it("registrarse con una invitación expirada crea su propia empresa", async () => {
+      const membership = await prisma.companyMembership.findFirst({
+        where: { user: { email }, role: "owner" },
+      });
+      expect(membership).not.toBeNull();
+
+      await prisma.invitation.update({
+        where: {
+          companyId_email: { companyId: membership!.companyId, email: expiredEmail },
+        },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      });
+
+      const res = await request(server())
+        .post("/api/v1/auth/register")
+        .send({
+          name: "Expirado User",
+          email: expiredEmail,
+          password,
+          companyName: "Tienda Propia",
+          companyType: "retail",
+        })
+        .expect(201);
+
+      const body = res.body as ApiResponse<AuthUser>;
+      expect(body.data.role).toBe("owner");
+      expect(body.data.companies).toHaveLength(1);
+      expect(body.data.companies[0]).toMatchObject({ name: "Tienda Propia", role: "owner" });
+
+      const invitation = await prisma.invitation.findFirst({
+        where: { email: expiredEmail },
+      });
+      expect(invitation).toBeNull();
     });
 
     it("cancela una invitación pendiente", async () => {

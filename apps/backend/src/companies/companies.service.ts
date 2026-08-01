@@ -45,6 +45,10 @@ export class CompaniesService {
       throw new BadRequestException("No perteneces a una empresa");
     }
 
+    await this.prisma.invitation.deleteMany({
+      where: { companyId, expiresAt: { lte: new Date() } },
+    });
+
     const invitations = await this.prisma.invitation.findMany({
       where: { companyId },
       orderBy: { createdAt: "desc" },
@@ -79,6 +83,10 @@ export class CompaniesService {
     };
   }
 
+  private get invitationTtlSeconds(): number {
+    return this.configService.get<number>("INVITATION_TTL_SECONDS") ?? 3600;
+  }
+
   async invite(companyId: string | null, email: string): Promise<InviteResult> {
     if (!companyId) {
       throw new BadRequestException("No perteneces a una empresa");
@@ -96,11 +104,18 @@ export class CompaniesService {
     });
 
     if (pendingInvitation) {
-      throw new ConflictException("Ya existe una invitación pendiente para ese email");
+      if (pendingInvitation.expiresAt > new Date()) {
+        throw new ConflictException("Ya existe una invitación pendiente para ese email");
+      }
+      await this.prisma.invitation.delete({ where: { id: pendingInvitation.id } });
     }
 
     const invitation = await this.prisma.invitation.create({
-      data: { companyId, email: normalizedEmail },
+      data: {
+        companyId,
+        email: normalizedEmail,
+        expiresAt: new Date(Date.now() + this.invitationTtlSeconds * 1000),
+      },
     });
 
     try {

@@ -46,6 +46,7 @@ describe("AuthService", () => {
       findFirst: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindFirstArgs]>;
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindUniqueArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.InvitationCreateArgs]>;
+      delete: jest.Mock<Promise<unknown>, [args: Prisma.InvitationDeleteArgs]>;
       deleteMany: jest.Mock<Promise<unknown>, [args: Prisma.InvitationDeleteManyArgs]>;
     };
     companyMembership: {
@@ -92,6 +93,7 @@ describe("AuthService", () => {
           .mockResolvedValue(null),
         findUnique: jest.fn<Promise<unknown>, [Prisma.InvitationFindUniqueArgs]>(),
         create: jest.fn<Promise<unknown>, [Prisma.InvitationCreateArgs]>().mockResolvedValue({}),
+        delete: jest.fn<Promise<unknown>, [Prisma.InvitationDeleteArgs]>().mockResolvedValue({}),
         deleteMany: jest
           .fn<Promise<unknown>, [Prisma.InvitationDeleteManyArgs]>()
           .mockResolvedValue({ count: 1 }),
@@ -229,6 +231,7 @@ describe("AuthService", () => {
         id: "inv-1",
         email: "invited@test.com",
         companyId: "company-1",
+        expiresAt: new Date(Date.now() + 3600_000),
         createdAt: new Date(),
       });
 
@@ -277,6 +280,49 @@ describe("AuthService", () => {
       expect(txInvitationDelete).toHaveBeenCalled();
       expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
       expect(session.user.role).toBe("user");
+    });
+
+    it("ignora una invitación expirada y crea su propia empresa", async () => {
+      prisma.invitation.findFirst.mockResolvedValue({
+        id: "inv-1",
+        email: "expirado@test.com",
+        companyId: "company-1",
+        expiresAt: new Date(Date.now() - 60_000),
+        createdAt: new Date(),
+      });
+      prisma.invitation.delete.mockResolvedValue({});
+
+      const txUserCreate = jest.fn<Promise<User>, [args: Prisma.UserCreateArgs]>(() =>
+        Promise.resolve(mockUser),
+      );
+      const txCompanyCreate = jest.fn<Promise<unknown>, [args: Prisma.CompanyCreateArgs]>(() =>
+        Promise.resolve({ id: "company-1" }),
+      );
+      const txMembershipCreate = jest.fn<
+        Promise<unknown>,
+        [args: Prisma.CompanyMembershipCreateArgs]
+      >(() => Promise.resolve({}));
+
+      prisma.$transaction.mockImplementation((callback) =>
+        callback({
+          user: { create: txUserCreate },
+          company: { create: txCompanyCreate },
+          companyMembership: { create: txMembershipCreate },
+        } as unknown as Prisma.TransactionClient),
+      );
+
+      const session = await service.register({
+        name: "Expirado",
+        email: "expirado@test.com",
+        password: "password123",
+        companyName: "Mi Propia Tienda",
+        companyType: "retail",
+      });
+
+      expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
+      const userData = txUserCreate.mock.calls[0]?.[0].data as { role: string };
+      expect(userData.role).toBe("owner");
+      expect(session.user.role).toBe("owner");
     });
 
     it("lanza ConflictException si el email ya existe", async () => {

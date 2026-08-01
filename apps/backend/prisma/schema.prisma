@@ -51,6 +51,7 @@ model Invitation {
   email     String
   companyId String
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
   createdAt DateTime @default(now())
 
   @@unique([companyId, email])

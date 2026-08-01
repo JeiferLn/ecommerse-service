@@ -80,7 +80,11 @@ export class AuthService {
     });
 
     if (invitation) {
-      return this.registerInvitedMember(dto, passwordHash, invitation.companyId);
+      if (invitation.expiresAt <= new Date()) {
+        await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      } else {
+        return this.registerInvitedMember(dto, passwordHash, invitation.companyId);
+      }
     }
 
     try {

@@ -32,6 +32,7 @@ describe("CompaniesService", () => {
       findMany: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindManyArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.InvitationCreateArgs]>;
       delete: jest.Mock<Promise<unknown>, [args: Prisma.InvitationDeleteArgs]>;
+      deleteMany: jest.Mock<Promise<unknown>, [args: Prisma.InvitationDeleteManyArgs]>;
     };
     company: {
       findUniqueOrThrow: jest.Mock<Promise<unknown>, [args: Prisma.CompanyFindUniqueOrThrowArgs]>;
@@ -68,10 +69,13 @@ describe("CompaniesService", () => {
           Promise.resolve({
             id: "inv-1",
             companyId: "company-1",
-            email: (args.data.email as string) ?? "inv@test.com",
+            email: args.data.email ?? "inv@test.com",
           }),
         ),
         delete: jest.fn<Promise<unknown>, [Prisma.InvitationDeleteArgs]>().mockResolvedValue({}),
+        deleteMany: jest
+          .fn<Promise<unknown>, [Prisma.InvitationDeleteManyArgs]>()
+          .mockResolvedValue({ count: 0 }),
       },
       company: {
         findUniqueOrThrow: jest
@@ -87,6 +91,14 @@ describe("CompaniesService", () => {
     };
 
     const configService = {
+      get: jest.fn((key: string) => {
+        switch (key) {
+          case "INVITATION_TTL_SECONDS":
+            return undefined;
+          default:
+            return undefined;
+        }
+      }),
       getOrThrow: jest.fn((key: string) => {
         switch (key) {
           case "FRONTEND_URL":
@@ -137,14 +149,19 @@ describe("CompaniesService", () => {
   });
 
   describe("invite", () => {
-    it("crea una invitación pendiente y envía el correo", async () => {
+    it("crea una invitación pendiente con fecha de expiración y envía el correo", async () => {
       prisma.invitation.findUnique.mockResolvedValue(null);
 
+      const before = Date.now();
       const result = await service.invite("company-1", "Nuevo@Test.com");
+      const createArgs = prisma.invitation.create.mock.calls[0]?.[0];
 
-      expect(prisma.invitation.create).toHaveBeenCalledWith({
-        data: { companyId: "company-1", email: "nuevo@test.com" },
+      expect(createArgs?.data).toMatchObject({
+        companyId: "company-1",
+        email: "nuevo@test.com",
       });
+      expect((createArgs?.data.expiresAt as Date).getTime()).toBeGreaterThan(before);
+      expect((createArgs?.data.expiresAt as Date).getTime()).toBeGreaterThan(Date.now() + 3599_000);
       expect(mailService.sendCompanyInvitation).toHaveBeenCalledWith({
         to: "nuevo@test.com",
         companyName: "Empresa A",
@@ -169,11 +186,28 @@ describe("CompaniesService", () => {
         id: "inv-1",
         companyId: "company-1",
         email: "nuevo@test.com",
+        expiresAt: new Date(Date.now() + 3600_000),
       });
 
       await expect(service.invite("company-1", "nuevo@test.com")).rejects.toThrow(
         ConflictException,
       );
+    });
+
+    it("reemplaza una invitación expirada por una nueva", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: "inv-1",
+        companyId: "company-1",
+        email: "nuevo@test.com",
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+
+      const result = await service.invite("company-1", "nuevo@test.com");
+
+      expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
+      expect(prisma.invitation.create).toHaveBeenCalledTimes(1);
+      expect(mailService.sendCompanyInvitation).toHaveBeenCalled();
+      expect(result.status).toBe("pending");
     });
 
     it("une al usuario existente como miembro", async () => {
@@ -203,13 +237,15 @@ describe("CompaniesService", () => {
   });
 
   describe("listPendingInvitations", () => {
-    it("devuelve las invitaciones pendientes de la empresa", async () => {
+    it("limpia las expiradas y devuelve las vigentes de la empresa", async () => {
       prisma.invitation.findMany.mockResolvedValue([
         { id: "inv-1", email: "a@test.com", createdAt: new Date("2026-08-01") },
       ]);
 
       const invitations = await service.listPendingInvitations("company-1");
 
+      const deleteArgs = prisma.invitation.deleteMany.mock.calls[0]?.[0];
+      expect(deleteArgs?.where).toMatchObject({ companyId: "company-1" });
       expect(prisma.invitation.findMany).toHaveBeenCalledWith({
         where: { companyId: "company-1" },
         orderBy: { createdAt: "desc" },
