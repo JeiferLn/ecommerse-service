@@ -232,6 +232,7 @@ Incluye:
 
 - Login
 - Registro
+- Recuperar contraseña
 - JWT
 - Refresh Token
 - Roles

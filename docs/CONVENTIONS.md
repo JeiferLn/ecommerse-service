@@ -53,6 +53,12 @@ scripts/       # Utilidades de desarrollo
 - Formularios: React Hook Form + Zod.
 - Componentes UI: shadcn/ui generados en `src/components/ui/` con el CLI.
 - Solo se mueven componentes a `packages/ui` cuando 2+ apps los comparten.
+- Grupos de rutas por zona de acceso:
+  - `(public)` — landing y contenido accesible sin sesión.
+  - `(auth)` — páginas de autenticación (`/login`, `/register`, `/forgot-password`); redirige a `/dashboard` si ya hay sesión.
+  - `(private)` — área autenticada; el middleware redirige a `/login` si no hay cookie `access_token`.
+- La sesión se mantiene con cookie httpOnly (`access_token`); el cliente obtiene el usuario vía `GET /api/v1/auth/me` (TanStack Query, queryKey `["session"]`).
+- Errores de API: `ApiClientError` (status + message) desde `src/lib/api.ts`.
 
 ## Base de datos (Prisma)
 
