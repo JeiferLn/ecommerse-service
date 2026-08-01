@@ -44,6 +44,21 @@ scripts/       # Utilidades de desarrollo
 - Respuestas API consistentes usando `ApiResponse<T>` de `@commerce-ai/types`.
 - Variables de entorno validadas en `src/config/env.validation.ts` (zod) al arrancar.
 - Errores manejados con excepciones HTTP de NestJS (`NotFoundException`, etc.).
+- `HttpExceptionFilter` global formatea los errores como `{ status: "error", data: null, message }` (incluye el detalle de validación de DTOs).
+- Guards globales vía `APP_GUARD`: `JwtAuthGuard` (autenticación) y `RolesGuard` (autorización por rol).
+- Endpoints públicos se marcan con `@Public()`; rutas protegidas exigen cookie `access_token` (JWT).
+
+## Autenticación
+
+- Roles: `admin` (administradores de la plataforma), `owner` (creadores de empresa), `user` (invitados por owners). Se definen en `packages/types` (`UserRole`) y se asignan en el registro.
+- Registro público crea usuarios con rol `owner`. El usuario `admin` se crea con el seed (`prisma/seed.ts`).
+- Sesión con dos cookies httpOnly (`sameSite: lax`):
+  - `access_token` — JWT de 15 min (valor por defecto, `ACCESS_TOKEN_TTL_SECONDS`), path `/`.
+  - `refresh_token` — opaco de 64 hex (32 bytes aleatorios), 7 días (`REFRESH_TOKEN_TTL_SECONDS`), path `/api/v1/auth`; se guarda hasheado (sha256) en `RefreshToken`.
+- Rotación: cada `POST /api/v1/auth/refresh` revoca el token usado y emite uno nuevo; reutilizar un token ya revocado devuelve 401.
+- Logout: revoca el refresh token y limpia cookies. El access token (stateless) sigue siendo válido hasta expirar.
+- El guard lee el token de la cookie `access_token` (no del header `Authorization`).
+- Tests e2e (`test/auth.e2e-spec.ts`) usan cookies reales y una cuenta `e2e-<timestamp>@test.com` que se limpia en `afterAll`.
 
 ## Frontend (Next.js)
 

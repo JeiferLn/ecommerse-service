@@ -1,0 +1,217 @@
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import { Test, TestingModule } from "@nestjs/testing";
+import { UnauthorizedException } from "@nestjs/common";
+import type { Prisma, User } from "@prisma/client";
+import type { AuthUser, UserRole } from "@commerce-ai/types";
+import bcrypt from "bcryptjs";
+
+import { PrismaService } from "../prisma/prisma.service";
+import { UsersService } from "../users/users.service";
+import { AuthService } from "./auth.service";
+
+const mockUser: User = {
+  id: "user-1",
+  name: "Test User",
+  email: "test@test.com",
+  passwordHash: "hash",
+  role: "owner",
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+describe("AuthService", () => {
+  let service: AuthService;
+  let usersService: {
+    findByEmail: jest.Mock<Promise<User | null>, [email: string]>;
+    findById: jest.Mock<Promise<User | null>, [id: string]>;
+    create: jest.Mock<
+      Promise<User>,
+      [{ name: string; email: string; passwordHash: string; role: UserRole }]
+    >;
+    toPublicUser: jest.Mock<AuthUser, [user: User]>;
+  };
+  let prisma: {
+    refreshToken: {
+      create: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenCreateArgs]>;
+      findUnique: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenFindUniqueArgs]>;
+      update: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateArgs]>;
+      updateMany: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateManyArgs]>;
+    };
+  };
+  let jwtService: { signAsync: jest.Mock<Promise<string>, [payload: object]> };
+
+  beforeEach(async () => {
+    usersService = {
+      findByEmail: jest.fn<Promise<User | null>, [email: string]>(),
+      findById: jest.fn<Promise<User | null>, [id: string]>(),
+      create: jest.fn<
+        Promise<User>,
+        [{ name: string; email: string; passwordHash: string; role: UserRole }]
+      >(),
+      toPublicUser: jest.fn((user: User) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      })),
+    };
+
+    prisma = {
+      refreshToken: {
+        create: jest.fn<Promise<unknown>, [Prisma.RefreshTokenCreateArgs]>().mockResolvedValue({}),
+        findUnique: jest.fn<Promise<unknown>, [Prisma.RefreshTokenFindUniqueArgs]>(),
+        update: jest.fn<Promise<unknown>, [Prisma.RefreshTokenUpdateArgs]>().mockResolvedValue({}),
+        updateMany: jest
+          .fn<Promise<unknown>, [Prisma.RefreshTokenUpdateManyArgs]>()
+          .mockResolvedValue({ count: 1 }),
+      },
+    };
+
+    jwtService = {
+      signAsync: jest.fn<Promise<string>, [payload: object]>().mockResolvedValue("access-token"),
+    };
+
+    const configService = {
+      getOrThrow: jest.fn((key: string) => (key === "ACCESS_TOKEN_TTL_SECONDS" ? 900 : 604800)),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: UsersService, useValue: usersService },
+        { provide: JwtService, useValue: jwtService },
+        { provide: ConfigService, useValue: configService },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  describe("register", () => {
+    it("crea un usuario con rol owner y contraseña hasheada", async () => {
+      usersService.create.mockResolvedValue(mockUser);
+
+      const result = await service.register({
+        name: "Test User",
+        email: "test@test.com",
+        password: "password123",
+      });
+
+      expect(usersService.create).toHaveBeenCalledWith(expect.objectContaining({ role: "owner" }));
+      const created = usersService.create.mock.calls[0]?.[0];
+      expect(created?.passwordHash).not.toBe("password123");
+      expect(result.role).toBe("owner");
+    });
+  });
+
+  describe("login", () => {
+    it("lanza UnauthorizedException con credenciales inválidas", async () => {
+      usersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.login({ email: "test@test.com", password: "password123" }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("devuelve sesión con tokens y usuario público", async () => {
+      const hashed = await bcrypt.hash("password123", 10);
+      usersService.findByEmail.mockResolvedValue({ ...mockUser, passwordHash: hashed });
+
+      const session = await service.login({ email: "test@test.com", password: "password123" });
+
+      expect(session.accessToken).toBe("access-token");
+      expect(session.refreshToken).toHaveLength(64);
+      expect(session.user).toEqual({
+        id: "user-1",
+        name: "Test User",
+        email: "test@test.com",
+        role: "owner",
+      });
+      const expectedCreateData = expect.objectContaining({
+        userId: "user-1",
+        tokenHash: expect.any(String) as string,
+        expiresAt: expect.any(Date) as Date,
+      }) as Prisma.RefreshTokenCreateInput;
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expectedCreateData }) as Prisma.RefreshTokenCreateArgs,
+      );
+    });
+  });
+
+  describe("refresh", () => {
+    it("revoca el token anterior y crea uno nuevo", async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: "token-1",
+        tokenHash: "hash",
+        userId: "user-1",
+        expiresAt: new Date(Date.now() + 100_000),
+        revokedAt: null,
+        user: mockUser,
+      });
+
+      const session = await service.refresh("valid-token");
+
+      const expectedUpdateData = expect.objectContaining({
+        revokedAt: expect.any(Date) as Date,
+      }) as Prisma.RefreshTokenUpdateInput;
+      expect(prisma.refreshToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "token-1" },
+          data: expectedUpdateData,
+        }) as Prisma.RefreshTokenUpdateArgs,
+      );
+      expect(prisma.refreshToken.create).toHaveBeenCalled();
+      expect(session.user.id).toBe("user-1");
+    });
+
+    it("lanza UnauthorizedException si el token está revocado", async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: "token-1",
+        tokenHash: "hash",
+        userId: "user-1",
+        expiresAt: new Date(Date.now() + 100_000),
+        revokedAt: new Date(),
+        user: mockUser,
+      });
+
+      await expect(service.refresh("revoked-token")).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("logout", () => {
+    it("revoca el refresh token", async () => {
+      await service.logout("some-token");
+
+      const expectedWhere = expect.objectContaining({
+        tokenHash: expect.any(String) as string,
+      }) as Prisma.RefreshTokenWhereInput;
+      const expectedManyData = expect.objectContaining({
+        revokedAt: expect.any(Date) as Date,
+      }) as Prisma.RefreshTokenUpdateManyMutationInput;
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expectedWhere,
+          data: expectedManyData,
+        }) as Prisma.RefreshTokenUpdateManyArgs,
+      );
+    });
+  });
+
+  describe("getMe", () => {
+    it("devuelve el usuario público", async () => {
+      usersService.findById.mockResolvedValue(mockUser);
+
+      const result = await service.getMe("user-1");
+
+      expect(result.email).toBe("test@test.com");
+    });
+
+    it("lanza UnauthorizedException si el usuario no existe", async () => {
+      usersService.findById.mockResolvedValue(null);
+
+      await expect(service.getMe("missing")).rejects.toThrow(UnauthorizedException);
+    });
+  });
+});

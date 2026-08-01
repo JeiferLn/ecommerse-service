@@ -1,31 +1,25 @@
-import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { App } from "supertest/types";
+import type { App } from "supertest/types";
 import type { ApiResponse } from "@commerce-ai/types";
 
-import { AppModule } from "./../src/app.module";
+import { createApp } from "./../src/create-app";
 import type { HealthStatus } from "./../src/health/health.service";
 
 describe("Health (e2e)", () => {
-  let app: INestApplication<App>;
+  let app: INestApplication;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix("api/v1");
+  beforeAll(async () => {
+    app = await createApp();
     await app.init();
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
   });
 
   it("/api/v1/health (GET)", () => {
-    return request(app.getHttpServer())
+    return request(app.getHttpServer() as unknown as App)
       .get("/api/v1/health")
       .expect(200)
       .expect((res) => {

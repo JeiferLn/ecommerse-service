@@ -1,8 +1,10 @@
 import { Controller, Get } from "@nestjs/common";
 import type { ApiResponse } from "@commerce-ai/types";
 
+import { Public } from "../common/decorators/public.decorator";
 import { HealthService, type HealthStatus } from "./health.service";
 
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
