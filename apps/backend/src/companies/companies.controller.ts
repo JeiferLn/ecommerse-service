@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Res,
 } from "@nestjs/common";
@@ -28,6 +29,7 @@ import { CompaniesService } from "./companies.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { SwitchCompanyDto } from "./dto/switch-company.dto";
+import { UpdateMemberRoleDto } from "./dto/update-member-role.dto";
 
 @Controller("company")
 export class CompaniesController {
@@ -54,6 +56,19 @@ export class CompaniesController {
     return {
       status: "success",
       data: await this.companiesService.listMembers(user.companyId),
+    };
+  }
+
+  @Roles("owner")
+  @Patch("members/:userId")
+  async updateMemberRole(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("userId") memberUserId: string,
+    @Body() dto: UpdateMemberRoleDto,
+  ): Promise<ApiResponse<CompanyMember>> {
+    return {
+      status: "success",
+      data: await this.companiesService.updateMemberRole(user.companyId, memberUserId, dto.role),
     };
   }
 

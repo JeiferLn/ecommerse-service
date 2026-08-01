@@ -3,14 +3,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
+import { ROLE_LABELS } from "@commerce-ai/types";
 
 import { RoleBadge } from "@/components/role-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
+
+const ASSIGNABLE_ROLES = ["user", "manager"] as const;
 
 export function MembersSection() {
   const { user } = useSession();
@@ -52,6 +62,17 @@ export function MembersSection() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["company-invitations"] });
+    },
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: (typeof ASSIGNABLE_ROLES)[number] }) =>
+      apiFetch<CompanyMember>(`/company/members/${memberId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["company-members"] });
     },
   });
 
@@ -141,18 +162,51 @@ export function MembersSection() {
 
         {!isLoading && members && members.length > 0 && (
           <ul className="flex flex-col gap-2">
-            {members.map((member) => (
-              <li
-                key={member.id}
-                className="flex items-center justify-between gap-3 rounded-lg border p-3"
-              >
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate font-medium">{member.name}</span>
-                  <span className="truncate text-sm text-muted-foreground">{member.email}</span>
-                </div>
-                <RoleBadge role={member.role} />
-              </li>
-            ))}
+            {members.map((member) => {
+              const isEditable =
+                isOwner && member.id !== user?.id && member.role !== "owner";
+              return (
+                <li
+                  key={member.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                >
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate font-medium">{member.name}</span>
+                    <span className="truncate text-sm text-muted-foreground">{member.email}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isEditable ? (
+                      <Select
+                        value={member.role === "user" || member.role === "manager" ? member.role : undefined}
+                        onValueChange={(role) =>
+                          roleMutation.mutate({
+                            memberId: member.id,
+                            role: role as (typeof ASSIGNABLE_ROLES)[number],
+                          })
+                        }
+                        disabled={roleMutation.isPending}
+                      >
+                        <SelectTrigger
+                          aria-label={`Cambiar rol de ${member.name}`}
+                          className="h-8 w-32"
+                        >
+                          <SelectValue placeholder="Rol" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ASSIGNABLE_ROLES.map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {ROLE_LABELS[role]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <RoleBadge role={member.role} />
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>

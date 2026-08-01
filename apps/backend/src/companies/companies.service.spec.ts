@@ -39,6 +39,7 @@ describe("CompaniesService", () => {
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindUniqueArgs]>;
       findFirst: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindFirstArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipCreateArgs]>;
+      update: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipUpdateArgs]>;
     };
     invitation: {
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindUniqueArgs]>;
@@ -77,6 +78,9 @@ describe("CompaniesService", () => {
         findFirst: jest.fn<Promise<unknown>, [Prisma.CompanyMembershipFindFirstArgs]>(),
         create: jest
           .fn<Promise<unknown>, [Prisma.CompanyMembershipCreateArgs]>()
+          .mockResolvedValue({}),
+        update: jest
+          .fn<Promise<unknown>, [Prisma.CompanyMembershipUpdateArgs]>()
           .mockResolvedValue({}),
       },
       invitation: {
@@ -192,6 +196,58 @@ describe("CompaniesService", () => {
       usersService.findById.mockResolvedValue(null);
 
       await expect(service.createCompany("user-2", dto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("updateMemberRole", () => {
+    it("cambia el rol de un miembro a manager", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue({
+        userId: "user-2",
+        companyId: "company-1",
+        role: "user",
+        user: { id: "user-2", name: "Miembro", email: "miembro@test.com" },
+      });
+
+      const member = await service.updateMemberRole("company-1", "user-2", "manager");
+
+      expect(prisma.companyMembership.update).toHaveBeenCalledWith({
+        where: { userId_companyId: { userId: "user-2", companyId: "company-1" } },
+        data: { role: "manager" },
+      });
+      expect(member).toEqual({
+        id: "user-2",
+        name: "Miembro",
+        email: "miembro@test.com",
+        role: "manager",
+      });
+    });
+
+    it("no permite cambiar el rol del dueño", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue({
+        userId: "user-1",
+        companyId: "company-1",
+        role: "owner",
+        user: { id: "user-1", name: "Owner", email: "owner@test.com" },
+      });
+
+      await expect(service.updateMemberRole("company-1", "user-1", "user")).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.companyMembership.update).not.toHaveBeenCalled();
+    });
+
+    it("lanza NotFoundException si el usuario no es miembro", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue(null);
+
+      await expect(service.updateMemberRole("company-1", "user-99", "manager")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it("lanza error si el usuario no pertenece a una empresa", async () => {
+      await expect(service.updateMemberRole(null, "user-2", "manager")).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

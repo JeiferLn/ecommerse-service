@@ -118,6 +118,41 @@ export class CompaniesService {
     });
   }
 
+  async updateMemberRole(
+    companyId: string | null,
+    memberUserId: string,
+    role: "user" | "manager",
+  ): Promise<CompanyMember> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    const membership = await this.prisma.companyMembership.findUnique({
+      where: { userId_companyId: { userId: memberUserId, companyId } },
+      include: { user: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException("Ese usuario no es miembro de esta empresa");
+    }
+
+    if (membership.role === "owner") {
+      throw new BadRequestException("No puedes cambiar el rol del dueño de la empresa");
+    }
+
+    await this.prisma.companyMembership.update({
+      where: { userId_companyId: { userId: memberUserId, companyId } },
+      data: { role },
+    });
+
+    return {
+      id: membership.user.id,
+      name: membership.user.name,
+      email: membership.user.email,
+      role,
+    };
+  }
+
   private get invitationTtlSeconds(): number {
     return this.configService.get<number>("INVITATION_TTL_SECONDS") ?? 3600;
   }

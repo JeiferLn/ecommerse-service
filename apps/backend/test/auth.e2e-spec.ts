@@ -999,6 +999,99 @@ describe("Auth & Companies (e2e)", () => {
       expect(body.status).toBe("error");
     });
 
+    it("el owner cambia el rol de un miembro a manager", async () => {
+      const members = await request(server())
+        .get("/api/v1/company/members")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const membersBody = members.body as ApiResponse<CompanyMember[]>;
+      const invited = membersBody.data.find((member) => member.email === memberEmail);
+      expect(invited?.role).toBe("user");
+
+      const res = await request(server())
+        .patch(`/api/v1/company/members/${invited!.id}`)
+        .set("Cookie", ownerCookies)
+        .send({ role: "manager" })
+        .expect(200);
+
+      const body = res.body as ApiResponse<CompanyMember>;
+      expect(body.data.role).toBe("manager");
+
+      const after = await request(server())
+        .get("/api/v1/company/members")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const afterBody = after.body as ApiResponse<CompanyMember[]>;
+      expect(afterBody.data.find((member) => member.email === memberEmail)?.role).toBe("manager");
+    });
+
+    it("el owner no puede cambiar su propio rol ni asignar owner", async () => {
+      const members = await request(server())
+        .get("/api/v1/company/members")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const membersBody = members.body as ApiResponse<CompanyMember[]>;
+      const ownerMember = membersBody.data.find((member) => member.role === "owner");
+      expect(ownerMember).toBeDefined();
+
+      const self = await request(server())
+        .patch(`/api/v1/company/members/${ownerMember!.id}`)
+        .set("Cookie", ownerCookies)
+        .send({ role: "user" })
+        .expect(400);
+      expect((self.body as ApiResponse<null>).status).toBe("error");
+
+      const forbiddenRole = await request(server())
+        .patch(`/api/v1/company/members/${ownerMember!.id}`)
+        .set("Cookie", ownerCookies)
+        .send({ role: "owner" })
+        .expect(400);
+      expect((forbiddenRole.body as ApiResponse<null>).status).toBe("error");
+    });
+
+    it("un miembro no puede cambiar roles", async () => {
+      const memberCookies = await login(memberEmail);
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Cookie", memberCookies)
+        .expect(200);
+      const meBody = me.body as ApiResponse<AuthUser>;
+      const ownerId = await ownerCompanyId();
+      const joinedCompany = meBody.data.companies.find((company) => company.id === ownerId);
+      expect(joinedCompany).toBeDefined();
+
+      const switched = await request(server())
+        .post("/api/v1/company/switch")
+        .set("Cookie", memberCookies)
+        .send({ companyId: joinedCompany!.id })
+        .expect(200);
+      const switchedCookies = extractCookies(switched.headers["set-cookie"] as unknown as string[]);
+
+      const members = await request(server())
+        .get("/api/v1/company/members")
+        .set("Cookie", switchedCookies)
+        .expect(200);
+      const membersBody = members.body as ApiResponse<CompanyMember[]>;
+      const target = membersBody.data.find((member) => member.email !== memberEmail);
+      expect(target).toBeDefined();
+
+      const res = await request(server())
+        .patch(`/api/v1/company/members/${target!.id}`)
+        .set("Cookie", switchedCookies)
+        .send({ role: "manager" })
+        .expect(403);
+      expect((res.body as ApiResponse<null>).status).toBe("error");
+    });
+
+    it("rechaza cambiar el rol de alguien que no es miembro", async () => {
+      const res = await request(server())
+        .patch("/api/v1/company/members/usuario-inexistente")
+        .set("Cookie", ownerCookies)
+        .send({ role: "manager" })
+        .expect(404);
+      expect((res.body as ApiResponse<null>).status).toBe("error");
+    });
+
     it("rechaza /company/members sin empresa (admin)", async () => {
       const adminRes = await request(server())
         .post("/api/v1/auth/login")
