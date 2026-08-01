@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { ApiResponse, AuthUser } from "@commerce-ai/types";
+import type { ApiResponse, AuthUser, InvitationInfo } from "@commerce-ai/types";
 import type { Request, Response } from "express";
 
 import { clearSessionCookies, setSessionCookies } from "../common/session-cookies";
@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from "./auth.types";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { RegisterInvitedDto } from "./dto/register-invited.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 
 @Controller("auth")
@@ -30,6 +31,26 @@ export class AuthController {
     const session = await this.authService.register(dto);
     this.setSessionCookies(res, session.accessToken, session.refreshToken);
     return { status: "success", data: session.user };
+  }
+
+  @Public()
+  @Post("register-invited")
+  async registerInvited(
+    @Body() dto: RegisterInvitedDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ApiResponse<AuthUser>> {
+    const session = await this.authService.registerInvited(dto);
+    this.setSessionCookies(res, session.accessToken, session.refreshToken);
+    return { status: "success", data: session.user };
+  }
+
+  @Public()
+  @Get("invitation")
+  async invitation(@Query("token") token: string): Promise<ApiResponse<InvitationInfo>> {
+    return {
+      status: "success",
+      data: await this.authService.getInvitation(token),
+    };
   }
 
   @Public()

@@ -49,6 +49,11 @@ export interface CompanyInvitation {
   createdAt: string;
 }
 
+export interface InvitationInfo {
+  email: string;
+  companyName: string;
+}
+
 export interface AuthUser {
   id: string;
   name: string;

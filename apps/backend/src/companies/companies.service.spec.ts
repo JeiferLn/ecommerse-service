@@ -68,6 +68,7 @@ describe("CompaniesService", () => {
         create: jest.fn<Promise<unknown>, [Prisma.InvitationCreateArgs]>((args) =>
           Promise.resolve({
             id: "inv-1",
+            token: "a".repeat(64),
             companyId: "company-1",
             email: args.data.email ?? "inv@test.com",
           }),
@@ -165,7 +166,7 @@ describe("CompaniesService", () => {
       expect(mailService.sendCompanyInvitation).toHaveBeenCalledWith({
         to: "nuevo@test.com",
         companyName: "Empresa A",
-        registerUrl: "http://localhost:3000/register",
+        registerUrl: `http://localhost:3000/register/invitation?token=${"a".repeat(64)}`,
       });
       expect(result).toEqual({
         status: "pending",

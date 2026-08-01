@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
 import type { User } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 
 import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -112,6 +113,7 @@ export class CompaniesService {
 
     const invitation = await this.prisma.invitation.create({
       data: {
+        token: randomBytes(32).toString("hex"),
         companyId,
         email: normalizedEmail,
         expiresAt: new Date(Date.now() + this.invitationTtlSeconds * 1000),
@@ -128,7 +130,7 @@ export class CompaniesService {
       await this.mailService.sendCompanyInvitation({
         to: invitation.email,
         companyName: company.name,
-        registerUrl: `${frontendUrl}/register`,
+        registerUrl: `${frontendUrl}/register/invitation?token=${invitation.token}`,
       });
     } catch (error) {
       await this.prisma.invitation.delete({ where: { id: invitation.id } });

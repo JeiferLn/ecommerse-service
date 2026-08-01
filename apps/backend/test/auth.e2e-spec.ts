@@ -1,5 +1,7 @@
-﻿import { INestApplication } from "@nestjs/common";
+import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
+import cookieParser from "cookie-parser";
 import request from "supertest";
 import type { App } from "supertest/types";
 import type {
@@ -7,11 +9,14 @@ import type {
   AuthUser,
   CompanyInvitation,
   CompanyMember,
+  InvitationInfo,
   InviteResult,
 } from "@commerce-ai/types";
 import { createHash, randomBytes } from "node:crypto";
 
-import { createApp } from "./../src/create-app";
+import { AppModule } from "./../src/app.module";
+import { HttpExceptionFilter } from "./../src/common/filters/http-exception.filter";
+import { MailService } from "./../src/mail/mail.service";
 
 describe("Auth & Companies (e2e)", () => {
   let app: INestApplication;
@@ -20,22 +25,54 @@ describe("Auth & Companies (e2e)", () => {
   const memberEmail = `member-${Date.now()}@test.com`;
   const pendingEmail = `pending-${Date.now()}@test.com`;
   const expiredEmail = `expired-${Date.now()}@test.com`;
+  const tokenEmail = `token-${Date.now()}@test.com`;
+  const expiredTokenEmail = `expired-token-${Date.now()}@test.com`;
   const resetEmail = `reset-${Date.now()}@test.com`;
   const password = "password123";
 
   const server = (): App => app.getHttpServer() as App;
 
   beforeAll(async () => {
-    delete process.env.SMTP_HOST;
-    delete process.env.SMTP_PORT;
-    delete process.env.SMTP_USER;
-    delete process.env.SMTP_PASS;
-    app = await createApp();
+    // ConfigModule.forRoot recarga apps/backend/.env al crear la app y pisa
+    // process.env, así que limpiar SMTP_* no alcanza: se sobreescribe MailService
+    // con un stub para que los tests NUNCA envíen correos reales.
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(MailService)
+      .useValue({
+        sendPasswordReset: jest.fn(({ to }: { to: string }) => {
+          console.log(`[Preview] Password reset para ${to}`);
+        }),
+        sendCompanyInvitation: jest.fn(({ to }: { to: string }) => {
+          console.log(`[Preview] Invitación para ${to}`);
+        }),
+      })
+      .compile();
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix("api/v1");
+    app.enableCors({ origin: ["http://localhost:3000"], credentials: true });
+    app.use(cookieParser());
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
+    app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
   });
 
   afterAll(async () => {
-    for (const mail of [email, memberEmail, pendingEmail, expiredEmail, resetEmail]) {
+    const allEmails = [
+      email,
+      memberEmail,
+      pendingEmail,
+      expiredEmail,
+      tokenEmail,
+      expiredTokenEmail,
+      resetEmail,
+    ];
+    for (const mail of allEmails) {
       await prisma.refreshToken.deleteMany({ where: { user: { email: mail } } });
       await prisma.passwordResetToken.deleteMany({ where: { user: { email: mail } } });
       await prisma.companyMembership.deleteMany({ where: { user: { email: mail } } });
@@ -47,10 +84,10 @@ describe("Auth & Companies (e2e)", () => {
     await prisma.invitation.deleteMany({
       where: { companyId: { in: companies.map((company) => company.companyId) } },
     });
-    await prisma.invitation.deleteMany({ where: { email: { in: [pendingEmail, expiredEmail] } } });
-    await prisma.user.deleteMany({
-      where: { email: { in: [email, memberEmail, pendingEmail, expiredEmail, resetEmail] } },
+    await prisma.invitation.deleteMany({
+      where: { email: { in: [pendingEmail, expiredEmail, tokenEmail, expiredTokenEmail] } },
     });
+    await prisma.user.deleteMany({ where: { email: { in: allEmails } } });
     await prisma.$disconnect();
     await app.close();
   });
@@ -71,7 +108,17 @@ describe("Auth & Companies (e2e)", () => {
     return extractCookies(res.headers["set-cookie"] as unknown as string[]);
   }
 
-  it("registra un usuario owner con su empresa y abre sesión", async () => {
+  async function ownerCompanyId(): Promise<string> {
+    const membership = await prisma.companyMembership.findFirst({
+      where: { user: { email }, role: "owner" },
+    });
+    if (!membership) {
+      throw new Error("La empresa del owner no existe");
+    }
+    return membership.companyId;
+  }
+
+  it("registra un usuario owner con su empresa y abre sesi�n", async () => {
     const res = await request(server())
       .post("/api/v1/auth/register")
       .send({
@@ -133,7 +180,7 @@ describe("Auth & Companies (e2e)", () => {
     expect(body.message).toBe("Ya existe una cuenta con ese email");
   });
 
-  it("rechaza el registro con tipo de empresa inválido", async () => {
+  it("rechaza el registro con tipo de empresa inv�lido", async () => {
     const res = await request(server())
       .post("/api/v1/auth/register")
       .send({
@@ -149,7 +196,7 @@ describe("Auth & Companies (e2e)", () => {
     expect(body.status).toBe("error");
   });
 
-  it("rechaza el login con contraseña incorrecta", async () => {
+  it("rechaza el login con contrase�a incorrecta", async () => {
     const res = await request(server())
       .post("/api/v1/auth/login")
       .send({ email, password: "wrongpass123" })
@@ -175,7 +222,7 @@ describe("Auth & Companies (e2e)", () => {
     expect(setCookies.join(";")).toContain("HttpOnly");
   });
 
-  it("obtiene /auth/me con sesión válida", async () => {
+  it("obtiene /auth/me con sesi�n v�lida", async () => {
     const cookies = await login(email);
 
     const me = await request(server()).get("/api/v1/auth/me").set("Cookie", cookies).expect(200);
@@ -185,14 +232,14 @@ describe("Auth & Companies (e2e)", () => {
     expect(meBody.data.companyId).not.toBeNull();
   });
 
-  it("rechaza /auth/me sin sesión", async () => {
+  it("rechaza /auth/me sin sesi�n", async () => {
     const res = await request(server()).get("/api/v1/auth/me").expect(401);
 
     const body = res.body as ApiResponse<null>;
     expect(body.status).toBe("error");
   });
 
-  it("rota el refresh token y renueva la sesión", async () => {
+  it("rota el refresh token y renueva la sesi�n", async () => {
     const cookies = await login(email);
     const oldRefresh = cookies
       .split(";")
@@ -222,7 +269,7 @@ describe("Auth & Companies (e2e)", () => {
     expect(meBody.data.email).toBe(email);
   });
 
-  it("rechaza el refresh con un token ya usado (rotación)", async () => {
+  it("rechaza el refresh con un token ya usado (rotaci�n)", async () => {
     const cookies = await login(email);
     const oldRefresh = cookies
       .split(";")
@@ -238,7 +285,7 @@ describe("Auth & Companies (e2e)", () => {
       .expect(401);
   });
 
-  it("cierra sesión y revoca el refresh token", async () => {
+  it("cierra sesi�n y revoca el refresh token", async () => {
     const cookies = await login(email);
 
     await request(server()).post("/api/v1/auth/logout").set("Cookie", cookies).expect(200);
@@ -246,7 +293,7 @@ describe("Auth & Companies (e2e)", () => {
     await request(server()).post("/api/v1/auth/refresh").set("Cookie", cookies).expect(401);
   });
 
-  it("solicita reset de contraseña y crea un token en la base de datos", async () => {
+  it("solicita reset de contrase�a y crea un token en la base de datos", async () => {
     const res = await request(server())
       .post("/api/v1/auth/forgot-password")
       .send({ email })
@@ -275,7 +322,7 @@ describe("Auth & Companies (e2e)", () => {
     expect(body.data).toBeNull();
   });
 
-  it("rechaza forgot-password con email inválido", async () => {
+  it("rechaza forgot-password con email inv�lido", async () => {
     const res = await request(server())
       .post("/api/v1/auth/forgot-password")
       .send({ email: "no-es-un-email" })
@@ -285,7 +332,7 @@ describe("Auth & Companies (e2e)", () => {
     expect(body.status).toBe("error");
   });
 
-  it("restablece la contraseña con el token del correo", async () => {
+  it("restablece la contrase�a con el token del correo", async () => {
     const newPassword = "newpassword123";
     const realToken = randomBytes(32).toString("hex");
 
@@ -342,7 +389,7 @@ describe("Auth & Companies (e2e)", () => {
       ownerCookies = await login(email);
     });
 
-    it("el owner ve sus miembros (solo él inicialmente)", async () => {
+    it("el owner ve sus miembros (solo �l inicialmente)", async () => {
       const res = await request(server())
         .get("/api/v1/company/members")
         .set("Cookie", ownerCookies)
@@ -354,7 +401,7 @@ describe("Auth & Companies (e2e)", () => {
       expect(body.data[0]?.role).toBe("owner");
     });
 
-    it("rechaza invitación con email inválido", async () => {
+    it("rechaza invitaci�n con email inv�lido", async () => {
       const res = await request(server())
         .post("/api/v1/company/invitations")
         .set("Cookie", ownerCookies)
@@ -409,7 +456,7 @@ describe("Auth & Companies (e2e)", () => {
       expect(body.status).toBe("error");
     });
 
-    it("deja invitación pendiente para un email sin cuenta", async () => {
+    it("deja invitaci�n pendiente para un email sin cuenta", async () => {
       const res = await request(server())
         .post("/api/v1/company/invitations")
         .set("Cookie", ownerCookies)
@@ -476,6 +523,7 @@ describe("Auth & Companies (e2e)", () => {
 
       await prisma.invitation.create({
         data: {
+          token: `token-${Date.now()}`,
           companyId: membership!.companyId,
           email: expiredEmail,
           expiresAt: new Date(Date.now() - 60_000),
@@ -503,7 +551,7 @@ describe("Auth & Companies (e2e)", () => {
       expect(record?.expiresAt.getTime()).toBeGreaterThan(Date.now());
     });
 
-    it("registrarse con una invitación expirada crea su propia empresa", async () => {
+    it("registrarse con una invitaci�n expirada crea su propia empresa", async () => {
       const membership = await prisma.companyMembership.findFirst({
         where: { user: { email }, role: "owner" },
       });
@@ -538,7 +586,105 @@ describe("Auth & Companies (e2e)", () => {
       expect(invitation).toBeNull();
     });
 
-    it("cancela una invitación pendiente", async () => {
+    it("el invitado consulta su invitaci�n por token y se registra", async () => {
+      await request(server())
+        .post("/api/v1/company/invitations")
+        .set("Cookie", ownerCookies)
+        .send({ email: tokenEmail })
+        .expect(201);
+
+      const invitation = await prisma.invitation.findUnique({
+        where: { companyId_email: { companyId: await ownerCompanyId(), email: tokenEmail } },
+      });
+      expect(invitation).not.toBeNull();
+      expect(invitation?.token).toHaveLength(64);
+
+      const infoRes = await request(server())
+        .get(`/api/v1/auth/invitation?token=${invitation!.token}`)
+        .expect(200);
+      const infoBody = infoRes.body as ApiResponse<InvitationInfo>;
+      expect(infoBody.data.email).toBe(tokenEmail);
+      expect(infoBody.data.companyName).toBe("Tienda E2E");
+
+      const res = await request(server())
+        .post("/api/v1/auth/register-invited")
+        .send({
+          name: "Invitado Token",
+          password,
+          token: invitation!.token,
+        })
+        .expect(201);
+
+      const body = res.body as ApiResponse<AuthUser>;
+      expect(body.data.role).toBe("user");
+      expect(body.data.email).toBe(tokenEmail);
+      expect(body.data.companies).toHaveLength(1);
+      expect(body.data.companies[0]).toMatchObject({ name: "Tienda E2E", role: "user" });
+
+      const cookies = extractCookies(res.headers["set-cookie"] as unknown as string[]);
+      expect(cookies).toContain("access_token");
+
+      const me = await request(server()).get("/api/v1/auth/me").set("Cookie", cookies).expect(200);
+      const meBody = me.body as ApiResponse<AuthUser>;
+      expect(meBody.data.role).toBe("user");
+      expect(meBody.data.companyId).toBe(await ownerCompanyId());
+
+      const leftover = await prisma.invitation.findUnique({
+        where: { companyId_email: { companyId: await ownerCompanyId(), email: tokenEmail } },
+      });
+      expect(leftover).toBeNull();
+    });
+
+    it("rechaza un token de invitaci�n inv�lido", async () => {
+      const res = await request(server())
+        .get("/api/v1/auth/invitation?token=token-inexistente")
+        .expect(404);
+      expect((res.body as ApiResponse<null>).status).toBe("error");
+
+      const registerRes = await request(server())
+        .post("/api/v1/auth/register-invited")
+        .send({ name: "Invitado", password, token: "token-inexistente" })
+        .expect(404);
+      expect((registerRes.body as ApiResponse<null>).status).toBe("error");
+    });
+
+    it("rechaza una invitaci�n expirada por token", async () => {
+      const membership = await prisma.companyMembership.findFirst({
+        where: { user: { email }, role: "owner" },
+      });
+      expect(membership).not.toBeNull();
+
+      await prisma.invitation.create({
+        data: {
+          token: "expired-token-1234",
+          companyId: membership!.companyId,
+          email: expiredTokenEmail,
+          expiresAt: new Date(Date.now() - 60_000),
+        },
+      });
+
+      const infoRes = await request(server())
+        .get("/api/v1/auth/invitation?token=expired-token-1234")
+        .expect(410);
+      expect((infoRes.body as ApiResponse<null>).status).toBe("error");
+
+      await prisma.invitation.create({
+        data: {
+          token: "expired-token-5678",
+          companyId: membership!.companyId,
+          email: expiredTokenEmail,
+          expiresAt: new Date(Date.now() - 60_000),
+        },
+      });
+
+      const registerRes = await request(server())
+        .post("/api/v1/auth/register-invited")
+        .send({ name: "Invitado", password, token: "expired-token-5678" })
+        .expect(410);
+      expect((registerRes.body as ApiResponse<null>).status).toBe("error");
+    });
+
+    it("cancela una invitaci�n pendiente", async () => {
       const cancelledEmail = `cancelled-${Date.now()}@test.com`;
 
       await request(server())
@@ -572,7 +718,7 @@ describe("Auth & Companies (e2e)", () => {
       expect((missing.body as ApiResponse<null>).status).toBe("error");
     });
 
-    it("no permite cancelar la invitación de otra empresa", async () => {
+    it("no permite cancelar la invitaci�n de otra empresa", async () => {
       const memberCookies = await login(memberEmail);
       const me = await request(server())
         .get("/api/v1/auth/me")

@@ -1,13 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import type { AuthUser, UserRole } from "@commerce-ai/types";
-import { Prisma, type User } from "@prisma/client";
+import type { AuthUser, InvitationInfo, UserRole } from "@commerce-ai/types";
+import { Prisma, type Invitation, type User } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -17,6 +19,7 @@ import { UsersService } from "../users/users.service";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { RegisterInvitedDto } from "./dto/register-invited.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 
 export interface AuthSession {
@@ -83,7 +86,7 @@ export class AuthService {
       if (invitation.expiresAt <= new Date()) {
         await this.prisma.invitation.delete({ where: { id: invitation.id } });
       } else {
-        return this.registerInvitedMember(dto, passwordHash, invitation.companyId);
+        return this.registerInvitedMember(dto, passwordHash, invitation);
       }
     }
 
@@ -119,37 +122,73 @@ export class AuthService {
   }
 
   private async registerInvitedMember(
-    dto: RegisterDto,
+    dto: RegisterDto | RegisterInvitedDto,
     passwordHash: string,
-    companyId: string,
+    invitation: Invitation,
   ): Promise<AuthSession> {
     try {
       const user = await this.prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
             name: dto.name,
-            email: dto.email,
+            email: invitation.email,
             passwordHash,
             role: "user",
           },
         });
 
         await tx.companyMembership.create({
-          data: { userId: created.id, companyId, role: "user" },
+          data: { userId: created.id, companyId: invitation.companyId, role: "user" },
         });
 
-        await tx.invitation.deleteMany({ where: { email: dto.email.toLowerCase() } });
+        await tx.invitation.deleteMany({ where: { email: invitation.email } });
 
         return created;
       });
 
-      return this.createSession(user, companyId, "user");
+      return this.createSession(user, invitation.companyId, "user");
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("Ya existe una cuenta con ese email");
       }
       throw error;
     }
+  }
+
+  async getInvitation(token: string): Promise<InvitationInfo> {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { company: { select: { name: true } } },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException("Invitación no encontrada");
+    }
+
+    if (invitation.expiresAt <= new Date()) {
+      await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      throw new GoneException("La invitación expiró");
+    }
+
+    return { email: invitation.email, companyName: invitation.company.name };
+  }
+
+  async registerInvited(dto: RegisterInvitedDto): Promise<AuthSession> {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token: dto.token },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException("Invitación no encontrada");
+    }
+
+    if (invitation.expiresAt <= new Date()) {
+      await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      throw new GoneException("La invitación expiró");
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    return this.registerInvitedMember(dto, passwordHash, invitation);
   }
 
   async login(dto: LoginDto): Promise<AuthSession> {

@@ -48,6 +48,7 @@ model CompanyMembership {
 
 model Invitation {
   id        String   @id @default(cuid())
+  token     String   @unique
   email     String
   companyId String
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
