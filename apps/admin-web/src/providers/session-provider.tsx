@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { apiFetch } from "@/lib/api";
 import type { SessionUser } from "@/lib/session";
@@ -23,6 +23,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     queryFn: () => apiFetch<SessionUser>("/auth/me").catch(() => null),
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    const onRefreshed = () => {
+      void queryClient.invalidateQueries({ queryKey: ["session"] });
+    };
+    window.addEventListener("auth:refreshed", onRefreshed);
+    return () => window.removeEventListener("auth:refreshed", onRefreshed);
+  }, [queryClient]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

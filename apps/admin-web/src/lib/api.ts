@@ -2,6 +2,52 @@ import type { ApiResponse } from "@commerce-ai/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+const NO_REFRESH_PATHS = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  "/auth/refresh",
+  "/auth/logout",
+];
+
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then((res) => {
+        if (res.ok) {
+          window.dispatchEvent(new Event("auth:refreshed"));
+          return true;
+        }
+        if (res.status === 401) {
+          redirectToLogin();
+        }
+        return false;
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+function redirectToLogin(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const next = `${window.location.pathname}${window.location.search}`;
+  if (next === "/login") {
+    return;
+  }
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+}
+
 export class ApiClientError extends Error {
   constructor(
     public readonly status: number,
@@ -13,14 +59,23 @@ export class ApiClientError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}/api/v1${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-    credentials: "include",
-  });
+  const shouldRefresh = !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
+
+  const doFetch = async (): Promise<Response> =>
+    fetch(`${API_URL}/api/v1${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+      credentials: "include",
+    });
+
+  let res = await doFetch();
+
+  if (res.status === 401 && shouldRefresh && (await refreshSession())) {
+    res = await doFetch();
+  }
 
   const body = (await res.json().catch(() => null)) as ApiResponse<T> | null;
 

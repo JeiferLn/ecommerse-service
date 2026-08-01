@@ -497,9 +497,3 @@ Endpoints disponibles:
 
 - `GET http://localhost:4000/api/v1/health` — estado del backend y la base de datos.
 - `http://localhost:3000` — landing del admin-web.
-
----
-
-# Pendientes Conocidos
-
-- **Refresh automático de sesión**: el frontend no invoca `POST /api/v1/auth/refresh` cuando el access token expira; el usuario es redirigido a `/login` aunque la cookie de refresh siga válida.
