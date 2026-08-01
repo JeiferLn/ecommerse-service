@@ -7,6 +7,12 @@ export interface SendPasswordResetParams {
   resetUrl: string;
 }
 
+export interface SendCompanyInvitationParams {
+  to: string;
+  companyName: string;
+  registerUrl: string;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -48,6 +54,43 @@ export class MailService {
 
     await this.transporter.sendMail({ from, to, subject, html });
     this.logger.log(`Correo de reset enviado a ${to}`);
+  }
+
+  async sendCompanyInvitation({
+    to,
+    companyName,
+    registerUrl,
+  }: SendCompanyInvitationParams): Promise<void> {
+    const from =
+      this.configService.get<string>("MAIL_FROM") ??
+      "Commerce AI SaaS <no-reply@commerce-ai.local>";
+    const subject = `${companyName} te ha invitado a unirte`;
+    const html = this.renderCompanyInvitationHtml(companyName, registerUrl);
+
+    if (!this.transporter) {
+      this.logger.log(`[Preview] Para: ${to} | Asunto: ${subject}\n${html}`);
+      return;
+    }
+
+    await this.transporter.sendMail({ from, to, subject, html });
+    this.logger.log(`Correo de invitación enviado a ${to}`);
+  }
+
+  private renderCompanyInvitationHtml(companyName: string, registerUrl: string): string {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; color: #111827;">
+        <h2 style="margin: 0 0 16px;">Te invitaron a unirte a ${companyName}</h2>
+        <p style="margin: 0 0 24px; color: #4b5563;">
+          Crea tu cuenta para empezar a colaborar con el equipo de ${companyName}.
+        </p>
+        <a href="${registerUrl}" style="display: inline-block; padding: 12px 24px; background-color: #111827; color: #ffffff; text-decoration: none; border-radius: 8px;">
+          Crear cuenta
+        </a>
+        <p style="margin: 24px 0 0; color: #6b7280; font-size: 13px;">
+          Si no esperabas esta invitación, ignora este correo.
+        </p>
+      </div>
+    `;
   }
 
   private renderPasswordResetHtml(resetUrl: string): string {

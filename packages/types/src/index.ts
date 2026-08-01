@@ -39,8 +39,14 @@ export interface CompanyMember {
 }
 
 export interface InviteResult {
-  status: "joined" | "pending";
+  status: "joined" | "pending" | "cancelled";
   message: string;
+}
+
+export interface CompanyInvitation {
+  id: string;
+  email: string;
+  createdAt: string;
 }
 
 export interface AuthUser {

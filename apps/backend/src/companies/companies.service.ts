@@ -1,7 +1,14 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
-import type { CompanyMember, InviteResult } from "@commerce-ai/types";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
 import type { User } from "@prisma/client";
 
+import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 
@@ -10,6 +17,8 @@ export class CompaniesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
+    private readonly mailService: MailService,
+    private readonly configService: ConfigService,
   ) {}
 
   async listMembers(companyId: string | null): Promise<CompanyMember[]> {
@@ -29,6 +38,45 @@ export class CompaniesService {
       email: membership.user.email,
       role: membership.role,
     }));
+  }
+
+  async listPendingInvitations(companyId: string | null): Promise<CompanyInvitation[]> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    const invitations = await this.prisma.invitation.findMany({
+      where: { companyId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, email: true, createdAt: true },
+    });
+
+    return invitations.map((invitation) => ({
+      id: invitation.id,
+      email: invitation.email,
+      createdAt: invitation.createdAt.toISOString(),
+    }));
+  }
+
+  async cancelInvitation(companyId: string | null, invitationId: string): Promise<InviteResult> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { id: invitationId },
+    });
+
+    if (!invitation || invitation.companyId !== companyId) {
+      throw new NotFoundException("Invitación no encontrada");
+    }
+
+    await this.prisma.invitation.delete({ where: { id: invitationId } });
+
+    return {
+      status: "cancelled",
+      message: "Invitación cancelada",
+    };
   }
 
   async invite(companyId: string | null, email: string): Promise<InviteResult> {
@@ -51,9 +99,26 @@ export class CompaniesService {
       throw new ConflictException("Ya existe una invitación pendiente para ese email");
     }
 
-    await this.prisma.invitation.create({
+    const invitation = await this.prisma.invitation.create({
       data: { companyId, email: normalizedEmail },
     });
+
+    try {
+      const company = await this.prisma.company.findUniqueOrThrow({
+        where: { id: companyId },
+        select: { name: true },
+      });
+      const frontendUrl = this.configService.getOrThrow<string>("FRONTEND_URL");
+
+      await this.mailService.sendCompanyInvitation({
+        to: invitation.email,
+        companyName: company.name,
+        registerUrl: `${frontendUrl}/register`,
+      });
+    } catch (error) {
+      await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      throw error;
+    }
 
     return {
       status: "pending",

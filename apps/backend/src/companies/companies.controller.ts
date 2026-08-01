@@ -1,6 +1,22 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { ApiResponse, CompanyMember, InviteResult, AuthUser } from "@commerce-ai/types";
+import type {
+  ApiResponse,
+  CompanyInvitation,
+  CompanyMember,
+  InviteResult,
+  AuthUser,
+} from "@commerce-ai/types";
 import type { Response } from "express";
 
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -37,6 +53,29 @@ export class CompaniesController {
     return {
       status: "success",
       data: await this.companiesService.invite(user.companyId, dto.email),
+    };
+  }
+
+  @Roles("owner")
+  @Get("invitations")
+  async pendingInvitations(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponse<CompanyInvitation[]>> {
+    return {
+      status: "success",
+      data: await this.companiesService.listPendingInvitations(user.companyId),
+    };
+  }
+
+  @Roles("owner")
+  @Delete("invitations/:id")
+  async cancelInvitation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ): Promise<ApiResponse<InviteResult>> {
+    return {
+      status: "success",
+      data: await this.companiesService.cancelInvitation(user.companyId, id),
     };
   }
 

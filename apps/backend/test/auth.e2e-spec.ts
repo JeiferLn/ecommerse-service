@@ -2,7 +2,13 @@
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import type { App } from "supertest/types";
-import type { ApiResponse, AuthUser, CompanyMember, InviteResult } from "@commerce-ai/types";
+import type {
+  ApiResponse,
+  AuthUser,
+  CompanyInvitation,
+  CompanyMember,
+  InviteResult,
+} from "@commerce-ai/types";
 import { createHash, randomBytes } from "node:crypto";
 
 import { createApp } from "./../src/create-app";
@@ -29,6 +35,13 @@ describe("Auth & Companies (e2e)", () => {
       await prisma.passwordResetToken.deleteMany({ where: { user: { email: mail } } });
       await prisma.companyMembership.deleteMany({ where: { user: { email: mail } } });
     }
+    const companies = await prisma.companyMembership.findMany({
+      where: { user: { email: { in: [email, memberEmail] } } },
+      select: { companyId: true },
+    });
+    await prisma.invitation.deleteMany({
+      where: { companyId: { in: companies.map((company) => company.companyId) } },
+    });
     await prisma.invitation.deleteMany({ where: { email: pendingEmail } });
     await prisma.user.deleteMany({
       where: { email: { in: [email, memberEmail, pendingEmail, resetEmail] } },
@@ -415,6 +428,113 @@ describe("Auth & Companies (e2e)", () => {
 
       const body2 = res2.body as ApiResponse<null>;
       expect(body2.status).toBe("error");
+    });
+
+    it("el owner ve las invitaciones pendientes y un miembro no", async () => {
+      const list = await request(server())
+        .get("/api/v1/company/invitations")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+
+      const body = list.body as ApiResponse<CompanyInvitation[]>;
+      expect(body.data.some((invitation) => invitation.email === pendingEmail)).toBe(true);
+
+      const memberCookies = await login(memberEmail);
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Cookie", memberCookies)
+        .expect(200);
+      const meBody = me.body as ApiResponse<AuthUser>;
+      const joinedCompany = meBody.data.companies.find((company) => company.role === "user");
+      expect(joinedCompany).toBeDefined();
+
+      const switched = await request(server())
+        .post("/api/v1/company/switch")
+        .set("Cookie", memberCookies)
+        .send({ companyId: joinedCompany!.id })
+        .expect(200);
+      const switchedCookies = extractCookies(switched.headers["set-cookie"] as unknown as string[]);
+
+      const forbidden = await request(server())
+        .get("/api/v1/company/invitations")
+        .set("Cookie", switchedCookies)
+        .expect(403);
+      const forbiddenBody = forbidden.body as ApiResponse<null>;
+      expect(forbiddenBody.status).toBe("error");
+    });
+
+    it("cancela una invitación pendiente", async () => {
+      const cancelledEmail = `cancelled-${Date.now()}@test.com`;
+
+      await request(server())
+        .post("/api/v1/company/invitations")
+        .set("Cookie", ownerCookies)
+        .send({ email: cancelledEmail })
+        .expect(201);
+
+      const list = await request(server())
+        .get("/api/v1/company/invitations")
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const listBody = list.body as ApiResponse<CompanyInvitation[]>;
+      const target = listBody.data.find((invitation) => invitation.email === cancelledEmail);
+      expect(target).toBeDefined();
+
+      const cancel = await request(server())
+        .delete(`/api/v1/company/invitations/${target!.id}`)
+        .set("Cookie", ownerCookies)
+        .expect(200);
+      const cancelBody = cancel.body as ApiResponse<InviteResult>;
+      expect(cancelBody.data.status).toBe("cancelled");
+
+      const record = await prisma.invitation.findUnique({ where: { id: target!.id } });
+      expect(record).toBeNull();
+
+      const missing = await request(server())
+        .delete(`/api/v1/company/invitations/${target!.id}`)
+        .set("Cookie", ownerCookies)
+        .expect(404);
+      expect((missing.body as ApiResponse<null>).status).toBe("error");
+    });
+
+    it("no permite cancelar la invitación de otra empresa", async () => {
+      const memberCookies = await login(memberEmail);
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Cookie", memberCookies)
+        .expect(200);
+      const meBody = me.body as ApiResponse<AuthUser>;
+      const ownCompany = meBody.data.companies.find((company) => company.role === "owner");
+      expect(ownCompany).toBeDefined();
+
+      const switched = await request(server())
+        .post("/api/v1/company/switch")
+        .set("Cookie", memberCookies)
+        .send({ companyId: ownCompany!.id })
+        .expect(200);
+      const switchedCookies = extractCookies(switched.headers["set-cookie"] as unknown as string[]);
+
+      await request(server())
+        .post("/api/v1/company/invitations")
+        .set("Cookie", switchedCookies)
+        .send({ email: `cross-${Date.now()}@test.com` })
+        .expect(201);
+
+      const list = await request(server())
+        .get("/api/v1/company/invitations")
+        .set("Cookie", switchedCookies)
+        .expect(200);
+      const listBody = list.body as ApiResponse<CompanyInvitation[]>;
+      const foreignInvitation = listBody.data.find((invitation) =>
+        invitation.email.startsWith("cross-"),
+      );
+      expect(foreignInvitation).toBeDefined();
+
+      const forbidden = await request(server())
+        .delete(`/api/v1/company/invitations/${foreignInvitation!.id}`)
+        .set("Cookie", ownerCookies)
+        .expect(404);
+      expect((forbidden.body as ApiResponse<null>).status).toBe("error");
     });
 
     it("al registrarse con el email invitado se une a la empresa", async () => {
