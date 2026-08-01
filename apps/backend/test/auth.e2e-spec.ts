@@ -51,7 +51,7 @@ describe("Auth (e2e)", () => {
     expect(body.message).toBe("Ya existe una cuenta con ese email");
   });
 
-  it("rechaza el login con contraseÃ±a incorrecta", async () => {
+  it("rechaza el login con contraseña incorrecta", async () => {
     const res = await request(server())
       .post("/api/v1/auth/login")
       .send({ email, password: "wrongpass123" })
@@ -75,7 +75,7 @@ describe("Auth (e2e)", () => {
     expect(setCookies.join(";")).toContain("HttpOnly");
   });
 
-  it("obtiene /auth/me con sesiÃ³n vÃ¡lida", async () => {
+  it("obtiene /auth/me con sesión válida", async () => {
     const res = await request(server())
       .post("/api/v1/auth/login")
       .send({ email, password })
@@ -89,14 +89,14 @@ describe("Auth (e2e)", () => {
     expect(meBody.data.email).toBe(email);
   });
 
-  it("rechaza /auth/me sin sesiÃ³n", async () => {
+  it("rechaza /auth/me sin sesión", async () => {
     const res = await request(server()).get("/api/v1/auth/me").expect(401);
 
     const body = res.body as ApiResponse<null>;
     expect(body.status).toBe("error");
   });
 
-  it("rota el refresh token y renueva la sesiÃ³n", async () => {
+  it("rota el refresh token y renueva la sesión", async () => {
     const res = await request(server())
       .post("/api/v1/auth/login")
       .send({ email, password })
@@ -131,7 +131,7 @@ describe("Auth (e2e)", () => {
     expect(meBody.data.email).toBe(email);
   });
 
-  it("rechaza el refresh con un token ya usado (rotaciÃ³n)", async () => {
+  it("rechaza el refresh con un token ya usado (rotación)", async () => {
     const res = await request(server())
       .post("/api/v1/auth/login")
       .send({ email, password })
@@ -152,7 +152,7 @@ describe("Auth (e2e)", () => {
       .expect(401);
   });
 
-  it("cierra sesiÃ³n y revoca el refresh token", async () => {
+  it("cierra sesión y revoca el refresh token", async () => {
     const res = await request(server())
       .post("/api/v1/auth/login")
       .send({ email, password })

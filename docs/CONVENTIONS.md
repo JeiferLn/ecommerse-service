@@ -58,6 +58,7 @@ scripts/       # Utilidades de desarrollo
 - Rotación: cada `POST /api/v1/auth/refresh` revoca el token usado y emite uno nuevo; reutilizar un token ya revocado devuelve 401.
 - Logout: revoca el refresh token y limpia cookies. El access token (stateless) sigue siendo válido hasta expirar.
 - El guard lee el token de la cookie `access_token` (no del header `Authorization`).
+- Recuperación de contraseña: `POST /auth/forgot-password` genera un token opaco de 64 hex (1 hora, `RESET_TOKEN_TTL_SECONDS`) guardado hasheado en `PasswordResetToken` y envía el enlace por correo (Nodemailer + SMTP; sin SMTP configurado entra en modo preview y loguea el correo). La respuesta es genérica (no revela si el email existe). `POST /auth/reset-password` valida el token, cambia la contraseña, borra los tokens y revoca todas las sesiones activas del usuario. El token es de un solo uso.
 - Tests e2e (`test/auth.e2e-spec.ts`) usan cookies reales y una cuenta `e2e-<timestamp>@test.com` que se limpia en `afterAll`.
 
 ## Frontend (Next.js)
@@ -70,9 +71,10 @@ scripts/       # Utilidades de desarrollo
 - Solo se mueven componentes a `packages/ui` cuando 2+ apps los comparten.
 - Grupos de rutas por zona de acceso:
   - `(public)` — landing y contenido accesible sin sesión.
-  - `(auth)` — páginas de autenticación (`/login`, `/register`, `/forgot-password`); redirige a `/dashboard` si ya hay sesión.
+  - `(auth)` — páginas de autenticación (`/login`, `/register`, `/forgot-password`, `/reset-password`); redirige a `/dashboard` si ya hay sesión.
   - `(private)` — área autenticada; el middleware redirige a `/login` si no hay cookie `access_token`.
 - La sesión se mantiene con cookie httpOnly (`access_token`); el cliente obtiene el usuario vía `GET /api/v1/auth/me` (TanStack Query, queryKey `["session"]`).
+- Refresh automático de sesión en `src/lib/api.ts`: ante un 401 se llama a `POST /auth/refresh` (single-flight: las peticiones concurrentes comparten la misma promesa) y se reintenta la petición original una vez. Si el refresh falla con 401, se redirige a `/login?next=...`. Los endpoints de auth (`login`, `register`, `forgot-password`, `reset-password`, `refresh`, `logout`) están excluidos del retry. Tras cada rotación se dispara el evento `auth:refreshed` (el SessionProvider invalida `["session"]`).
 - Errores de API: `ApiClientError` (status + message) desde `src/lib/api.ts`.
 
 ## Base de datos (Prisma)
