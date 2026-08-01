@@ -1,0 +1,6 @@
+{
+  "name": "@commerce-ai/ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Componentes UI compartidos entre apps (placeholder - los componentes shadcn/ui viven en cada app)"
+}

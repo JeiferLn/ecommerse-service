@@ -1,0 +1,16 @@
+{
+  "name": "@commerce-ai/types",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Tipos compartidos entre apps y paquetes",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@commerce-ai/config": "workspace:*",
+    "typescript": "^5.7.3"
+  }
+}
