@@ -22,14 +22,38 @@ enum CompanyType {
 }
 
 model Company {
-  id        String      @id @default(cuid())
-  name      String
-  type      CompanyType
-  ownerId   String      @unique
-  owner     User        @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  users     User[]      @relation("CompanyMembers")
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id            String                @id @default(cuid())
+  name          String
+  type          CompanyType
+  ownerId       String                @unique
+  owner         User                  @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  memberships   CompanyMembership[]
+  invitations   Invitation[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+}
+
+model CompanyMembership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  email     String
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, email])
 }
 
 model User {
@@ -38,15 +62,12 @@ model User {
   email              String               @unique
   passwordHash       String
   role               UserRole             @default(user)
-  companyId          String?
-  company            Company?             @relation("CompanyMembers", fields: [companyId], references: [id], onDelete: SetNull)
   ownedCompany       Company?             @relation("CompanyOwner")
+  memberships        CompanyMembership[]
   refreshTokens      RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
-
-  @@index([companyId])
 }
 
 model RefreshToken {
@@ -54,6 +75,7 @@ model RefreshToken {
   tokenHash String    @unique
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String?
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())

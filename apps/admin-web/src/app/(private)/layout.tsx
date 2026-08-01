@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { CompanySwitcher } from "@/components/company-switcher";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { Button } from "@/components/ui/button";
 
@@ -12,6 +13,7 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
           Commerce AI SaaS
         </Link>
         <nav className="flex items-center gap-2">
+          <CompanySwitcher />
           <Button variant="ghost" size="sm" asChild>
             <Link href="/dashboard">Dashboard</Link>
           </Button>

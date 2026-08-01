@@ -33,16 +33,16 @@ test/        # e2e tests (jest + supertest)
 
 ## Endpoints
 
-| Método | Ruta                           | Acceso      | Descripción                                                                    |
-| ------ | ------------------------------ | ----------- | ------------------------------------------------------------------------------ |
-| GET    | `/api/v1/health`               | Público     | Estado del servicio y de la base de datos.                                     |
+| Método | Ruta                           | Acceso      | Descripción                                                                       |
+| ------ | ------------------------------ | ----------- | --------------------------------------------------------------------------------- |
+| GET    | `/api/v1/health`               | Público     | Estado del servicio y de la base de datos.                                        |
 | POST   | `/api/v1/auth/register`        | Público     | Registro: crea usuario `owner` + empresa (transaccional) y abre sesión (cookies). |
-| POST   | `/api/v1/auth/login`           | Público     | Login, establece cookies httpOnly.                                             |
-| POST   | `/api/v1/auth/refresh`         | Público     | Rota el refresh token y renueva la sesión.                                     |
-| POST   | `/api/v1/auth/forgot-password` | Público     | Genera token de reset y envía el enlace por correo.                            |
-| POST   | `/api/v1/auth/reset-password`  | Público     | Cambia la contraseña con el token del correo (borra tokens y revoca sesiones). |
-| POST   | `/api/v1/auth/logout`          | Público     | Revoca el refresh token y limpia cookies.                                      |
-| GET    | `/api/v1/auth/me`              | Autenticado | Usuario de la sesión actual.                                                   |
+| POST   | `/api/v1/auth/login`           | Público     | Login, establece cookies httpOnly.                                                |
+| POST   | `/api/v1/auth/refresh`         | Público     | Rota el refresh token y renueva la sesión.                                        |
+| POST   | `/api/v1/auth/forgot-password` | Público     | Genera token de reset y envía el enlace por correo.                               |
+| POST   | `/api/v1/auth/reset-password`  | Público     | Cambia la contraseña con el token del correo (borra tokens y revoca sesiones).    |
+| POST   | `/api/v1/auth/logout`          | Público     | Revoca el refresh token y limpia cookies.                                         |
+| GET    | `/api/v1/auth/me`              | Autenticado | Usuario de la sesión actual.                                                      |
 
 ## Correos (Nodemailer + SMTP)
 

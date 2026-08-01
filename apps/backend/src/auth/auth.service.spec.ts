@@ -17,9 +17,17 @@ const mockUser: User = {
   email: "test@test.com",
   passwordHash: "hash",
   role: "owner",
-  companyId: "company-1",
   createdAt: new Date(),
   updatedAt: new Date(),
+};
+
+const mockAuthUser: AuthUser = {
+  id: "user-1",
+  name: "Test User",
+  email: "test@test.com",
+  role: "owner",
+  companyId: "company-1",
+  companies: [{ id: "company-1", name: "Mi Tienda", type: "retail", role: "owner" }],
 };
 
 describe("AuthService", () => {
@@ -27,13 +35,24 @@ describe("AuthService", () => {
   let usersService: {
     findByEmail: jest.Mock<Promise<User | null>, [email: string]>;
     findById: jest.Mock<Promise<User | null>, [id: string]>;
-    toPublicUser: jest.Mock<AuthUser, [user: User]>;
+    toAuthUser: jest.Mock<Promise<AuthUser | null>, [userId: string, companyId: string | null]>;
   };
   let prisma: {
     $transaction: jest.Mock<
       Promise<unknown>,
       [callback: (tx: Prisma.TransactionClient) => Promise<unknown>]
     >;
+    invitation: {
+      findFirst: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindFirstArgs]>;
+      findUnique: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindUniqueArgs]>;
+      create: jest.Mock<Promise<unknown>, [args: Prisma.InvitationCreateArgs]>;
+      deleteMany: jest.Mock<Promise<unknown>, [args: Prisma.InvitationDeleteManyArgs]>;
+    };
+    companyMembership: {
+      findMany: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindManyArgs]>;
+      findUnique: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindUniqueArgs]>;
+      create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipCreateArgs]>;
+    };
     refreshToken: {
       create: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenCreateArgs]>;
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenFindUniqueArgs]>;
@@ -58,19 +77,34 @@ describe("AuthService", () => {
     usersService = {
       findByEmail: jest.fn<Promise<User | null>, [email: string]>(),
       findById: jest.fn<Promise<User | null>, [id: string]>(),
-      toPublicUser: jest.fn((user: User) => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        companyId: user.companyId,
-      })),
+      toAuthUser: jest.fn<Promise<AuthUser | null>, [userId: string, companyId: string | null]>(
+        () => Promise.resolve(mockAuthUser),
+      ),
     };
 
     prisma = {
       $transaction: jest.fn((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
         callback(prisma as unknown as Prisma.TransactionClient),
       ),
+      invitation: {
+        findFirst: jest
+          .fn<Promise<unknown>, [Prisma.InvitationFindFirstArgs]>()
+          .mockResolvedValue(null),
+        findUnique: jest.fn<Promise<unknown>, [Prisma.InvitationFindUniqueArgs]>(),
+        create: jest.fn<Promise<unknown>, [Prisma.InvitationCreateArgs]>().mockResolvedValue({}),
+        deleteMany: jest
+          .fn<Promise<unknown>, [Prisma.InvitationDeleteManyArgs]>()
+          .mockResolvedValue({ count: 1 }),
+      },
+      companyMembership: {
+        findMany: jest
+          .fn<Promise<unknown>, [Prisma.CompanyMembershipFindManyArgs]>()
+          .mockResolvedValue([]),
+        findUnique: jest.fn<Promise<unknown>, [Prisma.CompanyMembershipFindUniqueArgs]>(),
+        create: jest
+          .fn<Promise<unknown>, [Prisma.CompanyMembershipCreateArgs]>()
+          .mockResolvedValue({}),
+      },
       refreshToken: {
         create: jest.fn<Promise<unknown>, [Prisma.RefreshTokenCreateArgs]>().mockResolvedValue({}),
         findUnique: jest.fn<Promise<unknown>, [Prisma.RefreshTokenFindUniqueArgs]>(),
@@ -136,15 +170,23 @@ describe("AuthService", () => {
 
   describe("register", () => {
     it("crea un usuario owner con su empresa y abre sesión", async () => {
-      prisma.$transaction.mockResolvedValue(mockUser);
-      const txCreate = jest.fn<Promise<User>, [args: Prisma.UserCreateArgs]>(() =>
+      const txUserCreate = jest.fn<Promise<User>, [args: Prisma.UserCreateArgs]>(() =>
         Promise.resolve(mockUser),
       );
       const txCompanyCreate = jest.fn<Promise<unknown>, [args: Prisma.CompanyCreateArgs]>(() =>
         Promise.resolve({ id: "company-1" }),
       );
-      const txUserUpdate = jest.fn<Promise<User>, [args: Prisma.UserUpdateArgs]>(() =>
-        Promise.resolve(mockUser),
+      const txMembershipCreate = jest.fn<
+        Promise<unknown>,
+        [args: Prisma.CompanyMembershipCreateArgs]
+      >(() => Promise.resolve({}));
+
+      prisma.$transaction.mockImplementation((callback) =>
+        callback({
+          user: { create: txUserCreate },
+          company: { create: txCompanyCreate },
+          companyMembership: { create: txMembershipCreate },
+        } as unknown as Prisma.TransactionClient),
       );
 
       const session = await service.register({
@@ -155,38 +197,86 @@ describe("AuthService", () => {
         companyType: "retail",
       });
 
-      const tx = {
-        user: { create: txCreate, update: txUserUpdate },
-        company: { create: txCompanyCreate },
-      } as unknown as Prisma.TransactionClient;
-      await prisma.$transaction.mock.calls[0]?.[0](tx);
-      expect(txCreate).toHaveBeenCalledTimes(1);
-      expect(txCompanyCreate).toHaveBeenCalledTimes(1);
-      expect(txUserUpdate).toHaveBeenCalledTimes(1);
-
-      const createdData = txCreate.mock.calls[0]?.[0].data as {
+      const userData = txUserCreate.mock.calls[0]?.[0].data as {
         role: string;
         passwordHash: string;
       };
-      expect(createdData.role).toBe("owner");
-      expect(createdData.passwordHash).not.toBe("password123");
+      expect(userData.role).toBe("owner");
+      expect(userData.passwordHash).not.toBe("password123");
 
       const companyData = txCompanyCreate.mock.calls[0]?.[0].data as {
         name: string;
         type: string;
         ownerId: string;
       };
-      expect(companyData).toEqual({
-        name: "Mi Tienda",
-        type: "retail",
-        ownerId: "user-1",
-      });
+      expect(companyData).toEqual({ name: "Mi Tienda", type: "retail", ownerId: "user-1" });
+
+      const membershipData = txMembershipCreate.mock.calls[0]?.[0].data as {
+        userId: string;
+        companyId: string;
+        role: string;
+      };
+      expect(membershipData).toEqual({ userId: "user-1", companyId: "company-1", role: "owner" });
 
       expect(session.accessToken).toBe("access-token");
       expect(session.refreshToken).toHaveLength(64);
-      expect(session.user.role).toBe("owner");
+      expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
       expect(session.user.companyId).toBe("company-1");
-      expect(prisma.refreshToken.create).toHaveBeenCalled();
+    });
+
+    it("vincula a un invitado pendiente como usuario de la empresa", async () => {
+      prisma.invitation.findFirst.mockResolvedValue({
+        id: "inv-1",
+        email: "invited@test.com",
+        companyId: "company-1",
+        createdAt: new Date(),
+      });
+
+      const txUserCreate = jest.fn<Promise<User>, [args: Prisma.UserCreateArgs]>(() =>
+        Promise.resolve({ ...mockUser, email: "invited@test.com", role: "user" }),
+      );
+      const txMembershipCreate = jest.fn<
+        Promise<unknown>,
+        [args: Prisma.CompanyMembershipCreateArgs]
+      >(() => Promise.resolve({}));
+      const txInvitationDelete = jest.fn<Promise<unknown>, [args: Prisma.InvitationDeleteManyArgs]>(
+        () => Promise.resolve({ count: 1 }),
+      );
+
+      prisma.$transaction.mockImplementation((callback) =>
+        callback({
+          user: { create: txUserCreate },
+          companyMembership: { create: txMembershipCreate },
+          invitation: { deleteMany: txInvitationDelete },
+        } as unknown as Prisma.TransactionClient),
+      );
+      usersService.toAuthUser.mockResolvedValue({
+        ...mockAuthUser,
+        email: "invited@test.com",
+        role: "user",
+      });
+
+      const session = await service.register({
+        name: "Invitado",
+        email: "INVITED@test.com",
+        password: "password123",
+        companyName: "Cualquiera",
+        companyType: "retail",
+      });
+
+      const userData = txUserCreate.mock.calls[0]?.[0].data as { role: string };
+      expect(userData.role).toBe("user");
+
+      const membershipData = txMembershipCreate.mock.calls[0]?.[0].data as {
+        userId: string;
+        companyId: string;
+        role: string;
+      };
+      expect(membershipData).toEqual({ userId: "user-1", companyId: "company-1", role: "user" });
+
+      expect(txInvitationDelete).toHaveBeenCalled();
+      expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
+      expect(session.user.role).toBe("user");
     });
 
     it("lanza ConflictException si el email ya existe", async () => {
@@ -218,41 +308,74 @@ describe("AuthService", () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it("devuelve sesión con tokens y usuario público", async () => {
+    it("abre sesión en la empresa owner del usuario", async () => {
       const hashed = await bcrypt.hash("password123", 10);
       usersService.findByEmail.mockResolvedValue({ ...mockUser, passwordHash: hashed });
+      prisma.companyMembership.findMany.mockResolvedValue([
+        {
+          id: "m-1",
+          userId: "user-1",
+          companyId: "company-1",
+          role: "owner",
+          createdAt: new Date(),
+        },
+      ]);
 
       const session = await service.login({ email: "test@test.com", password: "password123" });
 
       expect(session.accessToken).toBe("access-token");
       expect(session.refreshToken).toHaveLength(64);
-      expect(session.user).toEqual({
-        id: "user-1",
-        name: "Test User",
-        email: "test@test.com",
-        role: "owner",
-        companyId: "company-1",
-      });
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sub: "user-1",
+          role: "owner",
+          companyId: "company-1",
+          type: "access",
+        }),
+        expect.any(Object),
+      );
+      expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
       const expectedCreateData = expect.objectContaining({
         userId: "user-1",
-        tokenHash: expect.any(String) as string,
-        expiresAt: expect.any(Date) as Date,
+        companyId: "company-1",
       }) as Prisma.RefreshTokenCreateInput;
       expect(prisma.refreshToken.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expectedCreateData }) as Prisma.RefreshTokenCreateArgs,
       );
     });
+
+    it("abre sesión sin empresa si el usuario no tiene membresías", async () => {
+      const hashed = await bcrypt.hash("password123", 10);
+      usersService.findByEmail.mockResolvedValue({ ...mockUser, passwordHash: hashed });
+      prisma.companyMembership.findMany.mockResolvedValue([]);
+
+      await service.login({ email: "test@test.com", password: "password123" });
+
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ companyId: null, role: "owner" }),
+        expect.any(Object),
+      );
+      expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", null);
+    });
   });
 
   describe("refresh", () => {
-    it("revoca el token anterior y crea uno nuevo", async () => {
+    it("revoca el token anterior y crea uno nuevo manteniendo la empresa activa", async () => {
       prisma.refreshToken.findUnique.mockResolvedValue({
         id: "token-1",
         tokenHash: "hash",
         userId: "user-1",
+        companyId: "company-1",
         expiresAt: new Date(Date.now() + 100_000),
         revokedAt: null,
         user: mockUser,
+      });
+      prisma.companyMembership.findUnique.mockResolvedValue({
+        id: "m-1",
+        userId: "user-1",
+        companyId: "company-1",
+        role: "user",
+        createdAt: new Date(),
       });
 
       const session = await service.refresh("valid-token");
@@ -267,6 +390,10 @@ describe("AuthService", () => {
         }) as Prisma.RefreshTokenUpdateArgs,
       );
       expect(prisma.refreshToken.create).toHaveBeenCalled();
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ role: "user", companyId: "company-1" }),
+        expect.any(Object),
+      );
       expect(session.user.id).toBe("user-1");
     });
 
@@ -275,12 +402,49 @@ describe("AuthService", () => {
         id: "token-1",
         tokenHash: "hash",
         userId: "user-1",
+        companyId: null,
         expiresAt: new Date(Date.now() + 100_000),
         revokedAt: new Date(),
         user: mockUser,
       });
 
       await expect(service.refresh("revoked-token")).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("switchCompany", () => {
+    it("cambia la empresa activa y rota la sesión", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue({
+        id: "m-2",
+        userId: "user-1",
+        companyId: "company-2",
+        role: "user",
+        createdAt: new Date(),
+      });
+      usersService.findById.mockResolvedValue(mockUser);
+      usersService.toAuthUser.mockResolvedValue({
+        ...mockAuthUser,
+        companyId: "company-2",
+        role: "user",
+      });
+
+      const session = await service.switchCompany("user-1", "company-2");
+
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ companyId: "company-2", role: "user" }),
+        expect.any(Object),
+      );
+      expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-2");
+      expect(prisma.refreshToken.create).toHaveBeenCalled();
+      expect(session.user.companyId).toBe("company-2");
+    });
+
+    it("lanza BadRequestException si no es miembro", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue(null);
+
+      await expect(service.switchCompany("user-1", "company-x")).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -414,18 +578,18 @@ describe("AuthService", () => {
   });
 
   describe("getMe", () => {
-    it("devuelve el usuario público", async () => {
-      usersService.findById.mockResolvedValue(mockUser);
+    it("devuelve el usuario con su empresa activa", async () => {
+      const result = await service.getMe("user-1", "company-1");
 
-      const result = await service.getMe("user-1");
-
+      expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
       expect(result.email).toBe("test@test.com");
+      expect(result.companies).toHaveLength(1);
     });
 
     it("lanza UnauthorizedException si el usuario no existe", async () => {
-      usersService.findById.mockResolvedValue(null);
+      usersService.toAuthUser.mockResolvedValue(null);
 
-      await expect(service.getMe("missing")).rejects.toThrow(UnauthorizedException);
+      await expect(service.getMe("missing", null)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

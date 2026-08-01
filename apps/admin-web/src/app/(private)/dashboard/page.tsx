@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { MembersSection } from "@/components/members-section";
 import { SessionRoleBadge } from "@/components/role-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -30,6 +31,7 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+      <MembersSection />
     </div>
   );
 }

@@ -24,12 +24,32 @@ export const COMPANY_TYPE_LABELS: Record<CompanyType, string> = {
 
 export const COMPANY_TYPES: CompanyType[] = Object.keys(COMPANY_TYPE_LABELS) as CompanyType[];
 
+export interface CompanySummary {
+  id: string;
+  name: string;
+  type: CompanyType;
+  role: UserRole;
+}
+
+export interface CompanyMember {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface InviteResult {
+  status: "joined" | "pending";
+  message: string;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
   companyId: string | null;
+  companies: CompanySummary[];
 }
 
 export interface PaginationParams {

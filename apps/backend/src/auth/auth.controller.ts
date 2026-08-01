@@ -3,9 +3,10 @@ import { ConfigService } from "@nestjs/config";
 import type { ApiResponse, AuthUser } from "@commerce-ai/types";
 import type { Request, Response } from "express";
 
+import { clearSessionCookies, setSessionCookies } from "../common/session-cookies";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Public } from "../common/decorators/public.decorator";
-import { ACCESS_TOKEN_COOKIE, REFRESH_COOKIE_PATH, REFRESH_TOKEN_COOKIE } from "./auth.constants";
+import { REFRESH_TOKEN_COOKIE } from "./auth.constants";
 import { AuthService } from "./auth.service";
 import type { AuthenticatedUser } from "./auth.types";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
@@ -94,7 +95,7 @@ export class AuthController {
 
   @Get("me")
   async me(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponse<AuthUser>> {
-    return { status: "success", data: await this.authService.getMe(user.id) };
+    return { status: "success", data: await this.authService.getMe(user.id, user.companyId) };
   }
 
   private getRefreshToken(req: Request): string | undefined {
@@ -102,29 +103,18 @@ export class AuthController {
   }
 
   private setSessionCookies(res: Response, accessToken: string, refreshToken: string): void {
-    const accessTtl = this.configService.getOrThrow<number>("ACCESS_TOKEN_TTL_SECONDS");
-    const refreshTtl = this.configService.getOrThrow<number>("REFRESH_TOKEN_TTL_SECONDS");
-    const secure = this.configService.get<boolean>("COOKIE_SECURE") ?? false;
-
-    res.cookie(ACCESS_TOKEN_COOKIE, accessToken, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure,
-      path: "/",
-      maxAge: accessTtl * 1000,
-    });
-
-    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure,
-      path: REFRESH_COOKIE_PATH,
-      maxAge: refreshTtl * 1000,
-    });
+    setSessionCookies(res, accessToken, refreshToken, this.cookieOptions());
   }
 
   private clearSessionCookies(res: Response): void {
-    res.clearCookie(ACCESS_TOKEN_COOKIE, { path: "/" });
-    res.clearCookie(REFRESH_TOKEN_COOKIE, { path: REFRESH_COOKIE_PATH });
+    clearSessionCookies(res);
+  }
+
+  private cookieOptions() {
+    return {
+      accessTtlSeconds: this.configService.getOrThrow<number>("ACCESS_TOKEN_TTL_SECONDS"),
+      refreshTtlSeconds: this.configService.getOrThrow<number>("REFRESH_TOKEN_TTL_SECONDS"),
+      secure: this.configService.get<boolean>("COOKIE_SECURE") ?? false,
+    };
   }
 }
