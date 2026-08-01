@@ -2,6 +2,8 @@
   "name": "@commerce-ai/config",
   "version": "0.0.1",
   "private": true,
-  "files": ["tsconfig"],
+  "files": [
+    "tsconfig"
+  ],
   "description": "Configuraciones compartidas del monorepo (tsconfig)"
 }

@@ -469,3 +469,30 @@ WhatsApp
 # Objetivo Final
 
 Construir una plataforma SaaS profesional que permita a cualquier empresa vender automáticamente mediante WhatsApp utilizando Inteligencia Artificial, manteniendo una arquitectura escalable, modular y preparada para crecer sin necesidad de rehacer el sistema.
+
+---
+
+# Puesta en Marcha
+
+Requisitos: Node.js 20+, pnpm 9+, Docker.
+
+```bash
+pnpm install        # instalar dependencias del monorepo
+pnpm docker:up      # levantar PostgreSQL (pgvector) + Redis
+pnpm dev            # backend en :4000 y admin-web en :3000
+```
+
+Otros comandos:
+
+```bash
+pnpm build          # build de producción (turborepo, en orden de dependencias)
+pnpm lint           # eslint en todo el monorepo
+pnpm typecheck      # tsc --noEmit en todas las apps
+pnpm test           # unit tests del backend
+pnpm format         # prettier --write
+```
+
+Endpoints disponibles:
+
+- `GET http://localhost:4000/api/v1/health` — estado del backend y la base de datos.
+- `http://localhost:3000` — landing del admin-web.
