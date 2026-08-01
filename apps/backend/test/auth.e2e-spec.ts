@@ -28,7 +28,7 @@ describe("Auth (e2e)", () => {
     await app.close();
   });
 
-  it("registra un usuario owner con su empresa", async () => {
+  it("registra un usuario owner con su empresa y abre sesión", async () => {
     const res = await request(server())
       .post("/api/v1/auth/register")
       .send({
@@ -46,6 +46,10 @@ describe("Auth (e2e)", () => {
     expect(body.data.role).toBe("owner");
     expect(body.data.companyId).not.toBeNull();
 
+    const setCookies = res.headers["set-cookie"] as unknown as string[];
+    expect(setCookies.some((cookie) => cookie.startsWith("access_token="))).toBe(true);
+    expect(setCookies.some((cookie) => cookie.startsWith("refresh_token="))).toBe(true);
+
     const user = await prisma.user.findUnique({ where: { email } });
     expect(user?.companyId).toBe(body.data.companyId);
     const company = await prisma.company.findUnique({ where: { id: user!.companyId! } });
@@ -53,6 +57,13 @@ describe("Auth (e2e)", () => {
     expect(company?.name).toBe("Tienda E2E");
     expect(company?.type).toBe("retail");
     expect(company?.ownerId).toBe(user!.id);
+
+    const me = await request(server())
+      .get("/api/v1/auth/me")
+      .set("Cookie", extractCookies(setCookies))
+      .expect(200);
+    const meBody = me.body as ApiResponse<AuthUser>;
+    expect(meBody.data.email).toBe(email);
   });
 
   it("rechaza el registro con email duplicado", async () => {

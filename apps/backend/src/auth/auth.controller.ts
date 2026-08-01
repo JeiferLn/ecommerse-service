@@ -22,8 +22,13 @@ export class AuthController {
 
   @Public()
   @Post("register")
-  async register(@Body() dto: RegisterDto): Promise<ApiResponse<AuthUser>> {
-    return { status: "success", data: await this.authService.register(dto) };
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ApiResponse<AuthUser>> {
+    const session = await this.authService.register(dto);
+    this.setSessionCookies(res, session.accessToken, session.refreshToken);
+    return { status: "success", data: session.user };
   }
 
   @Public()

@@ -11,6 +11,8 @@ const NO_REFRESH_PATHS = [
   "/auth/logout",
 ];
 
+const PUBLIC_PAGE_PATHS = ["/login", "/register", "/forgot-password", "/reset-password"];
+
 let refreshPromise: Promise<boolean> | null = null;
 
 function refreshSession(): Promise<boolean> {
@@ -38,13 +40,10 @@ function refreshSession(): Promise<boolean> {
 }
 
 function redirectToLogin(): void {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || window.location.pathname === "/login") {
     return;
   }
   const next = `${window.location.pathname}${window.location.search}`;
-  if (next === "/login") {
-    return;
-  }
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 
@@ -59,7 +58,11 @@ export class ApiClientError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const shouldRefresh = !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
+  const isPublicPage =
+    typeof window !== "undefined" &&
+    PUBLIC_PAGE_PATHS.some((publicPath) => window.location.pathname.startsWith(publicPath));
+  const shouldRefresh =
+    !isPublicPage && !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
 
   const doFetch = async (): Promise<Response> =>
     fetch(`${API_URL}/api/v1${path}`, {

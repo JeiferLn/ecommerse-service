@@ -135,7 +135,7 @@ describe("AuthService", () => {
   });
 
   describe("register", () => {
-    it("crea un usuario owner con su empresa en una transacción", async () => {
+    it("crea un usuario owner con su empresa y abre sesión", async () => {
       prisma.$transaction.mockResolvedValue(mockUser);
       const txCreate = jest.fn<Promise<User>, [args: Prisma.UserCreateArgs]>(() =>
         Promise.resolve(mockUser),
@@ -147,7 +147,7 @@ describe("AuthService", () => {
         Promise.resolve(mockUser),
       );
 
-      const result = await service.register({
+      const session = await service.register({
         name: "Test User",
         email: "test@test.com",
         password: "password123",
@@ -182,8 +182,11 @@ describe("AuthService", () => {
         ownerId: "user-1",
       });
 
-      expect(result.role).toBe("owner");
-      expect(result.companyId).toBe("company-1");
+      expect(session.accessToken).toBe("access-token");
+      expect(session.refreshToken).toHaveLength(64);
+      expect(session.user.role).toBe("owner");
+      expect(session.user.companyId).toBe("company-1");
+      expect(prisma.refreshToken.create).toHaveBeenCalled();
     });
 
     it("lanza ConflictException si el email ya existe", async () => {

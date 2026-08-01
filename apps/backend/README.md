@@ -36,7 +36,7 @@ test/        # e2e tests (jest + supertest)
 | Método | Ruta                           | Acceso      | Descripción                                                                    |
 | ------ | ------------------------------ | ----------- | ------------------------------------------------------------------------------ |
 | GET    | `/api/v1/health`               | Público     | Estado del servicio y de la base de datos.                                     |
-| POST   | `/api/v1/auth/register`        | Público     | Registro: crea usuario con rol `owner` + su empresa (transaccional).           |
+| POST   | `/api/v1/auth/register`        | Público     | Registro: crea usuario `owner` + empresa (transaccional) y abre sesión (cookies). |
 | POST   | `/api/v1/auth/login`           | Público     | Login, establece cookies httpOnly.                                             |
 | POST   | `/api/v1/auth/refresh`         | Público     | Rota el refresh token y renueva la sesión.                                     |
 | POST   | `/api/v1/auth/forgot-password` | Público     | Genera token de reset y envía el enlace por correo.                            |

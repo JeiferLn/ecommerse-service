@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import type { SessionUser } from "@/lib/session";
+import { useSession } from "@/providers/session-provider";
 
 const registerSchema = z
   .object({
@@ -40,6 +41,7 @@ type RegisterValues = z.infer<typeof registerSchema>;
 
 export function RegisterForm() {
   const router = useRouter();
+  const { refresh } = useSession();
 
   const {
     register,
@@ -70,8 +72,9 @@ export function RegisterForm() {
           companyType: values.companyType,
         }),
       }),
-    onSuccess: () => {
-      router.push("/login?registered=1");
+    onSuccess: async () => {
+      await refresh();
+      router.push("/dashboard");
       router.refresh();
     },
   });
@@ -175,7 +178,7 @@ export function RegisterForm() {
       )}
 
       <Button type="submit" disabled={mutation.isPending}>
-        {mutation.isPending ? "Creando cuenta…" : "Crear cuenta"}
+        {mutation.isPending ? "Creando cuenta…" : "Crear cuenta e ingresar"}
       </Button>
     </form>
   );

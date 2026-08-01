@@ -72,7 +72,7 @@ export class AuthService {
     });
   }
 
-  async register(dto: RegisterDto): Promise<AuthUser> {
+  async register(dto: RegisterDto): Promise<AuthSession> {
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     try {
@@ -96,7 +96,7 @@ export class AuthService {
         });
       });
 
-      return this.usersService.toPublicUser(user);
+      return this.createSession(user);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("Ya existe una cuenta con ese email");
