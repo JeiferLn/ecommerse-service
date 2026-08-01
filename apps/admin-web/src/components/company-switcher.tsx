@@ -41,7 +41,8 @@ export function CompanySwitcher() {
     return null;
   }
 
-  const canCreate = user?.role !== "owner" && user?.role !== "admin";
+  const ownsACompany = companies.some((company) => company.role === "owner");
+  const canCreate = !ownsACompany && user?.role !== "admin";
 
   return (
     <div className="flex flex-col gap-2">
