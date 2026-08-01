@@ -8,6 +8,7 @@ import { Public } from "../common/decorators/public.decorator";
 import { ACCESS_TOKEN_COOKIE, REFRESH_COOKIE_PATH, REFRESH_TOKEN_COOKIE } from "./auth.constants";
 import { AuthService } from "./auth.service";
 import type { AuthenticatedUser } from "./auth.types";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 
@@ -46,6 +47,19 @@ export class AuthController {
     const session = await this.authService.refresh(this.getRefreshToken(req));
     this.setSessionCookies(res, session.accessToken, session.refreshToken);
     return { status: "success", data: session.user };
+  }
+
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post("forgot-password")
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<ApiResponse<null>> {
+    await this.authService.forgotPassword(dto);
+    return {
+      status: "success",
+      data: null,
+      message:
+        "Si existe una cuenta con ese email, recibirás un enlace para restablecer tu contraseña",
+    };
   }
 
   @Public()

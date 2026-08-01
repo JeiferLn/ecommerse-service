@@ -7,7 +7,9 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "../mail/mail.service";
 import { UsersService } from "../users/users.service";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 
@@ -24,6 +26,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   private get accessTokenTtlSeconds(): number {
@@ -32,6 +35,35 @@ export class AuthService {
 
   private get refreshTokenTtlSeconds(): number {
     return this.configService.getOrThrow<number>("REFRESH_TOKEN_TTL_SECONDS");
+  }
+
+  private get resetTokenTtlSeconds(): number {
+    return this.configService.getOrThrow<number>("RESET_TOKEN_TTL_SECONDS");
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    if (!user) {
+      return;
+    }
+
+    const token = randomBytes(32).toString("hex");
+
+    await this.prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+    await this.prisma.passwordResetToken.create({
+      data: {
+        tokenHash: this.hashToken(token),
+        userId: user.id,
+        expiresAt: new Date(Date.now() + this.resetTokenTtlSeconds * 1000),
+      },
+    });
+
+    const frontendUrl = this.configService.getOrThrow<string>("FRONTEND_URL");
+    await this.mailService.sendPasswordReset({
+      to: user.email,
+      resetUrl: `${frontendUrl}/reset-password?token=${token}`,
+    });
   }
 
   async register(dto: RegisterDto): Promise<AuthUser> {

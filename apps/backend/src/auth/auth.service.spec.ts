@@ -7,6 +7,7 @@ import type { AuthUser, UserRole } from "@commerce-ai/types";
 import bcrypt from "bcryptjs";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "../mail/mail.service";
 import { UsersService } from "../users/users.service";
 import { AuthService } from "./auth.service";
 
@@ -38,8 +39,15 @@ describe("AuthService", () => {
       update: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateArgs]>;
       updateMany: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateManyArgs]>;
     };
+    passwordResetToken: {
+      create: jest.Mock<Promise<unknown>, [args: Prisma.PasswordResetTokenCreateArgs]>;
+      deleteMany: jest.Mock<Promise<unknown>, [args: Prisma.PasswordResetTokenDeleteManyArgs]>;
+    };
   };
   let jwtService: { signAsync: jest.Mock<Promise<string>, [payload: object]> };
+  let mailService: {
+    sendPasswordReset: jest.Mock<Promise<void>, [params: { to: string; resetUrl: string }]>;
+  };
 
   beforeEach(async () => {
     usersService = {
@@ -66,14 +74,41 @@ describe("AuthService", () => {
           .fn<Promise<unknown>, [Prisma.RefreshTokenUpdateManyArgs]>()
           .mockResolvedValue({ count: 1 }),
       },
+      passwordResetToken: {
+        create: jest
+          .fn<Promise<unknown>, [Prisma.PasswordResetTokenCreateArgs]>()
+          .mockResolvedValue({}),
+        deleteMany: jest
+          .fn<Promise<unknown>, [Prisma.PasswordResetTokenDeleteManyArgs]>()
+          .mockResolvedValue({ count: 1 }),
+      },
     };
 
     jwtService = {
       signAsync: jest.fn<Promise<string>, [payload: object]>().mockResolvedValue("access-token"),
     };
 
+    mailService = {
+      sendPasswordReset: jest
+        .fn<Promise<void>, [params: { to: string; resetUrl: string }]>()
+        .mockResolvedValue(),
+    };
+
     const configService = {
-      getOrThrow: jest.fn((key: string) => (key === "ACCESS_TOKEN_TTL_SECONDS" ? 900 : 604800)),
+      getOrThrow: jest.fn((key: string) => {
+        switch (key) {
+          case "ACCESS_TOKEN_TTL_SECONDS":
+            return 900;
+          case "REFRESH_TOKEN_TTL_SECONDS":
+            return 604800;
+          case "RESET_TOKEN_TTL_SECONDS":
+            return 3600;
+          case "FRONTEND_URL":
+            return "http://localhost:3000";
+          default:
+            return undefined;
+        }
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -83,6 +118,7 @@ describe("AuthService", () => {
         { provide: UsersService, useValue: usersService },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -177,6 +213,47 @@ describe("AuthService", () => {
       });
 
       await expect(service.refresh("revoked-token")).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("forgotPassword", () => {
+    it("crea un token de reset hasheado si el email existe", async () => {
+      usersService.findByEmail.mockResolvedValue(mockUser);
+
+      await service.forgotPassword({ email: "test@test.com" });
+
+      expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1" },
+        }) as Prisma.PasswordResetTokenDeleteManyArgs,
+      );
+      const expectedCreateData = expect.objectContaining({
+        userId: "user-1",
+        tokenHash: expect.any(String) as string,
+        expiresAt: expect.any(Date) as Date,
+      }) as Prisma.PasswordResetTokenCreateInput;
+      expect(prisma.passwordResetToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expectedCreateData,
+        }) as Prisma.PasswordResetTokenCreateArgs,
+      );
+      const createdData = prisma.passwordResetToken.create.mock.calls[0]?.[0].data;
+      expect(createdData?.tokenHash).toHaveLength(64);
+      expect(createdData?.tokenHash).not.toContain("reset");
+
+      const emailParams = mailService.sendPasswordReset.mock.calls[0]?.[0];
+      expect(emailParams?.to).toBe("test@test.com");
+      expect(emailParams?.resetUrl).toMatch(/^http:\/\/localhost:3000\/reset-password\?token=/);
+    });
+
+    it("no crea tokens ni envía correo si el email no existe", async () => {
+      usersService.findByEmail.mockResolvedValue(null);
+
+      await service.forgotPassword({ email: "missing@test.com" });
+
+      expect(prisma.passwordResetToken.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(mailService.sendPasswordReset).not.toHaveBeenCalled();
     });
   });
 

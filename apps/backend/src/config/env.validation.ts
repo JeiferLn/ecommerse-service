@@ -5,6 +5,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  FRONTEND_URL: z.string().default("http://localhost:3000"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET debe tener al menos 32 caracteres"),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce
     .number()
@@ -16,6 +17,19 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(7 * 24 * 60 * 60),
+  RESET_TOKEN_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 60),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.preprocess(
+    (value) => (value === "" || value === undefined ? undefined : Number(value)),
+    z.number().int().positive().optional(),
+  ),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
   COOKIE_SECURE: z
     .enum(["true", "false"])
     .default("false")

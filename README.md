@@ -497,3 +497,10 @@ Endpoints disponibles:
 
 - `GET http://localhost:4000/api/v1/health` — estado del backend y la base de datos.
 - `http://localhost:3000` — landing del admin-web.
+
+---
+
+# Pendientes Conocidos
+
+- **Reset de contraseña**: `POST /api/v1/auth/forgot-password` genera un token (hasheado, expira en 1 hora) y envía el enlace por correo vía SMTP (Nodemailer; en dev sin SMTP configurado el correo se loguea en consola en modo preview). La segunda mitad del flujo (`reset-password` con el token) aún no está implementada.
+- **Refresh automático de sesión**: el frontend no invoca `POST /api/v1/auth/refresh` cuando el access token expira; el usuario es redirigido a `/login` aunque la cookie de refresh siga válida.

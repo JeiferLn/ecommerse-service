@@ -21,6 +21,7 @@ describe("Auth (e2e)", () => {
 
   afterAll(async () => {
     await prisma.refreshToken.deleteMany({ where: { user: { email } } });
+    await prisma.passwordResetToken.deleteMany({ where: { user: { email } } });
     await prisma.user.deleteMany({ where: { email } });
     await prisma.$disconnect();
     await app.close();
@@ -161,6 +162,45 @@ describe("Auth (e2e)", () => {
     await request(server()).post("/api/v1/auth/logout").set("Cookie", cookies).expect(200);
 
     await request(server()).post("/api/v1/auth/refresh").set("Cookie", cookies).expect(401);
+  });
+
+  it("solicita reset de contraseña y crea un token en la base de datos", async () => {
+    const res = await request(server())
+      .post("/api/v1/auth/forgot-password")
+      .send({ email })
+      .expect(200);
+
+    const body = res.body as ApiResponse<null>;
+    expect(body.status).toBe("success");
+    expect(body.data).toBeNull();
+
+    const record = await prisma.passwordResetToken.findFirst({
+      where: { user: { email } },
+    });
+    expect(record).not.toBeNull();
+    expect(record?.tokenHash).toHaveLength(64);
+    expect(record?.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("no revela si el email no existe", async () => {
+    const res = await request(server())
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: `missing-${Date.now()}@test.com` })
+      .expect(200);
+
+    const body = res.body as ApiResponse<null>;
+    expect(body.status).toBe("success");
+    expect(body.data).toBeNull();
+  });
+
+  it("rechaza forgot-password con email inválido", async () => {
+    const res = await request(server())
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: "no-es-un-email" })
+      .expect(400);
+
+    const body = res.body as ApiResponse<null>;
+    expect(body.status).toBe("error");
   });
 });
 
