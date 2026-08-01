@@ -106,7 +106,7 @@ export function CreateCompanyDialog({ open, onOpenChange }: CreateCompanyDialogP
               <SelectTrigger id="company-type" aria-label="Tipo de empresa">
                 <SelectValue placeholder="Selecciona el tipo" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-72">
                 {COMPANY_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
                     {COMPANY_TYPE_LABELS[type]}

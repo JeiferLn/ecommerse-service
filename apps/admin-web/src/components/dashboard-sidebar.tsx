@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users } from "lucide-react";
+import { LayoutDashboard, Settings, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
@@ -17,6 +17,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/members", label: "Miembros", icon: Users },
+  { href: "/dashboard/settings", label: "Configuración", icon: Settings },
 ];
 
 export function DashboardSidebar() {

@@ -128,7 +128,7 @@ export function RegisterForm() {
               >
                 <SelectValue placeholder="Selecciona el tipo" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-72">
                 {COMPANY_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
                     {COMPANY_TYPE_LABELS[type]}

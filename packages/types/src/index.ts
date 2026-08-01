@@ -13,13 +13,130 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   user: "Usuario",
 };
 
-export type CompanyType = "retail" | "health_beauty" | "technology" | "education";
+/** Roles que un owner puede asignar a miembros de su empresa (nunca owner/admin). */
+export const MEMBER_ASSIGNABLE_ROLES = ["user", "manager"] as const;
+export type MemberAssignableRole = (typeof MEMBER_ASSIGNABLE_ROLES)[number];
+
+/**
+ * Capacidades de negocio por rol de empresa.
+ * `admin` es staff de la plataforma y no opera una tienda: no hereda estas capacidades.
+ * No hay tabla Permission: se autoriza con `@Roles(...)` + esta matriz.
+ */
+export type CompanyCapability =
+  | "editCompany"
+  | "manageMembers"
+  | "viewMembers"
+  | "manageCatalog"
+  | "viewCatalog"
+  | "manageOrders"
+  | "operateOrders"
+  | "manageWhatsapp"
+  | "viewWhatsapp"
+  | "manageBilling";
+
+type CompanyRole = Exclude<UserRole, "admin">;
+
+export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, boolean>> = {
+  owner: {
+    editCompany: true,
+    manageMembers: true,
+    viewMembers: true,
+    manageCatalog: true,
+    viewCatalog: true,
+    manageOrders: true,
+    operateOrders: true,
+    manageWhatsapp: true,
+    viewWhatsapp: true,
+    manageBilling: true,
+  },
+  manager: {
+    editCompany: false,
+    manageMembers: false,
+    viewMembers: true,
+    manageCatalog: true,
+    viewCatalog: true,
+    manageOrders: true,
+    operateOrders: true,
+    manageWhatsapp: true,
+    viewWhatsapp: true,
+    manageBilling: false,
+  },
+  user: {
+    editCompany: false,
+    manageMembers: false,
+    viewMembers: true,
+    manageCatalog: false,
+    viewCatalog: true,
+    manageOrders: false,
+    operateOrders: true,
+    manageWhatsapp: false,
+    viewWhatsapp: true,
+    manageBilling: false,
+  },
+};
+
+export function hasCapability(role: UserRole, capability: CompanyCapability): boolean {
+  if (role === "admin") {
+    return false;
+  }
+  return ROLE_CAPABILITIES[role][capability];
+}
+
+export function canEditCompany(role: UserRole): boolean {
+  return hasCapability(role, "editCompany");
+}
+
+export function canManageMembers(role: UserRole): boolean {
+  return hasCapability(role, "manageMembers");
+}
+
+export function canViewMembers(role: UserRole): boolean {
+  return hasCapability(role, "viewMembers");
+}
+
+export type CompanyType =
+  | "retail"
+  | "clothing"
+  | "footwear"
+  | "accessories"
+  | "health_beauty"
+  | "technology"
+  | "electronics"
+  | "home_garden"
+  | "food_beverage"
+  | "pharmacy"
+  | "sports"
+  | "toys_kids"
+  | "automotive"
+  | "jewelry"
+  | "furniture"
+  | "pets"
+  | "books_media"
+  | "education"
+  | "services"
+  | "other";
 
 export const COMPANY_TYPE_LABELS: Record<CompanyType, string> = {
-  retail: "Retail / Comercio",
-  health_beauty: "Salud y Estética",
+  retail: "Retail / Comercio general",
+  clothing: "Ropa y moda",
+  footwear: "Calzado",
+  accessories: "Accesorios",
+  health_beauty: "Salud y estética",
   technology: "Tecnología",
+  electronics: "Electrónica",
+  home_garden: "Hogar y jardín",
+  food_beverage: "Alimentos y bebidas",
+  pharmacy: "Farmacia",
+  sports: "Deportes",
+  toys_kids: "Juguetes e infantil",
+  automotive: "Automotriz",
+  jewelry: "Joyería",
+  furniture: "Muebles",
+  pets: "Mascotas",
+  books_media: "Libros y medios",
   education: "Educación",
+  services: "Servicios",
+  other: "Otro",
 };
 
 export const COMPANY_TYPES: CompanyType[] = Object.keys(COMPANY_TYPE_LABELS) as CompanyType[];
@@ -29,6 +146,18 @@ export interface CompanySummary {
   name: string;
   type: CompanyType;
   role: UserRole;
+}
+
+export interface CompanyDetails {
+  id: string;
+  name: string;
+  type: CompanyType;
+  phone: string | null;
+  contactEmail: string | null;
+  website: string | null;
+  address: string | null;
+  description: string | null;
+  createdAt: string;
 }
 
 export interface CompanyMember {

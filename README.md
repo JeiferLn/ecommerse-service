@@ -251,9 +251,9 @@ Incluye:
 - Empresas
 - Usuarios por empresa
 - Roles
-- Permisos
+- Permisos (matriz de capacidades por rol; sin módulo/tabla Permission — ver `docs/CONVENTIONS.md`)
 - Configuración inicial
-- Configuración Enviar Emails de usuarios
+- Envío de emails de plataforma (SMTP global, no por empresa)
 
 ---
 

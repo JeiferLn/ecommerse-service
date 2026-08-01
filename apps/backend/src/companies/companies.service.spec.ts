@@ -51,7 +51,9 @@ describe("CompaniesService", () => {
     };
     company: {
       findUniqueOrThrow: jest.Mock<Promise<unknown>, [args: Prisma.CompanyFindUniqueOrThrowArgs]>;
+      findUnique: jest.Mock<Promise<unknown>, [args: Prisma.CompanyFindUniqueArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyCreateArgs]>;
+      update: jest.Mock<Promise<unknown>, [args: Prisma.CompanyUpdateArgs]>;
     };
     refreshToken: {
       updateMany: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateManyArgs]>;
@@ -112,6 +114,7 @@ describe("CompaniesService", () => {
         findUniqueOrThrow: jest
           .fn<Promise<unknown>, [Prisma.CompanyFindUniqueOrThrowArgs]>()
           .mockResolvedValue({ name: "Empresa A" }),
+        findUnique: jest.fn<Promise<unknown>, [Prisma.CompanyFindUniqueArgs]>(),
         create: jest.fn<Promise<unknown>, [Prisma.CompanyCreateArgs]>((args) =>
           Promise.resolve({
             id: "company-new",
@@ -120,6 +123,7 @@ describe("CompaniesService", () => {
             ownerId: "user-2",
           }),
         ),
+        update: jest.fn<Promise<unknown>, [Prisma.CompanyUpdateArgs]>(),
       },
       refreshToken: {
         updateMany: jest
@@ -164,6 +168,156 @@ describe("CompaniesService", () => {
     }).compile();
 
     service = module.get(CompaniesService);
+  });
+
+  describe("getCompany", () => {
+    it("devuelve los datos de la empresa activa", async () => {
+      prisma.company.findUnique.mockResolvedValue({
+        id: "company-1",
+        name: "Empresa A",
+        type: "retail",
+        phone: null,
+        contactEmail: null,
+        website: null,
+        address: null,
+        description: null,
+        createdAt: new Date("2026-01-15T10:00:00.000Z"),
+      });
+
+      const company = await service.getCompany("company-1");
+
+      expect(company).toEqual({
+        id: "company-1",
+        name: "Empresa A",
+        type: "retail",
+        phone: null,
+        contactEmail: null,
+        website: null,
+        address: null,
+        description: null,
+        createdAt: "2026-01-15T10:00:00.000Z",
+      });
+    });
+
+    it("lanza NotFoundException si la empresa no existe", async () => {
+      prisma.company.findUnique.mockResolvedValue(null);
+
+      await expect(service.getCompany("company-99")).rejects.toThrow(NotFoundException);
+    });
+
+    it("lanza error si el usuario no pertenece a una empresa", async () => {
+      await expect(service.getCompany(null)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("updateCompany", () => {
+    const dto = { name: "Empresa Renombrada", companyType: "technology" as const };
+
+    it("actualiza nombre y tipo de la empresa", async () => {
+      prisma.company.findUnique.mockResolvedValue({ id: "company-1" });
+      prisma.company.update.mockResolvedValue({
+        id: "company-1",
+        name: dto.name,
+        type: dto.companyType,
+        phone: "+573001112233",
+        contactEmail: "hola@empresa.com",
+        website: "https://empresa.com",
+        address: "Calle 1",
+        description: "Vendemos ropa",
+        createdAt: new Date("2026-01-15T10:00:00.000Z"),
+      });
+
+      const company = await service.updateCompany("company-1", {
+        ...dto,
+        phone: " +573001112233 ",
+        contactEmail: "Hola@Empresa.com",
+        website: "https://empresa.com",
+        address: "Calle 1",
+        description: "Vendemos ropa",
+      });
+
+      expect(prisma.company.update).toHaveBeenCalledWith({
+        where: { id: "company-1" },
+        data: {
+          name: dto.name,
+          type: dto.companyType,
+          phone: "+573001112233",
+          contactEmail: "hola@empresa.com",
+          website: "https://empresa.com",
+          address: "Calle 1",
+          description: "Vendemos ropa",
+        },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          phone: true,
+          contactEmail: true,
+          website: true,
+          address: true,
+          description: true,
+          createdAt: true,
+        },
+      });
+      expect(company).toEqual({
+        id: "company-1",
+        name: "Empresa Renombrada",
+        type: "technology",
+        phone: "+573001112233",
+        contactEmail: "hola@empresa.com",
+        website: "https://empresa.com",
+        address: "Calle 1",
+        description: "Vendemos ropa",
+        createdAt: "2026-01-15T10:00:00.000Z",
+      });
+    });
+
+    it("limpia campos de contacto vacíos a null", async () => {
+      prisma.company.findUnique.mockResolvedValue({ id: "company-1" });
+      prisma.company.update.mockResolvedValue({
+        id: "company-1",
+        name: dto.name,
+        type: dto.companyType,
+        phone: null,
+        contactEmail: null,
+        website: null,
+        address: null,
+        description: null,
+        createdAt: new Date("2026-01-15T10:00:00.000Z"),
+      });
+
+      await service.updateCompany("company-1", {
+        ...dto,
+        phone: "   ",
+        contactEmail: "",
+        website: "",
+        address: "",
+        description: "",
+      });
+
+      expect(prisma.company.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            phone: null,
+            contactEmail: null,
+            website: null,
+            address: null,
+            description: null,
+          }),
+        }),
+      );
+    });
+
+    it("lanza NotFoundException si la empresa no existe", async () => {
+      prisma.company.findUnique.mockResolvedValue(null);
+
+      await expect(service.updateCompany("company-99", dto)).rejects.toThrow(NotFoundException);
+      expect(prisma.company.update).not.toHaveBeenCalled();
+    });
+
+    it("lanza error si el usuario no pertenece a una empresa", async () => {
+      await expect(service.updateCompany(null, dto)).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe("createCompany", () => {

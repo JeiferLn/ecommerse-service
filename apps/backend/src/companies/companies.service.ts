@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type {
+  CompanyDetails,
   CompanyInvitation,
   CompanyMember,
   InviteResult,
@@ -19,6 +20,7 @@ import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
+import { UpdateCompanyDto } from "./dto/update-company.dto";
 
 @Injectable()
 export class CompaniesService {
@@ -46,6 +48,109 @@ export class CompaniesService {
       email: membership.user.email,
       role: membership.role,
     }));
+  }
+
+  async getCompany(companyId: string | null): Promise<CompanyDetails> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        phone: true,
+        contactEmail: true,
+        website: true,
+        address: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    if (!company) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    return this.toCompanyDetails(company);
+  }
+
+  async updateCompany(
+    companyId: string | null,
+    dto: UpdateCompanyDto,
+  ): Promise<CompanyDetails> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    const existing = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    const company = await this.prisma.company.update({
+      where: { id: companyId },
+      data: {
+        name: dto.name,
+        type: dto.companyType,
+        phone: this.nullableText(dto.phone),
+        contactEmail: this.nullableText(dto.contactEmail)?.toLowerCase() ?? null,
+        website: this.nullableText(dto.website),
+        address: this.nullableText(dto.address),
+        description: this.nullableText(dto.description),
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        phone: true,
+        contactEmail: true,
+        website: true,
+        address: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    return this.toCompanyDetails(company);
+  }
+
+  private nullableText(value: string | undefined): string | null {
+    if (value == null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private toCompanyDetails(company: {
+    id: string;
+    name: string;
+    type: CompanyDetails["type"];
+    phone: string | null;
+    contactEmail: string | null;
+    website: string | null;
+    address: string | null;
+    description: string | null;
+    createdAt: Date;
+  }): CompanyDetails {
+    return {
+      id: company.id,
+      name: company.name,
+      type: company.type,
+      phone: company.phone,
+      contactEmail: company.contactEmail,
+      website: company.website,
+      address: company.address,
+      description: company.description,
+      createdAt: company.createdAt.toISOString(),
+    };
   }
 
   async listPendingInvitations(companyId: string | null): Promise<CompanyInvitation[]> {

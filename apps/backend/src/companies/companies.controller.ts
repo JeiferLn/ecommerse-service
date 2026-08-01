@@ -13,6 +13,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import type {
   ApiResponse,
+  CompanyDetails,
   CompanyInvitation,
   CompanyMember,
   InviteResult,
@@ -30,6 +31,7 @@ import { CompaniesService } from "./companies.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { SwitchCompanyDto } from "./dto/switch-company.dto";
+import { UpdateCompanyDto } from "./dto/update-company.dto";
 import { UpdateMemberRoleDto } from "./dto/update-member-role.dto";
 
 @Controller("company")
@@ -50,6 +52,27 @@ export class CompaniesController {
     const session = await this.authService.switchCompany(user.id, company.id);
     this.setSessionCookies(res, session.accessToken, session.refreshToken);
     return { status: "success", data: session.user };
+  }
+
+  @Get()
+  async getCompany(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponse<CompanyDetails>> {
+    return {
+      status: "success",
+      data: await this.companiesService.getCompany(user.companyId),
+    };
+  }
+
+  @Roles("owner")
+  @Patch()
+  async updateCompany(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateCompanyDto,
+  ): Promise<ApiResponse<CompanyDetails>> {
+    return {
+      status: "success",
+      data: await this.companiesService.updateCompany(user.companyId, dto),
+      message: "Empresa actualizada",
+    };
   }
 
   @Get("members")

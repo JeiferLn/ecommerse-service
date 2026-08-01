@@ -9,7 +9,12 @@ import type {
   InviteResult,
   RemoveMemberResult,
 } from "@commerce-ai/types";
-import { ROLE_LABELS } from "@commerce-ai/types";
+import {
+  MEMBER_ASSIGNABLE_ROLES,
+  ROLE_LABELS,
+  canManageMembers,
+  canViewMembers,
+} from "@commerce-ai/types";
 
 import { RoleBadge } from "@/components/role-badge";
 import { Button } from "@/components/ui/button";
@@ -26,8 +31,6 @@ import {
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
 
-const ASSIGNABLE_ROLES = ["user", "manager"] as const;
-
 export function MembersSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
@@ -35,12 +38,13 @@ export function MembersSection() {
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
 
-  const isOwner = user?.role === "owner";
+  const canManage = Boolean(user && canManageMembers(user.role));
+  const canView = Boolean(user && canViewMembers(user.role));
 
   const { data: members, isLoading } = useQuery({
     queryKey: ["company-members"],
     queryFn: () => apiFetch<CompanyMember[]>("/company/members"),
-    enabled: Boolean(user?.companyId),
+    enabled: Boolean(user?.companyId) && canView,
   });
 
   const inviteMutation = useMutation({
@@ -73,7 +77,13 @@ export function MembersSection() {
   });
 
   const roleMutation = useMutation({
-    mutationFn: ({ memberId, role }: { memberId: string; role: (typeof ASSIGNABLE_ROLES)[number] }) =>
+    mutationFn: ({
+      memberId,
+      role,
+    }: {
+      memberId: string;
+      role: (typeof MEMBER_ASSIGNABLE_ROLES)[number];
+    }) =>
       apiFetch<CompanyMember>(`/company/members/${memberId}`, {
         method: "PATCH",
         body: JSON.stringify({ role }),
@@ -108,7 +118,7 @@ export function MembersSection() {
   const { data: invitations } = useQuery({
     queryKey: ["company-invitations"],
     queryFn: () => apiFetch<CompanyInvitation[]>("/company/invitations"),
-    enabled: Boolean(user?.companyId) && isOwner,
+    enabled: Boolean(user?.companyId) && canManage,
   });
 
   function handleInvite(event: FormEvent) {
@@ -139,7 +149,7 @@ export function MembersSection() {
         <CardDescription>Personas con acceso a la empresa.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {isOwner && (
+        {canManage && (
           <form onSubmit={handleInvite} className="flex flex-col gap-2">
             <Label htmlFor="invite-email">Invitar miembro</Label>
             <div className="flex gap-2">
@@ -162,7 +172,7 @@ export function MembersSection() {
 
         {isLoading && <p className="text-sm text-muted-foreground">Cargando miembros…</p>}
 
-        {isOwner && invitations && invitations.length > 0 && (
+        {canManage && invitations && invitations.length > 0 && (
           <div className="flex flex-col gap-2 rounded-lg border p-4">
             <h3 className="text-sm font-semibold">Invitaciones pendientes</h3>
             <ul className="flex flex-col gap-2">
@@ -206,7 +216,7 @@ export function MembersSection() {
           <ul className="flex flex-col gap-2">
             {members.map((member) => {
               const isEditable =
-                isOwner && member.id !== user?.id && member.role !== "owner";
+                canManage && member.id !== user?.id && member.role !== "owner";
               return (
                 <li
                   key={member.id}
@@ -228,7 +238,7 @@ export function MembersSection() {
                           onValueChange={(role) =>
                             roleMutation.mutate({
                               memberId: member.id,
-                              role: role as (typeof ASSIGNABLE_ROLES)[number],
+                              role: role as (typeof MEMBER_ASSIGNABLE_ROLES)[number],
                             })
                           }
                           disabled={roleMutation.isPending || removeMutation.isPending}
@@ -240,7 +250,7 @@ export function MembersSection() {
                             <SelectValue placeholder="Rol" />
                           </SelectTrigger>
                           <SelectContent>
-                            {ASSIGNABLE_ROLES.map((role) => (
+                            {MEMBER_ASSIGNABLE_ROLES.map((role) => (
                               <SelectItem key={role} value={role}>
                                 {ROLE_LABELS[role]}
                               </SelectItem>

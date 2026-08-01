@@ -16,15 +16,36 @@ enum UserRole {
 
 enum CompanyType {
   retail
+  clothing
+  footwear
+  accessories
   health_beauty
   technology
+  electronics
+  home_garden
+  food_beverage
+  pharmacy
+  sports
+  toys_kids
+  automotive
+  jewelry
+  furniture
+  pets
+  books_media
   education
+  services
+  other
 }
 
 model Company {
   id            String                @id @default(cuid())
   name          String
   type          CompanyType
+  phone         String?
+  contactEmail  String?
+  website       String?
+  address       String?
+  description   String?
   ownerId       String                @unique
   owner         User                  @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   memberships   CompanyMembership[]

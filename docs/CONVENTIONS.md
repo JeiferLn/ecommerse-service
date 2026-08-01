@@ -48,18 +48,52 @@ scripts/       # Utilidades de desarrollo
 - Guards globales vía `APP_GUARD`: `JwtAuthGuard` (autenticación) y `RolesGuard` (autorización por rol).
 - Endpoints públicos se marcan con `@Public()`; rutas protegidas exigen cookie `access_token` (JWT).
 
-## Autenticación
+## Autenticación y autorización
 
-- Roles: `admin` (administradores de la plataforma), `owner` (dueños de empresa), `user` (invitados por owners). Se definen en `packages/types` (`UserRole`).
-- Registro público crea usuarios con rol `owner` y su empresa en una única transacción (`$transaction`): primero `User`, luego `Company` (con `ownerId`), y por último vincula `user.companyId`. El registro abre sesión inmediatamente (mismas cookies que login). `AuthUser` expone `companyId`. El usuario `admin` se crea con el seed (`prisma/seed.ts`) y no tiene empresa.
-- Tipos de empresa (`CompanyType`): `retail`, `health_beauty`, `technology`, `education`. Definidos en el schema Prisma y en `packages/types` (`COMPANY_TYPES` + `COMPANY_TYPE_LABELS` para el select del registro).
+### Roles
+
+- `admin` — staff de la plataforma Commerce AI (seed). No opera una tienda ni se une a empresas.
+- `owner` — dueño de una empresa: settings, equipo, billing y operación completa.
+- `manager` — opera el día a día (catálogo, pedidos, WhatsApp/IA) sin settings ni billing ni gestión de equipo.
+- `user` — opera con menos poder (atender pedidos/conversaciones, ver catálogo/miembros); sin config sensible.
+
+Los roles de empresa viven en `CompanyMembership.role` (el JWT lleva el rol efectivo de la empresa activa). Se definen en `packages/types` (`UserRole`).
+
+### Matriz de capacidades (sin módulo Permission)
+
+No hay modelo/tabla `Permission`. La autorización es por **roles gruesos** (`@Roles(...)` + `RolesGuard`) y la matriz tipada `ROLE_CAPABILITIES` / helpers (`canEditCompany`, `canManageMembers`, …) en `@commerce-ai/types`.
+
+| Capacidad | owner | manager | user | admin |
+|-----------|:-----:|:-------:|:----:|:-----:|
+| Editar empresa (settings) | ✓ | ✗ | ✗ | — |
+| Invitar / expulsar / cambiar roles | ✓ | ✗ | ✗ | — |
+| Ver miembros | ✓ | ✓ | ✓ | — |
+| Catálogo CRUD | ✓ | ✓ | ver | — |
+| Pedidos / conversaciones | ✓ | ✓ | operar | — |
+| WhatsApp / IA config | ✓ | ✓ | ver | — |
+| Billing / plan | ✓ | ✗ | ✗ | — |
+| Soporte global plataforma | ✗ | ✗ | ✗ | ✓ |
+
+Reglas al añadir endpoints:
+
+1. Marcar públicos con `@Public()`.
+2. Si cualquier miembro autenticado de la empresa puede: sin `@Roles` (solo JWT).
+3. Si solo algunos roles: `@Roles("owner")` o `@Roles("owner", "manager")` según la matriz.
+4. En el front, preferir `canEditCompany(role)` / `canManageMembers(role)` en lugar de comparar strings a mano.
+5. Revisar la matriz al entrar en Fase 3 (catálogo) y Fase 5 (WhatsApp).
+
+### Sesión y registro
+
+- Registro público crea usuarios con rol `owner` y su empresa en una única transacción (`$transaction`): `User` + `Company` + `CompanyMembership`. Abre sesión de inmediato. `AuthUser` expone `companyId` y `companies[]`.
+- Tipos de empresa (`CompanyType`): ver `COMPANY_TYPES` / `COMPANY_TYPE_LABELS` en `@commerce-ai/types` (orientados a ventas; perfil ampliable en settings).
 - Sesión con dos cookies httpOnly (`sameSite: lax`):
   - `access_token` — JWT de 15 min (valor por defecto, `ACCESS_TOKEN_TTL_SECONDS`), path `/`.
   - `refresh_token` — opaco de 64 hex (32 bytes aleatorios), 7 días (`REFRESH_TOKEN_TTL_SECONDS`), path `/api/v1/auth`; se guarda hasheado (sha256) en `RefreshToken`.
 - Rotación: cada `POST /api/v1/auth/refresh` revoca el token usado y emite uno nuevo; reutilizar un token ya revocado devuelve 401.
 - Logout: revoca el refresh token y limpia cookies. El access token (stateless) sigue siendo válido hasta expirar.
 - El guard lee el token de la cookie `access_token` (no del header `Authorization`).
-- Recuperación de contraseña: `POST /auth/forgot-password` genera un token opaco de 64 hex (1 hora, `RESET_TOKEN_TTL_SECONDS`) guardado hasheado en `PasswordResetToken` y envía el enlace por correo (Nodemailer + SMTP; sin SMTP configurado entra en modo preview y loguea el correo). La respuesta es genérica (no revela si el email existe). `POST /auth/reset-password` valida el token, cambia la contraseña, borra los tokens y revoca todas las sesiones activas del usuario. El token es de un solo uso.
+- Recuperación de contraseña: `POST /auth/forgot-password` genera un token opaco de 64 hex (1 hora, `RESET_TOKEN_TTL_SECONDS`) guardado hasheado en `PasswordResetToken` y envía el enlace por correo (Nodemailer + SMTP de plataforma; sin SMTP configurado entra en modo preview). La respuesta es genérica. `POST /auth/reset-password` valida el token, cambia la contraseña, borra los tokens y revoca todas las sesiones activas. El token es de un solo uso.
+- Emails de la app salen con SMTP de plataforma (como GitHub): no hay SMTP por empresa.
 - Tests e2e (`test/auth.e2e-spec.ts`) usan cookies reales y una cuenta `e2e-<timestamp>@test.com` que se limpia en `afterAll`.
 
 ## Frontend (Next.js)
