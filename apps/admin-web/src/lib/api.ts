@@ -64,15 +64,19 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const shouldRefresh =
     !isPublicPage && !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
 
-  const doFetch = async (): Promise<Response> =>
-    fetch(`${API_URL}/api/v1${path}`, {
+  const doFetch = async (): Promise<Response> => {
+    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    const headers = new Headers(init?.headers);
+    if (!isFormData && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    return fetch(`${API_URL}/api/v1${path}`, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...init?.headers,
-      },
+      headers,
       credentials: "include",
     });
+  };
 
   let res = await doFetch();
 

@@ -22,6 +22,9 @@ pnpm-debug.log*
 # Coverage
 coverage/
 
+# Uploads locales (fallback sin R2)
+uploads/
+
 # Misc
 .DS_Store
 .vercel/

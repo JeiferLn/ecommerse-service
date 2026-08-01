@@ -94,6 +94,14 @@ export function canViewMembers(role: UserRole): boolean {
   return hasCapability(role, "viewMembers");
 }
 
+export function canManageCatalog(role: UserRole): boolean {
+  return hasCapability(role, "manageCatalog");
+}
+
+export function canViewCatalog(role: UserRole): boolean {
+  return hasCapability(role, "viewCatalog");
+}
+
 export type CompanyType =
   | "retail"
   | "clothing"
@@ -208,4 +216,73 @@ export interface PaginatedResponse<T> {
   perPage: number;
   total: number;
   totalPages: number;
+}
+
+export type ProductStatus = "draft" | "active" | "archived";
+
+export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
+  draft: "Borrador",
+  active: "Activo",
+  archived: "Archivado",
+};
+
+export const PRODUCT_STATUSES: ProductStatus[] = Object.keys(
+  PRODUCT_STATUS_LABELS,
+) as ProductStatus[];
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductVariant {
+  id: string;
+  sku: string;
+  name: string;
+  price: number;
+  compareAtPrice: number | null;
+  stock: number;
+  attributes: Record<string, string> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductImage {
+  id: string;
+  url: string;
+  key: string;
+  alt: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface ProductSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  status: ProductStatus;
+  categoryId: string | null;
+  categoryName: string | null;
+  variantsCount: number;
+  totalStock: number;
+  minPrice: number | null;
+  coverImageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductDetails {
+  id: string;
+  name: string;
+  description: string | null;
+  status: ProductStatus;
+  categoryId: string | null;
+  category: Category | null;
+  variants: ProductVariant[];
+  images: ProductImage[];
+  createdAt: string;
+  updatedAt: string;
 }

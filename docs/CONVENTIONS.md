@@ -80,7 +80,7 @@ Reglas al añadir endpoints:
 2. Si cualquier miembro autenticado de la empresa puede: sin `@Roles` (solo JWT).
 3. Si solo algunos roles: `@Roles("owner")` o `@Roles("owner", "manager")` según la matriz.
 4. En el front, preferir `canEditCompany(role)` / `canManageMembers(role)` en lugar de comparar strings a mano.
-5. Revisar la matriz al entrar en Fase 3 (catálogo) y Fase 5 (WhatsApp).
+5. Revisar la matriz al entrar en Fase 5 (WhatsApp). El catálogo ya aplica `manageCatalog` / `viewCatalog`.
 
 ### Sesión y registro
 
@@ -118,6 +118,17 @@ Reglas al añadir endpoints:
 - Migraciones preservadas: nunca se edita una migración ya aplicada.
 - Modelos normalizados, índices para columnas consultadas por igualdad/tenant.
 - Todas las tablas multi-tenant incluyen la columna de aislamiento del tenant.
+
+## Catálogo (Fase 3)
+
+- Entidades: `Category`, `Product`, `ProductVariant`, `ProductImage`, todas aisladas por `companyId` (categoría/producto) o por producto.
+- Categorías planas: `slug` único por empresa (`slugify` en backend).
+- Variantes: cada producto tiene ≥1 variante; **precio y stock viven en la variante**. En admin se pueden generar combinaciones desde atributos libres (talla, color, material, largo, etc.); siguen siendo N filas de inventario.
+- Ajuste de inventario: `PATCH /products/:id/variants/:variantId/stock` con `stock` absoluto o `delta`.
+- Imágenes: `StorageService` usa Cloudflare R2 si hay `R2_*`; si no, guarda en disco (`LOCAL_UPLOAD_DIR` o `./uploads`) y sirve en `/uploads/...` con `API_PUBLIC_URL` (p. ej. `http://localhost:4000`).
+- Autorización: lectura para miembros de la empresa; escritura `@Roles("owner", "manager")` / `canManageCatalog`.
+- Endpoints bajo `/api/v1/categories` y `/api/v1/products`.
+- Admin: `/dashboard/categories`, `/dashboard/products`, `/dashboard/products/new`, `/dashboard/products/[id]`.
 
 ## IA
 

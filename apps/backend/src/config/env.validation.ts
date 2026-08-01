@@ -34,6 +34,15 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  R2_PUBLIC_URL: z.string().optional(),
+  /** URL pública del API (para servir /uploads en modo local). Ej: http://localhost:4000 */
+  API_PUBLIC_URL: z.string().optional(),
+  /** Carpeta local de imágenes cuando R2 no está configurado. Default: ./uploads */
+  LOCAL_UPLOAD_DIR: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
