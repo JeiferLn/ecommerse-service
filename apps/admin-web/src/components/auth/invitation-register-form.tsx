@@ -201,7 +201,7 @@ export function InvitationRegisterForm() {
         </p>
       )}
 
-      <Button type="submit" disabled={registerMutation.isPending}>
+      <Button type="submit" className="mt-1 w-full" disabled={registerMutation.isPending}>
         {registerMutation.isPending ? "Creando cuenta…" : "Aceptar invitación e ingresar"}
       </Button>
     </form>

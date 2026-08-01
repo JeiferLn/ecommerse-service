@@ -1,15 +1,22 @@
 import type { Metadata } from "next";
-import { Roboto } from "next/font/google";
+import { Figtree, Outfit } from "next/font/google";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { SessionProvider } from "@/providers/session-provider";
 
 import "./globals.css";
 
-const roboto = Roboto({
-  variable: "--font-roboto",
+const figtree = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -29,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${roboto.variable} antialiased`}>
+      <body className={`${figtree.variable} ${outfit.variable} antialiased`}>
         <QueryProvider>
           <SessionProvider>{children}</SessionProvider>
         </QueryProvider>

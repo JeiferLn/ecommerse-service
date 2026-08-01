@@ -10,16 +10,16 @@ export const metadata: Metadata = {
 
 export default function RegisterPage() {
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
       <CardHeader>
-        <CardTitle>Crear cuenta</CardTitle>
+        <CardTitle className="font-heading text-xl font-bold">Crear cuenta</CardTitle>
         <CardDescription>Empieza a vender por WhatsApp con IA.</CardDescription>
       </CardHeader>
       <CardContent>
         <RegisterForm />
         <p className="mt-6 text-center text-sm text-muted-foreground">
           ¿Ya tienes cuenta?{" "}
-          <Link href="/login" className="text-foreground hover:underline">
+          <Link href="/login" className="font-medium text-foreground hover:underline">
             Inicia sesión
           </Link>
         </p>

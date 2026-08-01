@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { useSession } from "@/providers/session-provider";
 
 const ROLE_STYLES: Record<UserRole, string> = {
-  admin: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
-  owner: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  manager: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  user: "border-muted-foreground/30 bg-muted text-muted-foreground",
+  admin: "border-primary/25 bg-primary/10 text-primary",
+  owner: "border-sky-600/25 bg-sky-500/10 text-sky-800",
+  manager: "border-amber-500/30 bg-amber-500/10 text-amber-800",
+  user: "border-border bg-muted text-muted-foreground",
 };
 
 export function RoleBadge({ role }: { role: UserRole }) {

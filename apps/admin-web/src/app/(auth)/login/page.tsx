@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
       <CardHeader>
-        <CardTitle>Iniciar sesión</CardTitle>
+        <CardTitle className="font-heading text-xl font-bold">Iniciar sesión</CardTitle>
         <CardDescription>Accede a tu cuenta para administrar tu negocio.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -21,12 +21,12 @@ export default function LoginPage() {
           <LoginForm />
         </Suspense>
         <div className="mt-6 flex flex-col items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/forgot-password" className="hover:underline">
+          <Link href="/forgot-password" className="text-primary hover:underline">
             ¿Olvidaste tu contraseña?
           </Link>
           <p>
             ¿No tienes cuenta?{" "}
-            <Link href="/register" className="text-foreground hover:underline">
+            <Link href="/register" className="font-medium text-foreground hover:underline">
               Regístrate
             </Link>
           </p>

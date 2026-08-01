@@ -10,9 +10,9 @@ export const metadata: Metadata = {
 
 export default function ForgotPasswordPage() {
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
       <CardHeader>
-        <CardTitle>Recuperar contraseña</CardTitle>
+        <CardTitle className="font-heading text-xl font-bold">Recuperar contraseña</CardTitle>
         <CardDescription>
           Ingresa tu email y te enviaremos un enlace para restablecerla.
         </CardDescription>
@@ -20,7 +20,7 @@ export default function ForgotPasswordPage() {
       <CardContent>
         <ForgotPasswordForm />
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          <Link href="/login" className="hover:underline">
+          <Link href="/login" className="font-medium text-foreground hover:underline">
             Volver a iniciar sesión
           </Link>
         </p>

@@ -1,8 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserMinus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
+import type {
+  CompanyInvitation,
+  CompanyMember,
+  InviteResult,
+  RemoveMemberResult,
+} from "@commerce-ai/types";
 import { ROLE_LABELS } from "@commerce-ai/types";
 
 import { RoleBadge } from "@/components/role-badge";
@@ -27,6 +33,7 @@ export function MembersSection() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [memberMessage, setMemberMessage] = useState<string | null>(null);
 
   const isOwner = user?.role === "owner";
 
@@ -72,7 +79,29 @@ export function MembersSection() {
         body: JSON.stringify({ role }),
       }),
     onSuccess: () => {
+      setMemberMessage(null);
       void queryClient.invalidateQueries({ queryKey: ["company-members"] });
+    },
+    onError: (error: unknown) => {
+      setMemberMessage(
+        error instanceof ApiClientError ? error.message : "No se pudo conectar con el servidor",
+      );
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (memberId: string) =>
+      apiFetch<RemoveMemberResult>(`/company/members/${memberId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: (result) => {
+      setMemberMessage(result.message);
+      void queryClient.invalidateQueries({ queryKey: ["company-members"] });
+    },
+    onError: (error: unknown) => {
+      setMemberMessage(
+        error instanceof ApiClientError ? error.message : "No se pudo conectar con el servidor",
+      );
     },
   });
 
@@ -88,14 +117,25 @@ export function MembersSection() {
     inviteMutation.mutate(email);
   }
 
+  function handleRemove(member: CompanyMember) {
+    const confirmed = window.confirm(
+      `¿Eliminar a ${member.name} (${member.email}) de la empresa? Perderá el acceso de inmediato.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setMemberMessage(null);
+    removeMutation.mutate(member.id);
+  }
+
   if (!user?.companyId) {
     return null;
   }
 
   return (
-    <Card>
+    <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
       <CardHeader>
-        <CardTitle>Miembros</CardTitle>
+        <CardTitle className="font-heading text-xl font-bold">Miembros</CardTitle>
         <CardDescription>Personas con acceso a la empresa.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -160,6 +200,8 @@ export function MembersSection() {
           <p className="text-sm text-muted-foreground">Aún no hay miembros.</p>
         )}
 
+        {memberMessage && <p className="text-sm text-muted-foreground">{memberMessage}</p>}
+
         {!isLoading && members && members.length > 0 && (
           <ul className="flex flex-col gap-2">
             {members.map((member) => {
@@ -176,30 +218,47 @@ export function MembersSection() {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {isEditable ? (
-                      <Select
-                        value={member.role === "user" || member.role === "manager" ? member.role : undefined}
-                        onValueChange={(role) =>
-                          roleMutation.mutate({
-                            memberId: member.id,
-                            role: role as (typeof ASSIGNABLE_ROLES)[number],
-                          })
-                        }
-                        disabled={roleMutation.isPending}
-                      >
-                        <SelectTrigger
-                          aria-label={`Cambiar rol de ${member.name}`}
-                          className="h-8 w-32"
+                      <>
+                        <Select
+                          value={
+                            member.role === "user" || member.role === "manager"
+                              ? member.role
+                              : undefined
+                          }
+                          onValueChange={(role) =>
+                            roleMutation.mutate({
+                              memberId: member.id,
+                              role: role as (typeof ASSIGNABLE_ROLES)[number],
+                            })
+                          }
+                          disabled={roleMutation.isPending || removeMutation.isPending}
                         >
-                          <SelectValue placeholder="Rol" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ASSIGNABLE_ROLES.map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {ROLE_LABELS[role]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <SelectTrigger
+                            aria-label={`Cambiar rol de ${member.name}`}
+                            className="h-8 w-32"
+                          >
+                            <SelectValue placeholder="Rol" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ASSIGNABLE_ROLES.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {ROLE_LABELS[role]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          aria-label={`Eliminar a ${member.name} de la empresa`}
+                          onClick={() => handleRemove(member)}
+                          disabled={removeMutation.isPending || roleMutation.isPending}
+                        >
+                          <UserMinus aria-hidden />
+                          Eliminar
+                        </Button>
+                      </>
                     ) : (
                       <RoleBadge role={member.role} />
                     )}

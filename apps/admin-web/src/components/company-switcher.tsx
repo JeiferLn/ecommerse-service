@@ -67,7 +67,7 @@ export function CompanySwitcher() {
             </SelectItem>
           ))}
           {canCreate && (
-            <SelectItem value={CREATE_COMPANY_VALUE}>＋ Crear empresa</SelectItem>
+            <SelectItem value={CREATE_COMPANY_VALUE}>Crear empresa</SelectItem>
           )}
         </SelectContent>
       </Select>

@@ -177,7 +177,7 @@ export function RegisterForm() {
         </p>
       )}
 
-      <Button type="submit" disabled={mutation.isPending}>
+      <Button type="submit" className="mt-1 w-full" disabled={mutation.isPending}>
         {mutation.isPending ? "Creando cuenta…" : "Crear cuenta e ingresar"}
       </Button>
     </form>

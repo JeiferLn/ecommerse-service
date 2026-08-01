@@ -40,6 +40,7 @@ describe("CompaniesService", () => {
       findFirst: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipFindFirstArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipCreateArgs]>;
       update: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipUpdateArgs]>;
+      delete: jest.Mock<Promise<unknown>, [args: Prisma.CompanyMembershipDeleteArgs]>;
     };
     invitation: {
       findUnique: jest.Mock<Promise<unknown>, [args: Prisma.InvitationFindUniqueArgs]>;
@@ -51,6 +52,9 @@ describe("CompaniesService", () => {
     company: {
       findUniqueOrThrow: jest.Mock<Promise<unknown>, [args: Prisma.CompanyFindUniqueOrThrowArgs]>;
       create: jest.Mock<Promise<unknown>, [args: Prisma.CompanyCreateArgs]>;
+    };
+    refreshToken: {
+      updateMany: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateManyArgs]>;
     };
   };
   let mailService: {
@@ -81,6 +85,9 @@ describe("CompaniesService", () => {
           .mockResolvedValue({}),
         update: jest
           .fn<Promise<unknown>, [Prisma.CompanyMembershipUpdateArgs]>()
+          .mockResolvedValue({}),
+        delete: jest
+          .fn<Promise<unknown>, [Prisma.CompanyMembershipDeleteArgs]>()
           .mockResolvedValue({}),
       },
       invitation: {
@@ -113,6 +120,11 @@ describe("CompaniesService", () => {
             ownerId: "user-2",
           }),
         ),
+      },
+      refreshToken: {
+        updateMany: jest
+          .fn<Promise<unknown>, [Prisma.RefreshTokenUpdateManyArgs]>()
+          .mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -246,6 +258,61 @@ describe("CompaniesService", () => {
 
     it("lanza error si el usuario no pertenece a una empresa", async () => {
       await expect(service.updateMemberRole(null, "user-2", "manager")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe("removeMember", () => {
+    it("elimina la membresía y revoca sesiones de esa empresa", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue({
+        userId: "user-2",
+        companyId: "company-1",
+        role: "user",
+      });
+
+      const result = await service.removeMember("company-1", "user-1", "user-2");
+
+      expect(prisma.companyMembership.delete).toHaveBeenCalledWith({
+        where: { userId_companyId: { userId: "user-2", companyId: "company-1" } },
+      });
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: "user-2", companyId: "company-1", revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(result).toEqual({ message: "Miembro eliminado de la empresa" });
+    });
+
+    it("no permite eliminarte a ti mismo", async () => {
+      await expect(service.removeMember("company-1", "user-1", "user-1")).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.companyMembership.delete).not.toHaveBeenCalled();
+    });
+
+    it("no permite eliminar al dueño", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue({
+        userId: "user-1",
+        companyId: "company-1",
+        role: "owner",
+      });
+
+      await expect(service.removeMember("company-1", "user-2", "user-1")).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.companyMembership.delete).not.toHaveBeenCalled();
+    });
+
+    it("lanza NotFoundException si el usuario no es miembro", async () => {
+      prisma.companyMembership.findUnique.mockResolvedValue(null);
+
+      await expect(service.removeMember("company-1", "user-1", "user-99")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it("lanza error si el actor no pertenece a una empresa", async () => {
+      await expect(service.removeMember(null, "user-1", "user-2")).rejects.toThrow(
         BadRequestException,
       );
     });

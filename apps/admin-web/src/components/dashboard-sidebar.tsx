@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
@@ -9,12 +10,13 @@ import { useSession } from "@/providers/session-provider";
 interface NavItem {
   href: string;
   label: string;
+  icon: typeof LayoutDashboard;
   adminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/members", label: "Miembros" },
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/members", label: "Miembros", icon: Users },
 ];
 
 export function DashboardSidebar() {
@@ -24,23 +26,26 @@ export function DashboardSidebar() {
   const items = NAV_ITEMS.filter((item) => item.adminOnly !== true || user?.role !== "admin");
 
   return (
-    <aside className="w-56 shrink-0 border-r p-4">
-      <nav className="flex flex-col gap-1">
+    <aside className="w-56 shrink-0">
+      <nav className="sticky top-6 flex flex-col gap-1 rounded-2xl border border-border/70 bg-card/70 p-2 shadow-brand-sm backdrop-blur-sm">
         {items.map((item) => {
           const isActive =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
+          const Icon = item.icon;
+
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "inline-flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
             >
+              <Icon className="size-4 shrink-0" aria-hidden />
               {item.label}
             </Link>
           );

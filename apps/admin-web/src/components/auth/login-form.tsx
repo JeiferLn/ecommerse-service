@@ -84,7 +84,7 @@ export function LoginForm() {
         </p>
       )}
 
-      <Button type="submit" disabled={mutation.isPending}>
+      <Button type="submit" className="mt-1 w-full" disabled={mutation.isPending}>
         {mutation.isPending ? "Ingresando…" : "Iniciar sesión"}
       </Button>
     </form>

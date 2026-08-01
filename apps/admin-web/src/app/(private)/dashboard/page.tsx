@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { SessionRoleBadge } from "@/components/role-badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Dashboard | Commerce AI SaaS",
@@ -9,25 +8,25 @@ export const metadata: Metadata = {
 
 export default function DashboardPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Dashboard</h1>
           <p className="text-muted-foreground">Resumen del estado de tu negocio.</p>
         </div>
         <SessionRoleBadge />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {["Ventas", "Pedidos", "Clientes", "Conversaciones"].map((kpi) => (
-          <Card key={kpi}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">{kpi}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">—</p>
-              <CardDescription>Disponible en Fase 4</CardDescription>
-            </CardContent>
-          </Card>
+          <div
+            key={kpi}
+            className="rounded-2xl border border-border/70 bg-card/70 p-5 shadow-brand-sm backdrop-blur-sm"
+          >
+            <p className="text-sm font-medium text-muted-foreground">{kpi}</p>
+            <p className="font-heading mt-3 text-3xl font-bold tracking-tight">—</p>
+            <p className="mt-1 text-xs text-muted-foreground">Disponible en Fase 4</p>
+          </div>
         ))}
       </div>
     </div>

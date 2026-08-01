@@ -109,7 +109,7 @@ export function ResetPasswordForm() {
         </p>
       )}
 
-      <Button type="submit" disabled={mutation.isPending}>
+      <Button type="submit" className="mt-1 w-full" disabled={mutation.isPending}>
         {mutation.isPending ? "Actualizando…" : "Actualizar contraseña"}
       </Button>
     </form>

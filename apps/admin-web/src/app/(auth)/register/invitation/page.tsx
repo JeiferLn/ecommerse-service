@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 
 export default function InvitationRegisterPage() {
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
       <CardHeader>
-        <CardTitle>Únete a la empresa</CardTitle>
+        <CardTitle className="font-heading text-xl font-bold">Únete a la empresa</CardTitle>
         <CardDescription>
           Te invitaron a colaborar. Solo necesitas tu nombre y una contraseña.
         </CardDescription>
@@ -24,7 +24,7 @@ export default function InvitationRegisterPage() {
         </Suspense>
         <p className="mt-6 text-center text-sm text-muted-foreground">
           ¿Quieres tu propia empresa?{" "}
-          <Link href="/register" className="text-foreground hover:underline">
+          <Link href="/register" className="font-medium text-foreground hover:underline">
             Regístrate aquí
           </Link>
         </p>

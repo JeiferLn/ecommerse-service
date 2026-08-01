@@ -6,7 +6,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { CompanyInvitation, CompanyMember, InviteResult } from "@commerce-ai/types";
+import type {
+  CompanyInvitation,
+  CompanyMember,
+  InviteResult,
+  RemoveMemberResult,
+} from "@commerce-ai/types";
 import type { Company } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
@@ -150,6 +155,47 @@ export class CompaniesService {
       name: membership.user.name,
       email: membership.user.email,
       role,
+    };
+  }
+
+  async removeMember(
+    companyId: string | null,
+    actorUserId: string,
+    memberUserId: string,
+  ): Promise<RemoveMemberResult> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    if (actorUserId === memberUserId) {
+      throw new BadRequestException("No puedes eliminarte a ti mismo de la empresa");
+    }
+
+    const membership = await this.prisma.companyMembership.findUnique({
+      where: { userId_companyId: { userId: memberUserId, companyId } },
+    });
+
+    if (!membership) {
+      throw new NotFoundException("Ese usuario no es miembro de esta empresa");
+    }
+
+    if (membership.role === "owner") {
+      throw new BadRequestException("No puedes eliminar al dueño de la empresa");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.companyMembership.delete({
+        where: { userId_companyId: { userId: memberUserId, companyId } },
+      });
+
+      await tx.refreshToken.updateMany({
+        where: { userId: memberUserId, companyId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    return {
+      message: "Miembro eliminado de la empresa",
     };
   }
 

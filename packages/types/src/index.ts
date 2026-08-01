@@ -43,6 +43,10 @@ export interface InviteResult {
   message: string;
 }
 
+export interface RemoveMemberResult {
+  message: string;
+}
+
 export interface CompanyInvitation {
   id: string;
   email: string;

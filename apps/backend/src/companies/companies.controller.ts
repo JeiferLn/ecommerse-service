@@ -16,6 +16,7 @@ import type {
   CompanyInvitation,
   CompanyMember,
   InviteResult,
+  RemoveMemberResult,
   AuthUser,
 } from "@commerce-ai/types";
 import type { Response } from "express";
@@ -69,6 +70,18 @@ export class CompaniesController {
     return {
       status: "success",
       data: await this.companiesService.updateMemberRole(user.companyId, memberUserId, dto.role),
+    };
+  }
+
+  @Roles("owner")
+  @Delete("members/:userId")
+  async removeMember(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("userId") memberUserId: string,
+  ): Promise<ApiResponse<RemoveMemberResult>> {
+    return {
+      status: "success",
+      data: await this.companiesService.removeMember(user.companyId, user.id, memberUserId),
     };
   }
 
