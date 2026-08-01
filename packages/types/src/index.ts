@@ -4,7 +4,14 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export type UserRole = "admin" | "owner" | "user";
+export type UserRole = "admin" | "owner" | "manager" | "user";
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "Administrador",
+  owner: "Dueño",
+  manager: "Manager",
+  user: "Usuario",
+};
 
 export type CompanyType = "retail" | "health_beauty" | "technology" | "education";
 
