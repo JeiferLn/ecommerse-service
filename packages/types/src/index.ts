@@ -28,6 +28,7 @@ export type CompanyCapability =
   | "viewMembers"
   | "manageCatalog"
   | "viewCatalog"
+  | "viewDashboard"
   | "manageOrders"
   | "operateOrders"
   | "manageWhatsapp"
@@ -43,6 +44,7 @@ export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, bo
     viewMembers: true,
     manageCatalog: true,
     viewCatalog: true,
+    viewDashboard: true,
     manageOrders: true,
     operateOrders: true,
     manageWhatsapp: true,
@@ -55,6 +57,7 @@ export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, bo
     viewMembers: true,
     manageCatalog: true,
     viewCatalog: true,
+    viewDashboard: true,
     manageOrders: true,
     operateOrders: true,
     manageWhatsapp: true,
@@ -67,6 +70,7 @@ export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, bo
     viewMembers: true,
     manageCatalog: false,
     viewCatalog: true,
+    viewDashboard: true,
     manageOrders: false,
     operateOrders: true,
     manageWhatsapp: false,
@@ -100,6 +104,10 @@ export function canManageCatalog(role: UserRole): boolean {
 
 export function canViewCatalog(role: UserRole): boolean {
   return hasCapability(role, "viewCatalog");
+}
+
+export function canViewDashboard(role: UserRole): boolean {
+  return hasCapability(role, "viewDashboard");
 }
 
 export type CompanyType =
@@ -285,4 +293,53 @@ export interface ProductDetails {
   images: ProductImage[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StatusCount {
+  status: ProductStatus;
+  count: number;
+}
+
+export interface ProductStockSummary {
+  id: string;
+  name: string;
+  totalStock: number;
+}
+
+export interface CompanyDashboardStats {
+  productsTotal: number;
+  productsByStatus: StatusCount[];
+  variantsTotal: number;
+  totalStock: number;
+  lowStockThreshold: number;
+  lowStockProducts: ProductStockSummary[];
+  categoriesTotal: number;
+  membersTotal: number;
+  topProductsByStock: ProductStockSummary[];
+}
+
+export interface DailyCount {
+  date: string;
+  count: number;
+}
+
+export interface PlatformCompanySummary {
+  id: string;
+  name: string;
+  type: CompanyType;
+  ownerName: string;
+  ownerEmail: string;
+  membersCount: number;
+  productsCount: number;
+  createdAt: string;
+}
+
+export interface PlatformDashboardStats {
+  companiesTotal: number;
+  usersTotal: number;
+  productsTotal: number;
+  membershipsTotal: number;
+  companiesLast30Days: DailyCount[];
+  usersLast30Days: DailyCount[];
+  recentCompanies: PlatformCompanySummary[];
 }

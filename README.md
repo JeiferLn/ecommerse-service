@@ -277,15 +277,13 @@ Incluye:
 
 Objetivo:
 
-Mostrar información del negocio.
+Mostrar información del negocio (empresa) y de la plataforma (staff).
 
 Incluye:
 
-- KPIs
-- Gráficas
-- Ventas
-- Productos
-- Clientes
+- Dashboard empresa (`/dashboard`): KPIs de catálogo, stock, miembros y gráficas
+- Dashboard plataforma (`/admin`): KPIs globales, altas y empresas recientes
+- Placeholders de ventas/clientes/conversaciones hasta Fases 5 / 8
 
 ---
 

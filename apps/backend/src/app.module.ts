@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { validateEnv } from "./config/env.validation";
+import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
 import { MailModule } from "./mail/mail.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -25,6 +26,7 @@ import { StorageModule } from "./storage/storage.module";
     CompaniesModule,
     CategoriesModule,
     ProductsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

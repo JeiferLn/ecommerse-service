@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { homePathForRole } from "@/lib/home-path";
 import type { SessionUser } from "@/lib/session";
 import { useSession } from "@/providers/session-provider";
 
@@ -40,9 +41,10 @@ export function LoginForm() {
         method: "POST",
         body: JSON.stringify(values),
       }),
-    onSuccess: async () => {
+    onSuccess: async (user) => {
       await refresh();
-      router.push(searchParams.get("next") ?? "/dashboard");
+      const next = searchParams.get("next");
+      router.push(next ?? homePathForRole(user.role));
       router.refresh();
     },
   });

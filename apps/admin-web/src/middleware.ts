@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE } from "@/lib/session";
 
-const PRIVATE_ROUTES = ["/dashboard"];
+const PRIVATE_ROUTES = ["/dashboard", "/admin"];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
 
 function matches(pathname: string, routes: string[]): boolean {
@@ -31,5 +31,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register/:path*", "/forgot-password"],
+  matcher: [
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/login",
+    "/register/:path*",
+    "/forgot-password",
+  ],
 };

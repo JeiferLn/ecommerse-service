@@ -80,7 +80,7 @@ Reglas al añadir endpoints:
 2. Si cualquier miembro autenticado de la empresa puede: sin `@Roles` (solo JWT).
 3. Si solo algunos roles: `@Roles("owner")` o `@Roles("owner", "manager")` según la matriz.
 4. En el front, preferir `canEditCompany(role)` / `canManageMembers(role)` en lugar de comparar strings a mano.
-5. Revisar la matriz al entrar en Fase 5 (WhatsApp). El catálogo ya aplica `manageCatalog` / `viewCatalog`.
+5. Revisar la matriz al entrar en Fase 5 (WhatsApp). Catálogo y dashboard ya aplican `manageCatalog` / `viewCatalog` / `viewDashboard`.
 
 ### Sesión y registro
 
@@ -129,6 +129,14 @@ Reglas al añadir endpoints:
 - Autorización: lectura para miembros de la empresa; escritura `@Roles("owner", "manager")` / `canManageCatalog`.
 - Endpoints bajo `/api/v1/categories` y `/api/v1/products`.
 - Admin: `/dashboard/categories`, `/dashboard/products`, `/dashboard/products/new`, `/dashboard/products/[id]`.
+
+## Dashboards (Fase 4)
+
+- Dos superficies separadas:
+  - **Empresa** (`/dashboard`): miembros de tienda (`owner` / `manager` / `user`) con `companyId`. Stats: `GET /api/v1/company/stats`. KPIs reales de catálogo/stock/categorías/miembros; ventas/pedidos/clientes/conversaciones como “Próximamente”.
+  - **Plataforma** (`/admin`): solo rol global `admin`. Stats: `GET /api/v1/admin/stats`. KPIs globales + series de altas 30 días + empresas recientes.
+- Capacidad `viewDashboard` en la matriz de empresa; el staff `admin` no usa capacidades de tenant.
+- Post-login: `admin` → `/admin`; resto → `/dashboard`. El layout de `/dashboard` redirige admins a `/admin`.
 
 ## IA
 
