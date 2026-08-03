@@ -6,6 +6,7 @@ import {
   canManageCatalog,
   type Category,
   type ProductDetails,
+  type ProductImage,
   type ProductStatus,
   type ProductVariant,
 } from "@commerce-ai/types";
@@ -29,6 +30,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  ProductImagesSortable,
+  type GalleryImageItem,
+} from "@/components/product-images-sortable";
 import {
   Select,
   SelectContent,
@@ -121,6 +126,8 @@ export function ProductEditor({ productId }: ProductEditorProps) {
   >([]);
   const pendingImagesRef = useRef(pendingImages);
   pendingImagesRef.current = pendingImages;
+  const [orderedImages, setOrderedImages] = useState<ProductImage[]>([]);
+  const [reordering, setReordering] = useState(false);
 
   const { data: categories } = useQuery({
     queryKey: ["categories"],
@@ -183,6 +190,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
         stock: variant.stock,
       })),
     });
+    setOrderedImages(product.images);
   }, [product, reset]);
 
   useEffect(() => {
@@ -398,6 +406,47 @@ export function ProductEditor({ productId }: ProductEditorProps) {
     } catch (error) {
       setMessage(error instanceof ApiClientError ? error.message : "No se pudo eliminar la imagen");
     }
+  }
+
+  async function persistImageOrder(next: ProductImage[]) {
+    if (!productId) {
+      return;
+    }
+    setReordering(true);
+    setMessage(null);
+    try {
+      const saved = await apiFetch<ProductImage[]>(`/products/${productId}/images/reorder`, {
+        method: "PATCH",
+        body: JSON.stringify({ imageIds: next.map((image) => image.id) }),
+      });
+      setOrderedImages(saved);
+      await queryClient.invalidateQueries({ queryKey: ["product", productId] });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      setMessage("Orden de imágenes actualizado. La primera es la portada.");
+    } catch (error) {
+      setOrderedImages(product?.images ?? []);
+      setMessage(error instanceof ApiClientError ? error.message : "No se pudo reordenar");
+    } finally {
+      setReordering(false);
+    }
+  }
+
+  function handlePendingReorder(next: GalleryImageItem[]) {
+    const byId = new Map(pendingImages.map((image) => [image.id, image]));
+    setPendingImages(
+      next
+        .map((item) => byId.get(item.id))
+        .filter((image): image is (typeof pendingImages)[number] => Boolean(image)),
+    );
+  }
+
+  function handleSavedReorder(next: GalleryImageItem[]) {
+    const byId = new Map(orderedImages.map((image) => [image.id, image]));
+    const reordered = next
+      .map((item) => byId.get(item.id))
+      .filter((image): image is ProductImage => Boolean(image));
+    setOrderedImages(reordered);
+    void persistImageOrder(reordered);
   }
 
   function applyOptionMatrix() {
@@ -633,7 +682,9 @@ export function ProductEditor({ productId }: ProductEditorProps) {
           <CardTitle className="font-heading text-xl font-bold">Imágenes</CardTitle>
           <CardDescription>
             Opcional. Máx. 5 MB (JPEG, PNG, WebP, GIF).
-            {isNew ? " Se subirán al guardar el producto." : ""}
+            {isNew
+              ? " Se subirán al guardar. Arrastra para ordenar; la primera será la portada."
+              : " Arrastra para reordenar; la primera es la portada."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -646,7 +697,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 multiple
                 className="hidden"
-                disabled={uploading || saveMutation.isPending}
+                disabled={uploading || saveMutation.isPending || reordering}
                 onChange={(event) => {
                   void handleUpload(event.target.files);
                   event.target.value = "";
@@ -654,56 +705,37 @@ export function ProductEditor({ productId }: ProductEditorProps) {
               />
             </Label>
           )}
-          <div className="grid gap-3 sm:grid-cols-3">
-            {isNew &&
-              pendingImages.map((image) => (
-                <div key={image.id} className="relative overflow-hidden rounded-xl border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image.previewUrl}
-                    alt={image.file.name}
-                    className="h-36 w-full object-cover"
-                  />
-                  {canManage && (
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      className="absolute right-2 top-2"
-                      onClick={() => removePendingImage(image.id)}
-                    >
-                      <Trash2 aria-hidden />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            {!isNew &&
-              product?.images.map((image) => (
-                <div key={image.id} className="relative overflow-hidden rounded-xl border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image.url}
-                    alt={image.alt ?? product.name}
-                    className="h-36 w-full object-cover"
-                  />
-                  {canManage && (
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      className="absolute right-2 top-2"
-                      onClick={() => void handleDeleteImage(image.id)}
-                    >
-                      <Trash2 aria-hidden />
-                    </Button>
-                  )}
-                </div>
-              ))}
-          </div>
+          {isNew ? (
+            <ProductImagesSortable
+              images={pendingImages.map((image) => ({
+                id: image.id,
+                src: image.previewUrl,
+                alt: image.file.name,
+              }))}
+              canManage={canManage}
+              disabled={saveMutation.isPending}
+              onReorder={handlePendingReorder}
+              onRemove={removePendingImage}
+            />
+          ) : (
+            <ProductImagesSortable
+              images={orderedImages.map((image) => ({
+                id: image.id,
+                src: image.url,
+                alt: image.alt ?? product?.name ?? "Producto",
+              }))}
+              canManage={canManage}
+              disabled={reordering || uploading}
+              onReorder={handleSavedReorder}
+              onRemove={(id) => {
+                void handleDeleteImage(id);
+              }}
+            />
+          )}
           {isNew && pendingImages.length === 0 && (
             <p className="text-sm text-muted-foreground">Sin imágenes (opcional).</p>
           )}
-          {!isNew && product && product.images.length === 0 && (
+          {!isNew && orderedImages.length === 0 && (
             <p className="text-sm text-muted-foreground">Aún no hay imágenes.</p>
           )}
         </CardContent>

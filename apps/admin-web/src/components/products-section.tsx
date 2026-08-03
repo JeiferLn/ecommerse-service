@@ -148,20 +148,22 @@ export function ProductsSection() {
         </Card>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {data?.items.map((product) => (
           <Link key={product.id} href={`/dashboard/products/${product.id}`} className="block">
             <Card className="h-full border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm transition-colors hover:border-primary/40">
               <CardHeader className="gap-3">
                 {product.coverImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={product.coverImageUrl}
-                    alt={product.name}
-                    className="h-36 w-full rounded-xl object-cover"
-                  />
+                  <div className="aspect-square w-full overflow-hidden rounded-xl bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={product.coverImageUrl}
+                      alt={product.name}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
                 ) : (
-                  <div className="flex h-36 items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground">
+                  <div className="flex aspect-square items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground">
                     Sin imagen
                   </div>
                 )}

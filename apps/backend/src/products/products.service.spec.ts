@@ -28,6 +28,7 @@ describe("ProductsService", () => {
       create: jest.Mock;
       findFirst: jest.Mock;
       delete: jest.Mock;
+      update: jest.Mock;
     };
     category: {
       findFirst: jest.Mock;
@@ -91,6 +92,7 @@ describe("ProductsService", () => {
         create: jest.fn(),
         findFirst: jest.fn(),
         delete: jest.fn(),
+        update: jest.fn(),
       },
       category: {
         findFirst: jest.fn(),
@@ -161,5 +163,46 @@ describe("ProductsService", () => {
   it("lanza NotFound si el producto no existe", async () => {
     prisma.product.findFirst.mockResolvedValue(null);
     await expect(service.getById("company-1", "missing")).rejects.toThrow(NotFoundException);
+  });
+
+  it("reordena imágenes del producto", async () => {
+    const withImages = {
+      ...baseProduct,
+      images: [
+        {
+          id: "img-a",
+          productId: "prod-1",
+          url: "http://localhost/a.jpg",
+          key: "a.jpg",
+          alt: null,
+          sortOrder: 0,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+        {
+          id: "img-b",
+          productId: "prod-1",
+          url: "http://localhost/b.jpg",
+          key: "b.jpg",
+          alt: null,
+          sortOrder: 1,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      ],
+    };
+    prisma.product.findFirst
+      .mockResolvedValueOnce(withImages)
+      .mockResolvedValueOnce({
+        ...withImages,
+        images: [withImages.images[1], withImages.images[0]],
+      });
+    prisma.productImage.update.mockResolvedValue({});
+
+    const images = await service.reorderImages("company-1", "prod-1", ["img-b", "img-a"]);
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(prisma.productImage.update).toHaveBeenCalledWith({
+      where: { id: "img-b" },
+      data: { sortOrder: 0 },
+    });
+    expect(images[0]?.id).toBe("img-b");
   });
 });

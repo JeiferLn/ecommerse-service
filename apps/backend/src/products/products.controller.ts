@@ -26,6 +26,7 @@ import { Roles } from "../common/decorators/roles.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreateProductDto, CreateVariantDto } from "./dto/create-product.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
+import { ReorderImagesDto } from "./dto/reorder-images.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateStockDto } from "./dto/update-stock.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
@@ -161,6 +162,19 @@ export class ProductsController {
     return {
       status: "success",
       data: await this.productsService.addImage(user.companyId, id, file, alt),
+    };
+  }
+
+  @Roles("owner", "manager")
+  @Patch(":id/images/reorder")
+  async reorderImages(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() dto: ReorderImagesDto,
+  ): Promise<ApiResponse<ProductImage[]>> {
+    return {
+      status: "success",
+      data: await this.productsService.reorderImages(user.companyId, id, dto.imageIds),
     };
   }
 

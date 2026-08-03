@@ -125,7 +125,7 @@ Reglas al añadir endpoints:
 - Categorías planas: `slug` único por empresa (`slugify` en backend).
 - Variantes: cada producto tiene ≥1 variante; **precio y stock viven en la variante**. En admin se pueden generar combinaciones desde atributos libres (talla, color, material, largo, etc.); siguen siendo N filas de inventario.
 - Ajuste de inventario: `PATCH /products/:id/variants/:variantId/stock` con `stock` absoluto o `delta`.
-- Imágenes: `StorageService` usa Cloudflare R2 si hay `R2_*`; si no, guarda en disco (`LOCAL_UPLOAD_DIR` o `./uploads`) y sirve en `/uploads/...` con `API_PUBLIC_URL` (p. ej. `http://localhost:4000`).
+- Imágenes: `StorageService` usa Cloudflare R2 si hay `R2_*`; si no, guarda en disco (`LOCAL_UPLOAD_DIR` o `./uploads`) y sirve en `/uploads/...` con `API_PUBLIC_URL` (p. ej. `http://localhost:4000`). Reordenar: `PATCH /products/:id/images/reorder` con `{ imageIds: string[] }` (la primera es la portada).
 - Autorización: lectura para miembros de la empresa; escritura `@Roles("owner", "manager")` / `canManageCatalog`.
 - Endpoints bajo `/api/v1/categories` y `/api/v1/products`.
 - Admin: `/dashboard/categories`, `/dashboard/products`, `/dashboard/products/new`, `/dashboard/products/[id]`.

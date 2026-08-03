@@ -335,6 +335,37 @@ export class ProductsService {
     await this.prisma.productImage.delete({ where: { id: imageId } });
   }
 
+  async reorderImages(
+    companyId: string | null,
+    productId: string,
+    imageIds: string[],
+  ): Promise<ProductImageDto[]> {
+    const product = await this.findOwnedProduct(companyId, productId);
+    const existingIds = product.images.map((image) => image.id).sort();
+    const incomingIds = [...imageIds].sort();
+
+    if (
+      existingIds.length !== incomingIds.length ||
+      existingIds.some((id, index) => id !== incomingIds[index])
+    ) {
+      throw new BadRequestException(
+        "La lista de imágenes no coincide con las del producto. Recarga e inténtalo de nuevo.",
+      );
+    }
+
+    await this.prisma.$transaction(
+      imageIds.map((id, index) =>
+        this.prisma.productImage.update({
+          where: { id },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+
+    const refreshed = await this.findOwnedProduct(companyId, productId);
+    return refreshed.images.map((image) => this.toImageDto(image));
+  }
+
   private variantCreateData(dto: CreateVariantDto) {
     return {
       sku: dto.sku.trim(),
