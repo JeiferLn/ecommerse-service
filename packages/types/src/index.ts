@@ -110,6 +110,14 @@ export function canViewDashboard(role: UserRole): boolean {
   return hasCapability(role, "viewDashboard");
 }
 
+export function canManageWhatsapp(role: UserRole): boolean {
+  return hasCapability(role, "manageWhatsapp");
+}
+
+export function canViewWhatsapp(role: UserRole): boolean {
+  return hasCapability(role, "viewWhatsapp");
+}
+
 export type CompanyType =
   | "retail"
   | "clothing"
@@ -342,4 +350,44 @@ export interface PlatformDashboardStats {
   companiesLast30Days: DailyCount[];
   usersLast30Days: DailyCount[];
   recentCompanies: PlatformCompanySummary[];
+}
+
+export type MessageDirection = "inbound" | "outbound";
+
+export type MessageStatus = "received" | "sent" | "failed";
+
+export interface WhatsAppConnection {
+  id: string;
+  companyId: string;
+  phoneNumberId: string;
+  wabaId: string | null;
+  displayPhoneNumber: string | null;
+  /** Token enmascarado; nunca se reexpone el valor completo en GET. */
+  accessTokenMasked: string;
+  isActive: boolean;
+  waMeLink: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  companyId: string;
+  customerWaId: string;
+  customerName: string | null;
+  lastMessageAt: string;
+  lastMessagePreview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  conversationId: string;
+  direction: MessageDirection;
+  wamid: string | null;
+  type: string;
+  body: string;
+  status: MessageStatus | null;
+  createdAt: string;
 }

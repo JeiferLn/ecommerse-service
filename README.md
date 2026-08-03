@@ -291,15 +291,28 @@ Incluye:
 
 Objetivo:
 
-Conectar la plataforma con WhatsApp.
+Conectar la plataforma con WhatsApp Cloud API de forma multi-tenant, con modo simulación mientras Meta no entrega número/token de prueba de forma fiable.
 
-Incluye:
+Incluye (implementado):
 
-- WhatsApp Cloud API
-- Recepción de mensajes
-- Envío de mensajes
-- Webhooks
-- Conversaciones
+- Modelo `WhatsAppConnection` (1:1 empresa) + `Conversation` + `Message`
+- Webhook único público (`GET/POST /api/v1/whatsapp/webhook`) — tenant por `phoneNumberId`
+- CRUD de conexión por empresa (`/whatsapp/connection`) con token enmascarado en GET
+- Inbox: listar conversaciones, hilo y envío manual de texto
+- `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin Graph API
+- Auto-reply fijo configurable (`WHATSAPP_AUTO_REPLY_*`) — sin IA (Fase 6)
+- Admin: `/dashboard/whatsapp` (conexión + simular) e `/dashboard/whatsapp/inbox`
+
+Pendiente hasta credenciales Meta reales:
+
+- Validación punta a punta contra Graph API (Callback URL + verify token + firma)
+- Embedded Signup / Tech Provider, plantillas, App Review
+
+Cómo probar sin Meta:
+
+1. Guardar conexión fake (`phoneNumberId: test-phone-1`, token `dummy-…`)
+2. Simular mensaje entrante desde el admin o `POST /whatsapp/webhook/simulate`
+3. Ver conversación + auto-reply en el inbox
 
 ---
 

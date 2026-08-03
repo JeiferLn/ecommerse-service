@@ -46,6 +46,28 @@ const envSchema = z
     API_PUBLIC_URL: z.string().optional(),
     /** Carpeta local de imágenes cuando R2 no está configurado. Default: ./uploads */
     LOCAL_UPLOAD_DIR: z.string().optional(),
+    /** App Secret de Meta (firma X-Hub-Signature-256 del webhook). */
+    WHATSAPP_APP_SECRET: z.string().optional(),
+    /** Token de verificación del challenge GET del webhook (compartido, una URL). */
+    WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+    WHATSAPP_GRAPH_API_VERSION: z.string().default("v21.0"),
+    WHATSAPP_AUTO_REPLY_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
+    WHATSAPP_AUTO_REPLY_TEXT: z
+      .string()
+      .default("Gracias por tu mensaje. Te responderemos pronto."),
+    /** En development/test permite omitir la firma del webhook. */
+    WHATSAPP_SKIP_SIGNATURE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    /** Si true, nunca llama a Graph API (marca outbound como sent simulado). */
+    WHATSAPP_SIMULATE_SEND: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== "production") {

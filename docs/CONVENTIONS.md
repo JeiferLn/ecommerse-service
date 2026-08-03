@@ -80,7 +80,7 @@ Reglas al añadir endpoints:
 2. Si cualquier miembro autenticado de la empresa puede: sin `@Roles` (solo JWT).
 3. Si solo algunos roles: `@Roles("owner")` o `@Roles("owner", "manager")` según la matriz.
 4. En el front, preferir `canEditCompany(role)` / `canManageMembers(role)` en lugar de comparar strings a mano.
-5. Revisar la matriz al entrar en Fase 5 (WhatsApp). Catálogo y dashboard ya aplican `manageCatalog` / `viewCatalog` / `viewDashboard`.
+5. Revisar la matriz al entrar en nuevas fases. Catálogo, dashboard y WhatsApp ya aplican `manageCatalog` / `viewCatalog` / `viewDashboard` / `manageWhatsapp` / `viewWhatsapp`.
 
 ### Sesión y registro
 
@@ -137,6 +137,16 @@ Reglas al añadir endpoints:
   - **Plataforma** (`/admin`): solo rol global `admin`. Stats: `GET /api/v1/admin/stats`. KPIs globales + series de altas 30 días + empresas recientes.
 - Capacidad `viewDashboard` en la matriz de empresa; el staff `admin` no usa capacidades de tenant.
 - Post-login: `admin` → `/admin`; resto → `/dashboard`. El middleware de Next verifica el JWT (`JWT_SECRET` server-only) y redirige por rol (`/admin` ↔ `/dashboard`).
+
+## WhatsApp (Fase 5)
+
+- **Arquitectura:** 1 App Meta de plataforma + 1 `WhatsAppConnection` por empresa (`phoneNumberId` único → tenant). Credenciales por empresa en DB (no en `.env` global). Env de plataforma: `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_GRAPH_API_VERSION`, `WHATSAPP_AUTO_REPLY_*`, `WHATSAPP_SKIP_SIGNATURE`, `WHATSAPP_SIMULATE_SEND`.
+- **Webhook único:** `GET/POST /api/v1/whatsapp/webhook` (`@Public()`). Meta verifica con `hub.verify_token`; POST valida `X-Hub-Signature-256` salvo `WHATSAPP_SKIP_SIGNATURE=true` fuera de production. El tenant se resuelve por `metadata.phone_number_id`.
+- **Simulación sin Meta:** `POST /api/v1/whatsapp/webhook/simulate` (`@Roles("owner","manager")`) inyecta el mismo flujo de ingestión. Envíos: `WhatsAppCloudClient` no llama a Graph si `WHATSAPP_SIMULATE_SEND=true` o el token es dummy/`test-`.
+- **Inbox:** conversaciones/mensajes aislados por `companyId`. Auto-reply fijo (sin IA; Fase 6).
+- **Secretos:** el GET de conexión solo expone `accessTokenMasked`; nunca el token completo.
+- **Capacidades:** `canManageWhatsapp` / `canViewWhatsapp`. Admin UI: `/dashboard/whatsapp`, `/dashboard/whatsapp/inbox`.
+- Fuera de alcance: Embedded Signup / Tech Provider, plantillas, App Review, e2e real Graph.
 
 ## Seguridad operativa
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { canViewMembers, type UserRole } from "@commerce-ai/types";
+import { canViewMembers, canViewWhatsapp, type UserRole } from "@commerce-ai/types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderTree, LayoutDashboard, Package, Settings, Users } from "lucide-react";
+import { FolderTree, LayoutDashboard, MessageCircle, Package, Settings, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
@@ -33,6 +33,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Categorías",
     icon: FolderTree,
     visible: (role) => role !== "admin",
+  },
+  {
+    href: "/dashboard/whatsapp",
+    label: "WhatsApp",
+    icon: MessageCircle,
+    visible: (role) => Boolean(role && role !== "admin" && canViewWhatsapp(role)),
   },
   {
     href: "/dashboard/members",

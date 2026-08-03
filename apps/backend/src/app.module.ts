@@ -13,6 +13,7 @@ import { MailModule } from "./mail/mail.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProductsModule } from "./products/products.module";
 import { StorageModule } from "./storage/storage.module";
+import { WhatsAppModule } from "./whatsapp/whatsapp.module";
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { StorageModule } from "./storage/storage.module";
     CategoriesModule,
     ProductsModule,
     DashboardModule,
+    WhatsAppModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

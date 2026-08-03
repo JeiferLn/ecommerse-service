@@ -52,6 +52,8 @@ model Company {
   invitations   Invitation[]
   categories    Category[]
   products      Product[]
+  whatsappConnection WhatsAppConnection?
+  conversations Conversation[]
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 }
@@ -186,4 +188,63 @@ model ProductImage {
   createdAt DateTime @default(now())
 
   @@index([productId])
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageStatus {
+  received
+  sent
+  failed
+}
+
+model WhatsAppConnection {
+  id                 String         @id @default(cuid())
+  companyId          String         @unique
+  company            Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  phoneNumberId      String         @unique
+  wabaId             String?
+  displayPhoneNumber String?
+  accessToken        String
+  isActive           Boolean        @default(true)
+  conversations      Conversation[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}
+
+model Conversation {
+  id             String             @id @default(cuid())
+  companyId      String
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  waConnectionId String
+  waConnection   WhatsAppConnection @relation(fields: [waConnectionId], references: [id], onDelete: Cascade)
+  customerWaId   String
+  customerName  String?
+  lastMessageAt  DateTime           @default(now())
+  messages       Message[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([waConnectionId, customerWaId])
+  @@index([companyId])
+  @@index([companyId, lastMessageAt])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      MessageDirection
+  wamid          String?
+  type           String           @default("text")
+  body           String
+  status         MessageStatus?
+  rawPayload     Json?
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([wamid])
 }

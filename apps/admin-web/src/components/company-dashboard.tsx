@@ -132,7 +132,7 @@ export function CompanyDashboard() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {["Ventas", "Pedidos", "Clientes", "Conversaciones"].map((kpi) => (
+            {["Ventas", "Pedidos", "Clientes"].map((kpi) => (
               <Card
                 key={kpi}
                 className="border-border/70 bg-card/50 opacity-80 shadow-brand-sm backdrop-blur-sm"
@@ -142,10 +142,24 @@ export function CompanyDashboard() {
                 </CardHeader>
                 <CardContent>
                   <p className="font-heading text-3xl font-bold tracking-tight">—</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Próximamente (Fases 5 / 8)</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Próximamente (Fase 8)</p>
                 </CardContent>
               </Card>
             ))}
+            <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardDescription>Conversaciones</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="font-heading text-3xl font-bold tracking-tight">WhatsApp</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Inbox y simulación en{" "}
+                  <Link href="/dashboard/whatsapp" className="underline underline-offset-4">
+                    /dashboard/whatsapp
+                  </Link>
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
