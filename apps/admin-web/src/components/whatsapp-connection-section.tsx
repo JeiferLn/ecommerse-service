@@ -2,11 +2,12 @@
 
 import {
   canManageWhatsapp,
+  type CompanyDetails,
   type WhatsAppConnection,
 } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, MessageSquareText, Trash2 } from "lucide-react";
+import { ExternalLink, MessageSquareText, Trash2, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -51,6 +52,12 @@ export function WhatsAppConnectionSection() {
     queryKey: ["whatsapp-connection", user?.companyId],
     queryFn: () => apiFetch<WhatsAppConnection | null>("/whatsapp/connection"),
     enabled: Boolean(user?.companyId && canManage),
+  });
+
+  const { data: company } = useQuery({
+    queryKey: ["company", user?.companyId],
+    queryFn: () => apiFetch<CompanyDetails>("/company"),
+    enabled: Boolean(user?.companyId),
   });
 
   const {
@@ -176,6 +183,25 @@ export function WhatsAppConnectionSection() {
 
   return (
     <div className="flex flex-col gap-6">
+      {company && !company.commerce.isConfigured && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-3">
+            <Truck className="mt-0.5 size-5 shrink-0 text-amber-800 dark:text-amber-200" aria-hidden />
+            <div>
+              <p className="text-sm font-medium text-amber-950 dark:text-amber-50">
+                Configura envíos y pagos
+              </p>
+              <p className="text-sm text-amber-900/80 dark:text-amber-100/80">
+                Sin país, transportadoras y métodos de pago, el bot no puede cerrar una venta solo.
+              </p>
+            </div>
+          </div>
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link href="/dashboard/settings#envios-y-pagos">Ir a configuración</Link>
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <Button asChild variant="outline">
           <Link href="/dashboard/whatsapp/inbox">
@@ -303,7 +329,8 @@ export function WhatsAppConnectionSection() {
           <CardTitle>Simular mensaje entrante</CardTitle>
           <CardDescription>
             Inyecta un mensaje sintético sin Meta. Requiere conexión guardada. Genera conversación,
-            mensaje inbound y auto-reply.
+            mensaje inbound y auto-reply (con IA si el backend tiene `AI_ENABLED=true` y
+            `OPENROUTER_API_KEY`, usando el catálogo activo).
           </CardDescription>
         </CardHeader>
         <CardContent>

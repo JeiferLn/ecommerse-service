@@ -165,6 +165,81 @@ export const COMPANY_TYPE_LABELS: Record<CompanyType, string> = {
 
 export const COMPANY_TYPES: CompanyType[] = Object.keys(COMPANY_TYPE_LABELS) as CompanyType[];
 
+export type ShippingScope = "local" | "national" | "international";
+
+export const SHIPPING_SCOPES: ShippingScope[] = ["local", "national", "international"];
+
+export const SHIPPING_SCOPE_LABELS: Record<ShippingScope, string> = {
+  local: "Local / misma ciudad",
+  national: "Nacional",
+  international: "Internacional",
+};
+
+export type PaymentMethod = "debit_card" | "credit_card" | "bank_transfer";
+
+export const PAYMENT_METHODS: PaymentMethod[] = ["debit_card", "credit_card", "bank_transfer"];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  debit_card: "Tarjeta débito",
+  credit_card: "Tarjeta crédito",
+  bank_transfer: "Transferencia bancaria",
+};
+
+export const COMPANY_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = [
+  { code: "CO", name: "Colombia" },
+  { code: "MX", name: "México" },
+  { code: "AR", name: "Argentina" },
+  { code: "CL", name: "Chile" },
+  { code: "PE", name: "Perú" },
+  { code: "EC", name: "Ecuador" },
+  { code: "VE", name: "Venezuela" },
+  { code: "UY", name: "Uruguay" },
+  { code: "PY", name: "Paraguay" },
+  { code: "BO", name: "Bolivia" },
+  { code: "CR", name: "Costa Rica" },
+  { code: "PA", name: "Panamá" },
+  { code: "GT", name: "Guatemala" },
+  { code: "HN", name: "Honduras" },
+  { code: "SV", name: "El Salvador" },
+  { code: "NI", name: "Nicaragua" },
+  { code: "DO", name: "República Dominicana" },
+  { code: "US", name: "Estados Unidos" },
+  { code: "ES", name: "España" },
+  { code: "BR", name: "Brasil" },
+];
+
+export interface CompanyCommerceSettings {
+  countryCode: string | null;
+  shippingScopes: ShippingScope[];
+  paymentMethods: PaymentMethod[];
+  shippingCarriers: string[];
+  banks: string[];
+  /** true si hay país, al menos un alcance de envío, transportadoras, pagos y bancos si aplica transferencia */
+  isConfigured: boolean;
+}
+
+export function isCompanyCommerceConfigured(settings: {
+  countryCode: string | null;
+  shippingScopes: readonly string[];
+  paymentMethods: readonly string[];
+  shippingCarriers: readonly string[];
+  banks: readonly string[];
+}): boolean {
+  if (!settings.countryCode?.trim()) {
+    return false;
+  }
+  if (settings.shippingScopes.length === 0 || settings.shippingCarriers.length === 0) {
+    return false;
+  }
+  if (settings.paymentMethods.length === 0) {
+    return false;
+  }
+  if (settings.paymentMethods.includes("bank_transfer") && settings.banks.length === 0) {
+    return false;
+  }
+  return true;
+}
+
 export interface CompanySummary {
   id: string;
   name: string;
@@ -181,6 +256,7 @@ export interface CompanyDetails {
   website: string | null;
   address: string | null;
   description: string | null;
+  commerce: CompanyCommerceSettings;
   createdAt: string;
 }
 
@@ -356,6 +432,14 @@ export type MessageDirection = "inbound" | "outbound";
 
 export type MessageStatus = "received" | "sent" | "failed";
 
+export type ConversationHandler = "pending" | "bot" | "human";
+
+export const CONVERSATION_HANDLER_LABELS: Record<ConversationHandler, string> = {
+  pending: "Sin elegir",
+  bot: "Bot",
+  human: "Asesor",
+};
+
 export interface WhatsAppConnection {
   id: string;
   companyId: string;
@@ -375,6 +459,7 @@ export interface ConversationSummary {
   companyId: string;
   customerWaId: string;
   customerName: string | null;
+  handler: ConversationHandler;
   lastMessageAt: string;
   lastMessagePreview: string | null;
   createdAt: string;

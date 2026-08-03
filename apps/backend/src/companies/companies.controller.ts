@@ -31,6 +31,7 @@ import { CompaniesService } from "./companies.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { SwitchCompanyDto } from "./dto/switch-company.dto";
+import { UpdateCompanyCommerceDto } from "./dto/update-company-commerce.dto";
 import { UpdateCompanyDto } from "./dto/update-company.dto";
 import { UpdateMemberRoleDto } from "./dto/update-member-role.dto";
 
@@ -72,6 +73,19 @@ export class CompaniesController {
       status: "success",
       data: await this.companiesService.updateCompany(user.companyId, dto),
       message: "Empresa actualizada",
+    };
+  }
+
+  @Roles("owner")
+  @Patch("commerce")
+  async updateCommerce(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateCompanyCommerceDto,
+  ): Promise<ApiResponse<CompanyDetails>> {
+    return {
+      status: "success",
+      data: await this.companiesService.updateCommerceSettings(user.companyId, dto),
+      message: "Envíos y pagos actualizados",
     };
   }
 

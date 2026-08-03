@@ -11,8 +11,11 @@ import type {
   CompanyInvitation,
   CompanyMember,
   InviteResult,
+  PaymentMethod,
   RemoveMemberResult,
+  ShippingScope,
 } from "@commerce-ai/types";
+import { isCompanyCommerceConfigured } from "@commerce-ai/types";
 import type { Company } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
@@ -20,7 +23,25 @@ import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
+import { UpdateCompanyCommerceDto } from "./dto/update-company-commerce.dto";
 import { UpdateCompanyDto } from "./dto/update-company.dto";
+
+const COMPANY_DETAILS_SELECT = {
+  id: true,
+  name: true,
+  type: true,
+  phone: true,
+  contactEmail: true,
+  website: true,
+  address: true,
+  description: true,
+  countryCode: true,
+  shippingScopes: true,
+  paymentMethods: true,
+  shippingCarriers: true,
+  banks: true,
+  createdAt: true,
+} as const;
 
 @Injectable()
 export class CompaniesService {
@@ -57,17 +78,7 @@ export class CompaniesService {
 
     const company = await this.prisma.company.findUnique({
       where: { id: companyId },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        phone: true,
-        contactEmail: true,
-        website: true,
-        address: true,
-        description: true,
-        createdAt: true,
-      },
+      select: COMPANY_DETAILS_SELECT,
     });
 
     if (!company) {
@@ -105,17 +116,53 @@ export class CompaniesService {
         address: this.nullableText(dto.address),
         description: this.nullableText(dto.description),
       },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        phone: true,
-        contactEmail: true,
-        website: true,
-        address: true,
-        description: true,
-        createdAt: true,
+      select: COMPANY_DETAILS_SELECT,
+    });
+
+    return this.toCompanyDetails(company);
+  }
+
+  async updateCommerceSettings(
+    companyId: string | null,
+    dto: UpdateCompanyCommerceDto,
+  ): Promise<CompanyDetails> {
+    if (!companyId) {
+      throw new BadRequestException("No perteneces a una empresa");
+    }
+
+    const existing = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    const shippingCarriers = this.normalizeStringList(dto.shippingCarriers);
+    const banks = this.normalizeStringList(dto.banks);
+    const paymentMethods = dto.paymentMethods;
+
+    if (paymentMethods.includes("bank_transfer") && banks.length === 0) {
+      throw new BadRequestException(
+        "Si aceptas transferencia, indica al menos un banco o medio (Nequi, Bancolombia, etc.)",
+      );
+    }
+    if (dto.shippingScopes.length > 0 && shippingCarriers.length === 0) {
+      throw new BadRequestException(
+        "Indica al menos una empresa de transporte / transportadora",
+      );
+    }
+
+    const company = await this.prisma.company.update({
+      where: { id: companyId },
+      data: {
+        countryCode: dto.countryCode?.trim() ? dto.countryCode.trim().toUpperCase() : null,
+        shippingScopes: dto.shippingScopes,
+        paymentMethods,
+        shippingCarriers,
+        banks,
       },
+      select: COMPANY_DETAILS_SELECT,
     });
 
     return this.toCompanyDetails(company);
@@ -129,6 +176,24 @@ export class CompaniesService {
     return trimmed.length > 0 ? trimmed : null;
   }
 
+  private normalizeStringList(values: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const value of values) {
+      const trimmed = value.trim().replace(/\s+/g, " ");
+      if (!trimmed) {
+        continue;
+      }
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(trimmed);
+    }
+    return result;
+  }
+
   private toCompanyDetails(company: {
     id: string;
     name: string;
@@ -138,8 +203,15 @@ export class CompaniesService {
     website: string | null;
     address: string | null;
     description: string | null;
+    countryCode: string | null;
+    shippingScopes: string[];
+    paymentMethods: string[];
+    shippingCarriers: string[];
+    banks: string[];
     createdAt: Date;
   }): CompanyDetails {
+    const shippingScopes = company.shippingScopes as ShippingScope[];
+    const paymentMethods = company.paymentMethods as PaymentMethod[];
     return {
       id: company.id,
       name: company.name,
@@ -149,6 +221,20 @@ export class CompaniesService {
       website: company.website,
       address: company.address,
       description: company.description,
+      commerce: {
+        countryCode: company.countryCode,
+        shippingScopes,
+        paymentMethods,
+        shippingCarriers: company.shippingCarriers,
+        banks: company.banks,
+        isConfigured: isCompanyCommerceConfigured({
+          countryCode: company.countryCode,
+          shippingScopes,
+          paymentMethods,
+          shippingCarriers: company.shippingCarriers,
+          banks: company.banks,
+        }),
+      },
       createdAt: company.createdAt.toISOString(),
     };
   }

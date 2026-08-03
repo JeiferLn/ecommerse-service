@@ -10,6 +10,8 @@ import type { Prisma } from "@prisma/client";
 
 import type { Env } from "../config/env.validation";
 import { PrismaService } from "../prisma/prisma.service";
+import { AiReplyService } from "../ai/ai-reply.service";
+import { detectsBotChoice, detectsHumanRequest } from "./conversation-handler";
 import { WhatsAppCloudClient } from "./whatsapp-cloud.client";
 
 interface CloudContact {
@@ -50,6 +52,7 @@ export class WhatsAppWebhookService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
     private readonly cloudClient: WhatsAppCloudClient,
+    private readonly aiReplyService: AiReplyService,
   ) {}
 
   verifyChallenge(mode?: string, token?: string, challenge?: string): string {
@@ -157,7 +160,7 @@ export class WhatsAppWebhookService {
       throw new BadRequestException("Configura una conexión WhatsApp activa primero");
     }
 
-    const result = await this.ingestInbound({
+    return this.ingestInbound({
       phoneNumberId: connection.phoneNumberId,
       from: input.from.trim(),
       text: input.text.trim(),
@@ -165,8 +168,6 @@ export class WhatsAppWebhookService {
       wamid: `wamid.sim.in.${Date.now()}`,
       rawPayload: { simulated: true, from: input.from, text: input.text },
     });
-
-    return result;
   }
 
   /** Expone la lógica de ingestión para tests unitarios. */
@@ -196,6 +197,7 @@ export class WhatsAppWebhookService {
         waConnectionId: connection.id,
         customerWaId: input.from,
         customerName: input.customerName ?? null,
+        handler: "pending",
         lastMessageAt: now,
       },
       update: {
@@ -216,7 +218,7 @@ export class WhatsAppWebhookService {
       },
     });
 
-    await this.maybeAutoReply(connection, conversation.id, input.from);
+    await this.maybeAutoReply(connection, conversation.id, input.from, input.text);
 
     return { conversationId: conversation.id, messageId: inbound.id };
   }
@@ -255,13 +257,76 @@ export class WhatsAppWebhookService {
     },
     conversationId: string,
     customerWaId: string,
+    customerText: string,
   ): Promise<void> {
     const enabled = this.config.get("WHATSAPP_AUTO_REPLY_ENABLED", { infer: true });
     if (!enabled) {
       return;
     }
 
-    const text = this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true });
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { handler: true },
+    });
+    if (!conversation) {
+      return;
+    }
+
+    let text: string | null = null;
+    let nextHandler: "pending" | "bot" | "human" | null = null;
+
+    if (conversation.handler === "human") {
+      // Cliente pide volver al bot; el asesor también puede reactivarlo desde el inbox.
+      if (!detectsBotChoice(customerText)) {
+        return;
+      }
+      nextHandler = "bot";
+      text = this.config.get("WHATSAPP_HANDLER_BOT_CONFIRM_TEXT", { infer: true });
+    } else if (conversation.handler === "pending") {
+      if (detectsHumanRequest(customerText)) {
+        nextHandler = "human";
+        text = this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true });
+      } else if (detectsBotChoice(customerText)) {
+        nextHandler = "bot";
+        text = this.config.get("WHATSAPP_HANDLER_BOT_CONFIRM_TEXT", { infer: true });
+      } else {
+        text = this.config.get("WHATSAPP_HANDLER_CHOICE_TEXT", { infer: true });
+      }
+    } else if (conversation.handler === "bot") {
+      if (detectsHumanRequest(customerText)) {
+        nextHandler = "human";
+        text = this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true });
+      } else {
+        const aiEnabled = this.config.get("AI_ENABLED", { infer: true });
+        if (aiEnabled) {
+          const reply = await this.aiReplyService.generateReply({
+            companyId: connection.companyId,
+            conversationId,
+            customerText,
+          });
+          if (reply.requestedHandoff) {
+            nextHandler = "human";
+            text = this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true });
+          } else {
+            text = reply.text;
+          }
+        } else {
+          text = this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true });
+        }
+      }
+    }
+
+    if (!text) {
+      return;
+    }
+
+    if (nextHandler) {
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { handler: nextHandler },
+      });
+    }
+
     let sendResult: { simulated: boolean; wamid: string | null };
     let status: "sent" | "failed" = "sent";
 

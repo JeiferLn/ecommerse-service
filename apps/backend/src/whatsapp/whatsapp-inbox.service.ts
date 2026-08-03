@@ -53,6 +53,7 @@ export class WhatsAppInboxService {
         companyId: conversation.companyId,
         customerWaId: conversation.customerWaId,
         customerName: conversation.customerName,
+        handler: conversation.handler,
         lastMessageAt: conversation.lastMessageAt.toISOString(),
         lastMessagePreview: conversation.messages[0]?.body ?? null,
         createdAt: conversation.createdAt.toISOString(),
@@ -127,6 +128,86 @@ export class WhatsAppInboxService {
     });
 
     return this.toMessageDto(message);
+  }
+
+  async deleteConversation(companyId: string | null, conversationId: string): Promise<void> {
+    const conversation = await this.findOwnedConversation(companyId, conversationId);
+    await this.prisma.conversation.delete({ where: { id: conversation.id } });
+  }
+
+  async setHandler(
+    companyId: string | null,
+    conversationId: string,
+    handler: "bot" | "human",
+  ): Promise<ConversationSummary> {
+    const conversation = await this.findOwnedConversation(companyId, conversationId);
+    const updated = await this.prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { handler, lastMessageAt: new Date() },
+      include: {
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { body: true },
+        },
+      },
+    });
+
+    let lastMessagePreview = updated.messages[0]?.body ?? null;
+
+    if (handler === "bot") {
+      const connection = await this.prisma.whatsAppConnection.findUnique({
+        where: { id: conversation.waConnectionId },
+      });
+      if (connection?.isActive) {
+        const text =
+          "Un asesor reactivó el asistente virtual. ¿En qué te puedo ayudar?";
+        let wamid: string | null = null;
+        let status: "sent" | "failed" = "sent";
+        try {
+          const result = await this.cloudClient.sendText({
+            phoneNumberId: connection.phoneNumberId,
+            accessToken: connection.accessToken,
+            to: conversation.customerWaId,
+            text,
+          });
+          wamid = result.wamid;
+        } catch {
+          status = "failed";
+        }
+        await this.prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: "outbound",
+            wamid,
+            type: "text",
+            body: text,
+            status,
+          },
+        });
+        lastMessagePreview = text;
+      }
+    }
+
+    return {
+      id: updated.id,
+      companyId: updated.companyId,
+      customerWaId: updated.customerWaId,
+      customerName: updated.customerName,
+      handler: updated.handler,
+      lastMessageAt: updated.lastMessageAt.toISOString(),
+      lastMessagePreview,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    };
+  }
+
+  async clearAllConversations(companyId: string | null): Promise<number> {
+    const scopedCompanyId = this.requireCompany(companyId);
+    const result = await this.prisma.conversation.deleteMany({
+      where: { companyId: scopedCompanyId },
+    });
+    return result.count;
   }
 
   private async findOwnedConversation(companyId: string | null, conversationId: string) {

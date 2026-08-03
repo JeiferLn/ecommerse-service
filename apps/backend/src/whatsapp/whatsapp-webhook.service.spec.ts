@@ -2,6 +2,7 @@ import { UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 
+import { AiReplyService } from "../ai/ai-reply.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WhatsAppCloudClient } from "./whatsapp-cloud.client";
 import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
@@ -10,10 +11,11 @@ describe("WhatsAppWebhookService", () => {
   let service: WhatsAppWebhookService;
   let prisma: {
     whatsAppConnection: { findUnique: jest.Mock };
-    conversation: { upsert: jest.Mock; update: jest.Mock };
+    conversation: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
     message: { create: jest.Mock; updateMany: jest.Mock };
   };
   let cloudClient: { sendText: jest.Mock };
+  let aiReplyService: { generateReply: jest.Mock };
   let configValues: Record<string, unknown>;
 
   beforeEach(async () => {
@@ -24,15 +26,22 @@ describe("WhatsAppWebhookService", () => {
       NODE_ENV: "test",
       WHATSAPP_AUTO_REPLY_ENABLED: true,
       WHATSAPP_AUTO_REPLY_TEXT: "Auto reply",
+      AI_ENABLED: false,
+      WHATSAPP_HANDLER_CHOICE_TEXT: "¿Bot o asesor?",
+      WHATSAPP_HANDLER_BOT_CONFIRM_TEXT: "Ok bot",
+      WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT: "Ok asesor",
     };
 
     prisma = {
       whatsAppConnection: { findUnique: jest.fn() },
-      conversation: { upsert: jest.fn(), update: jest.fn() },
+      conversation: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
       message: { create: jest.fn(), updateMany: jest.fn() },
     };
     cloudClient = {
       sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "wamid.out.1" }),
+    };
+    aiReplyService = {
+      generateReply: jest.fn().mockResolvedValue({ text: "Respuesta IA", requestedHandoff: false }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -46,6 +55,7 @@ describe("WhatsAppWebhookService", () => {
           },
         },
         { provide: WhatsAppCloudClient, useValue: cloudClient },
+        { provide: AiReplyService, useValue: aiReplyService },
       ],
     }).compile();
 
@@ -62,7 +72,7 @@ describe("WhatsAppWebhookService", () => {
     );
   });
 
-  it("aísla ingestión por phoneNumberId / companyId", async () => {
+  it("en pending pregunta bot o asesor", async () => {
     prisma.whatsAppConnection.findUnique.mockResolvedValue({
       id: "conn-1",
       companyId: "company-a",
@@ -73,84 +83,85 @@ describe("WhatsAppWebhookService", () => {
     prisma.conversation.upsert.mockResolvedValue({
       id: "conv-1",
       companyId: "company-a",
-      waConnectionId: "conn-1",
-      customerWaId: "573001112233",
+      handler: "pending",
     });
+    prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
     prisma.message.create
       .mockResolvedValueOnce({ id: "msg-in-1" })
       .mockResolvedValueOnce({ id: "msg-out-1" });
     prisma.conversation.update.mockResolvedValue({});
 
-    const result = await service.ingestInbound({
+    await service.ingestInbound({
       phoneNumberId: "phone-a",
-      from: "573001112233",
+      from: "57300",
       text: "Hola",
-      customerName: "Cliente",
-      wamid: "wamid.in.1",
     });
 
-    expect(prisma.whatsAppConnection.findUnique).toHaveBeenCalledWith({
-      where: { phoneNumberId: "phone-a" },
-    });
-    expect(prisma.conversation.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          companyId: "company-a",
-          customerWaId: "573001112233",
-        }),
-      }),
+    expect(cloudClient.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "¿Bot o asesor?" }),
     );
-    expect(result).toEqual({ conversationId: "conv-1", messageId: "msg-in-1" });
-    expect(cloudClient.sendText).toHaveBeenCalled();
-    expect(prisma.message.create).toHaveBeenCalledTimes(2);
+    expect(aiReplyService.generateReply).not.toHaveBeenCalled();
   });
 
-  it("parsea payload Cloud API y procesa mensajes de texto", async () => {
+  it("al elegir bot confirma y no llama IA todavía", async () => {
     prisma.whatsAppConnection.findUnique.mockResolvedValue({
       id: "conn-1",
       companyId: "company-a",
-      phoneNumberId: "pnid-1",
-      accessToken: "dummy",
+      phoneNumberId: "phone-a",
+      accessToken: "dummy-token",
       isActive: true,
     });
-    prisma.conversation.upsert.mockResolvedValue({ id: "conv-1" });
+    prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "pending" });
+    prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
     prisma.message.create
-      .mockResolvedValueOnce({ id: "msg-1" })
-      .mockResolvedValueOnce({ id: "msg-2" });
+      .mockResolvedValueOnce({ id: "msg-in-1" })
+      .mockResolvedValueOnce({ id: "msg-out-1" });
     prisma.conversation.update.mockResolvedValue({});
 
-    const processed = await service.handleWebhookPayload({
-      object: "whatsapp_business_account",
-      entry: [
-        {
-          changes: [
-            {
-              value: {
-                metadata: { phone_number_id: "pnid-1" },
-                contacts: [{ wa_id: "57300", profile: { name: "Ana" } }],
-                messages: [
-                  {
-                    id: "wamid.1",
-                    from: "57300",
-                    type: "text",
-                    text: { body: "¿Tienen stock?" },
-                  },
-                ],
-              },
-            },
-          ],
-        },
-      ],
+    await service.ingestInbound({
+      phoneNumberId: "phone-a",
+      from: "57300",
+      text: "bot",
     });
 
-    expect(processed.processed).toBe(1);
-    expect(prisma.message.create).toHaveBeenCalledWith(
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          direction: "inbound",
-          body: "¿Tienen stock?",
-        }),
+        data: expect.objectContaining({ handler: "bot" }),
       }),
+    );
+    expect(cloudClient.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: "Ok bot" }));
+  });
+
+  it("en modo bot con mención asesor pasa a human", async () => {
+    configValues.AI_ENABLED = true;
+    prisma.whatsAppConnection.findUnique.mockResolvedValue({
+      id: "conn-1",
+      companyId: "company-a",
+      phoneNumberId: "phone-a",
+      accessToken: "dummy-token",
+      isActive: true,
+    });
+    prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "bot" });
+    prisma.conversation.findUnique.mockResolvedValue({ handler: "bot" });
+    prisma.message.create
+      .mockResolvedValueOnce({ id: "msg-in-1" })
+      .mockResolvedValueOnce({ id: "msg-out-1" });
+    prisma.conversation.update.mockResolvedValue({});
+
+    await service.ingestInbound({
+      phoneNumberId: "phone-a",
+      from: "57300",
+      text: "quiero un asesor",
+    });
+
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ handler: "human" }),
+      }),
+    );
+    expect(aiReplyService.generateReply).not.toHaveBeenCalled();
+    expect(cloudClient.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Ok asesor" }),
     );
   });
 

@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
+import { AiModule } from "./ai/ai.module";
 import { AuthModule } from "./auth/auth.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { CompaniesModule } from "./companies/companies.module";
@@ -37,6 +38,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
     CategoriesModule,
     ProductsModule,
     DashboardModule,
+    AiModule,
     WhatsAppModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

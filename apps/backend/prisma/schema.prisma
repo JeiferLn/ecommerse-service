@@ -46,6 +46,14 @@ model Company {
   website       String?
   address       String?
   description   String?
+  /// ISO 3166-1 alpha-2 (ej. CO, MX)
+  countryCode      String?
+  /// local | national | international
+  shippingScopes   String[] @default([])
+  /// debit_card | credit_card | bank_transfer
+  paymentMethods   String[] @default([])
+  shippingCarriers String[] @default([])
+  banks            String[] @default([])
   ownerId       String                @unique
   owner         User                  @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   memberships   CompanyMembership[]
@@ -201,6 +209,12 @@ enum MessageStatus {
   failed
 }
 
+enum ConversationHandler {
+  pending
+  bot
+  human
+}
+
 model WhatsAppConnection {
   id                 String         @id @default(cuid())
   companyId          String         @unique
@@ -216,21 +230,23 @@ model WhatsAppConnection {
 }
 
 model Conversation {
-  id             String             @id @default(cuid())
+  id             String               @id @default(cuid())
   companyId      String
-  company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   waConnectionId String
-  waConnection   WhatsAppConnection @relation(fields: [waConnectionId], references: [id], onDelete: Cascade)
+  waConnection   WhatsAppConnection   @relation(fields: [waConnectionId], references: [id], onDelete: Cascade)
   customerWaId   String
   customerName  String?
-  lastMessageAt  DateTime           @default(now())
+  handler        ConversationHandler  @default(pending)
+  lastMessageAt  DateTime             @default(now())
   messages       Message[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@unique([waConnectionId, customerWaId])
   @@index([companyId])
   @@index([companyId, lastMessageAt])
+  @@index([companyId, handler])
 }
 
 model Message {

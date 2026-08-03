@@ -2,12 +2,13 @@
 
 import {
   canManageWhatsapp,
+  CONVERSATION_HANDLER_LABELS,
   type ConversationSummary,
   type PaginatedResponse,
   type WhatsAppMessage,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Bot, Eraser, RotateCcw, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -36,14 +37,16 @@ export function WhatsAppInboxSection() {
     enabled: Boolean(user?.companyId),
   });
 
-  const {
-    data: messages,
-    isLoading: messagesLoading,
-  } = useQuery({
+  const { data: messages, isLoading: messagesLoading } = useQuery({
     queryKey: ["whatsapp-messages", selectedId],
     queryFn: () => apiFetch<WhatsAppMessage[]>(`/whatsapp/conversations/${selectedId}/messages`),
     enabled: Boolean(selectedId),
   });
+
+  const invalidateInbox = () => {
+    void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversations"] });
+    void queryClient.invalidateQueries({ queryKey: ["whatsapp-messages"] });
+  };
 
   const sendMutation = useMutation({
     mutationFn: (text: string) =>
@@ -53,21 +56,75 @@ export function WhatsAppInboxSection() {
       }),
     onSuccess: () => {
       setDraft("");
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-messages", selectedId] });
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversations"] });
+      invalidateInbox();
+    },
+  });
+
+  const handlerMutation = useMutation({
+    mutationFn: (handler: "bot" | "human") =>
+      apiFetch<ConversationSummary>(`/whatsapp/conversations/${selectedId}/handler`, {
+        method: "PATCH",
+        body: JSON.stringify({ handler }),
+      }),
+    onSuccess: () => {
+      invalidateInbox();
+    },
+  });
+
+  const resetChatMutation = useMutation({
+    mutationFn: (conversationId: string) =>
+      apiFetch<null>(`/whatsapp/conversations/${conversationId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setSelectedId(null);
+      setDraft("");
+      invalidateInbox();
+    },
+  });
+
+  const clearAllMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ deleted: number }>("/whatsapp/conversations", { method: "DELETE" }),
+    onSuccess: () => {
+      setSelectedId(null);
+      setDraft("");
+      invalidateInbox();
     },
   });
 
   const selected = conversations?.items.find((item) => item.id === selectedId) ?? null;
+  const isResetting = resetChatMutation.isPending || clearAllMutation.isPending;
+  const isHandlerBusy = handlerMutation.isPending;
 
   return (
     <div className="flex flex-col gap-4">
-      <Button asChild variant="ghost" className="w-fit px-0">
-        <Link href="/dashboard/whatsapp">
-          <ArrowLeft className="size-4" aria-hidden />
-          Conexión WhatsApp
-        </Link>
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button asChild variant="ghost" className="w-fit px-0">
+          <Link href="/dashboard/whatsapp">
+            <ArrowLeft className="size-4" aria-hidden />
+            Conexión WhatsApp
+          </Link>
+        </Button>
+        {canManage && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isResetting || !conversations?.items.length}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "¿Borrar todas las conversaciones del inbox? Útil para empezar casos de prueba desde cero.",
+                )
+              ) {
+                clearAllMutation.mutate();
+              }
+            }}
+          >
+            <Eraser className="size-4" aria-hidden />
+            {clearAllMutation.isPending ? "Limpiando…" : "Limpiar inbox"}
+          </Button>
+        )}
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <Card className="overflow-hidden">
@@ -106,6 +163,7 @@ export function WhatsAppInboxSection() {
                       {conversation.customerName || conversation.customerWaId}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
+                      {CONVERSATION_HANDLER_LABELS[conversation.handler]} ·{" "}
                       {conversation.lastMessagePreview || "Sin mensajes"}
                     </span>
                   </button>
@@ -117,14 +175,66 @@ export function WhatsAppInboxSection() {
 
         <Card className="flex min-h-112 flex-col">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              {selected
-                ? selected.customerName || selected.customerWaId
-                : "Selecciona una conversación"}
-            </CardTitle>
-            {selected && (
-              <CardDescription>{selected.customerWaId}</CardDescription>
-            )}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle className="text-base">
+                  {selected
+                    ? selected.customerName || selected.customerWaId
+                    : "Selecciona una conversación"}
+                </CardTitle>
+                {selected && (
+                  <CardDescription>
+                    {selected.customerWaId} · {CONVERSATION_HANDLER_LABELS[selected.handler]}
+                  </CardDescription>
+                )}
+              </div>
+              {selectedId && canManage && (
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  {selected?.handler === "human" && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={isResetting || isHandlerBusy}
+                      onClick={() => handlerMutation.mutate("bot")}
+                    >
+                      <Bot className="size-4" aria-hidden />
+                      {handlerMutation.isPending ? "Activando…" : "Activar bot"}
+                    </Button>
+                  )}
+                  {selected?.handler === "bot" && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={isResetting || isHandlerBusy}
+                      onClick={() => handlerMutation.mutate("human")}
+                    >
+                      <UserRound className="size-4" aria-hidden />
+                      {handlerMutation.isPending ? "Asignando…" : "Tomar chat"}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isResetting}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "¿Resetear este chat? Se borrará el historial y la próxima simulación empezará de cero.",
+                        )
+                      ) {
+                        resetChatMutation.mutate(selectedId);
+                      }
+                    }}
+                  >
+                    <RotateCcw className="size-4" aria-hidden />
+                    {resetChatMutation.isPending ? "Reseteando…" : "Resetear chat"}
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-3">
             {!selectedId && (
@@ -194,11 +304,19 @@ export function WhatsAppInboxSection() {
                 Solo owner/manager pueden enviar respuestas manuales.
               </p>
             )}
-            {sendMutation.isError && (
+            {(sendMutation.isError ||
+              handlerMutation.isError ||
+              resetChatMutation.isError ||
+              clearAllMutation.isError) && (
               <p className="text-sm text-destructive">
-                {sendMutation.error instanceof ApiClientError
-                  ? sendMutation.error.message
-                  : "No se pudo enviar"}
+                {(sendMutation.error instanceof ApiClientError && sendMutation.error.message) ||
+                  (handlerMutation.error instanceof ApiClientError &&
+                    handlerMutation.error.message) ||
+                  (resetChatMutation.error instanceof ApiClientError &&
+                    resetChatMutation.error.message) ||
+                  (clearAllMutation.error instanceof ApiClientError &&
+                    clearAllMutation.error.message) ||
+                  "No se pudo completar la acción"}
               </p>
             )}
           </CardContent>

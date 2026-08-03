@@ -300,7 +300,7 @@ Incluye (implementado):
 - CRUD de conexión por empresa (`/whatsapp/connection`) con token enmascarado en GET
 - Inbox: listar conversaciones, hilo y envío manual de texto
 - `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin Graph API
-- Auto-reply fijo configurable (`WHATSAPP_AUTO_REPLY_*`) — sin IA (Fase 6)
+- Auto-reply fijo configurable (`WHATSAPP_AUTO_REPLY_*`); con `AI_ENABLED=true` responde la IA (Fase 6)
 - Admin: `/dashboard/whatsapp` (conexión + simular) e `/dashboard/whatsapp/inbox`
 
 Pendiente hasta credenciales Meta reales:
@@ -316,18 +316,46 @@ Cómo probar sin Meta:
 
 ---
 
-# Fase 6 — Inteligencia Artificial
+# Fase 6 — Inteligencia Artificial ✅ (prototipo cerrado)
+
+**Estado:** cerrada como **prototipo / demo**. No es production-ready.
 
 Objetivo:
 
-Responder preguntas sobre productos.
+Responder preguntas sobre productos del catálogo activo vía WhatsApp (simulate o webhook).
 
-Incluye:
+Incluye (implementado):
 
-- Integración OpenAI
-- Contexto de productos
-- Respuestas inteligentes
-- Búsquedas
+- Módulo `ai/` con `AiChatProvider` (OpenRouter + mock)
+- Contexto de productos `active` por empresa + historial corto del hilo
+- Enganche en auto-reply de WhatsApp cuando `AI_ENABLED=true`
+- Fallback fijo (`AI_FALLBACK_TEXT`) si la IA falla, basura/CoT, o pide humano (`[HANDOFF]`)
+- Routing bot / asesor (`pending` → `bot` | `human`) + reactivación desde inbox
+- Envíos y pagos configurables en `/dashboard/settings` (país, alcance, transportadoras, métodos, bancos) inyectados al prompt
+- Tests unitarios de provider, catálogo y reply
+
+Configuración (development / demo):
+
+1. Key en [openrouter.ai](https://openrouter.ai) → `OPENROUTER_API_KEY` en `apps/backend/.env`
+2. Modelo típico de demo: `AI_MODEL=openrouter/free` (variable; calidad no garantizada)
+3. Productos **activos** + (recomendado) envíos/pagos en Configuración
+4. Simular mensaje en `/dashboard/whatsapp` y ver la respuesta en el inbox
+
+Sin key: `AI_PROVIDER=mock` o `AI_ENABLED=false` (vuelve al texto fijo de Fase 5).
+
+Alcance del prototipo (aceptado a propósito):
+
+- Demo con simulate + modelo free; el tono/precisión pueden fallar
+- Sin entrenamiento fino ni evaluación sistemática de calidad
+- Sin WhatsApp Cloud real ni App Review
+
+Pendiente para producción (futuro, fuera del cierre de esta fase):
+
+- Modelo de pago estable en OpenRouter (o proveedor dedicado) + key de prod
+- Credenciales Meta reales (Callback URL, firma, Graph) — ver Fase 5 pendiente
+- Mejoras de prompt / evaluación; RAG (Fase 7) y pedidos (Fase 8)
+
+Fuera de alcance de Fase 6: RAG/documentos (Fase 7), settings de IA por empresa, streaming.
 
 ---
 

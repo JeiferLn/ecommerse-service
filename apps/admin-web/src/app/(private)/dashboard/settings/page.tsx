@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { CompanyCommerceSettingsForm } from "@/components/company-commerce-settings-form";
 import { CompanySettingsForm } from "@/components/company-settings-form";
 
 export const metadata: Metadata = {
@@ -13,9 +14,12 @@ export default function SettingsPage() {
         <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
           Configuración
         </h1>
-        <p className="text-muted-foreground">Administra los datos de tu empresa activa.</p>
+        <p className="text-muted-foreground">
+          Administra el perfil de tu empresa y cómo cobra y envía el bot.
+        </p>
       </div>
       <CompanySettingsForm />
+      <CompanyCommerceSettingsForm />
     </div>
   );
 }

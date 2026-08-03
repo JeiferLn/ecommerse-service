@@ -14,7 +14,8 @@ export default function WhatsAppInboxPage() {
           Inbox WhatsApp
         </h1>
         <p className="text-muted-foreground">
-          Conversaciones de la empresa activa. Responde manualmente o usa la simulación de entrada.
+          Conversaciones de la empresa activa. El auto-reply usa IA (OpenRouter) sobre el catálogo
+          activo si está configurado en el backend; también puedes responder manualmente.
         </p>
       </div>
       <WhatsAppInboxSection />

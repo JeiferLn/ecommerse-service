@@ -231,15 +231,19 @@ export function ProductEditor({ productId }: ProductEditorProps) {
         });
 
         for (const pending of pendingImagesRef.current) {
-          const formData = new FormData();
-          formData.append("file", pending.file);
-          await apiFetch(`/products/${created.id}/images`, {
-            method: "POST",
-            body: formData,
-          });
+          try {
+            const formData = new FormData();
+            formData.append("file", pending.file);
+            await apiFetch(`/products/${created.id}/images`, {
+              method: "POST",
+              body: formData,
+            });
+          } catch {
+            // El producto ya existe; no bloquear la salida de /new por un fallo de imagen
+          }
         }
 
-        return apiFetch<ProductDetails>(`/products/${created.id}`);
+        return created;
       }
 
       await apiFetch<ProductDetails>(`/products/${productId}`, {
@@ -295,23 +299,24 @@ export function ProductEditor({ productId }: ProductEditorProps) {
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["product", saved.id] });
       if (isNew) {
-        router.replace(`/dashboard/products/${saved.id}`);
-      } else {
-        reset({
-          name: saved.name,
-          description: saved.description ?? "",
-          categoryId: saved.categoryId ?? "",
-          status: saved.status,
-          variants: saved.variants.map((variant) => ({
-            id: variant.id,
-            sku: variant.sku,
-            name: variant.name,
-            price: variant.price,
-            compareAtPrice: variant.compareAtPrice ?? "",
-            stock: variant.stock,
-          })),
-        });
+        router.replace("/dashboard/products");
+        router.refresh();
+        return;
       }
+      reset({
+        name: saved.name,
+        description: saved.description ?? "",
+        categoryId: saved.categoryId ?? "",
+        status: saved.status,
+        variants: saved.variants.map((variant) => ({
+          id: variant.id,
+          sku: variant.sku,
+          name: variant.name,
+          price: variant.price,
+          compareAtPrice: variant.compareAtPrice ?? "",
+          stock: variant.stock,
+        })),
+      });
     },
     onError: (error: unknown) => {
       setMessage(error instanceof ApiClientError ? error.message : "No se pudo guardar");

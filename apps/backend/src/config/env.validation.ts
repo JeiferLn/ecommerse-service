@@ -68,8 +68,53 @@ const envSchema = z
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
+    /** Responder inbound con IA (OpenRouter) en lugar del texto fijo. */
+    AI_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
+    AI_PROVIDER: z.enum(["openrouter", "openai", "mock"]).default("openrouter"),
+    OPENROUTER_API_KEY: z.string().optional(),
+    AI_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
+    AI_MODEL: z.string().default("openrouter/free"),
+    AI_MAX_PRODUCTS: z.coerce.number().int().positive().default(25),
+    AI_HISTORY_LIMIT: z.coerce.number().int().positive().default(8),
+    AI_FALLBACK_TEXT: z
+      .string()
+      .default(
+        "Gracias por tu mensaje. En un momento un asesor de la tienda te atenderá por aquí.",
+      ),
+    AI_HTTP_REFERER: z.string().optional(),
+    AI_APP_TITLE: z.string().default("Commerce AI SaaS"),
+    WHATSAPP_HANDLER_CHOICE_TEXT: z
+      .string()
+      .default(
+        "¡Hola! ¿Prefieres que te atienda el asistente virtual (bot) o un asesor de la tienda? Responde \"bot\" o \"asesor\".",
+      ),
+    WHATSAPP_HANDLER_BOT_CONFIRM_TEXT: z
+      .string()
+      .default(
+        "Perfecto. Te atiende el asistente virtual. ¿En qué te puedo ayudar?",
+      ),
+    WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT: z
+      .string()
+      .default(
+        "Listo. Un asesor de la tienda continuará esta conversación por aquí.",
+      ),
   })
   .superRefine((env, ctx) => {
+    if (
+      env.AI_ENABLED &&
+      env.AI_PROVIDER === "openrouter" &&
+      env.NODE_ENV === "production" &&
+      !env.OPENROUTER_API_KEY?.trim()
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["OPENROUTER_API_KEY"],
+        message: "En production con AI_ENABLED y openrouter se requiere OPENROUTER_API_KEY",
+      });
+    }
     if (env.NODE_ENV !== "production") {
       return;
     }
