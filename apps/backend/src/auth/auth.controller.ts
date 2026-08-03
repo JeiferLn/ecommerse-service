@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Throttle } from "@nestjs/throttler";
 import type { ApiResponse, AuthUser, InvitationInfo } from "@commerce-ai/types";
 import type { Request, Response } from "express";
 
@@ -16,6 +17,9 @@ import { RegisterDto } from "./dto/register.dto";
 import { RegisterInvitedDto } from "./dto/register-invited.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 
+/** Límite estricto para endpoints públicos sensibles (por IP / minuto). */
+const AUTH_THROTTLE = { default: { limit: 10, ttl: 60_000 } } as const;
+
 @Controller("auth")
 export class AuthController {
   constructor(
@@ -24,6 +28,7 @@ export class AuthController {
   ) {}
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post("register")
   async register(
     @Body() dto: RegisterDto,
@@ -35,6 +40,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post("register-invited")
   async registerInvited(
     @Body() dto: RegisterInvitedDto,
@@ -67,6 +73,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(HttpStatus.OK)
   @Post("login")
   async login(
@@ -91,6 +98,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(HttpStatus.OK)
   @Post("forgot-password")
   async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<ApiResponse<null>> {
@@ -104,6 +112,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(HttpStatus.OK)
   @Post("reset-password")
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<ApiResponse<null>> {

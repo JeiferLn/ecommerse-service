@@ -15,9 +15,11 @@ export async function createApp(): Promise<NestExpressApplication> {
     .split(",")
     .map((origin) => origin.trim());
 
-  const uploadDir = process.env.LOCAL_UPLOAD_DIR?.trim() || join(process.cwd(), "uploads");
-  await mkdir(uploadDir, { recursive: true });
-  app.useStaticAssets(uploadDir, { prefix: "/uploads/" });
+  if (process.env.NODE_ENV !== "production") {
+    const uploadDir = process.env.LOCAL_UPLOAD_DIR?.trim() || join(process.cwd(), "uploads");
+    await mkdir(uploadDir, { recursive: true });
+    app.useStaticAssets(uploadDir, { prefix: "/uploads/" });
+  }
 
   app.setGlobalPrefix("api/v1");
   app.enableCors({ origin: corsOrigins, credentials: true });

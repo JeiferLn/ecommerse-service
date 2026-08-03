@@ -136,7 +136,14 @@ Reglas al añadir endpoints:
   - **Empresa** (`/dashboard`): miembros de tienda (`owner` / `manager` / `user`) con `companyId`. Stats: `GET /api/v1/company/stats`. KPIs reales de catálogo/stock/categorías/miembros; ventas/pedidos/clientes/conversaciones como “Próximamente”.
   - **Plataforma** (`/admin`): solo rol global `admin`. Stats: `GET /api/v1/admin/stats`. KPIs globales + series de altas 30 días + empresas recientes.
 - Capacidad `viewDashboard` en la matriz de empresa; el staff `admin` no usa capacidades de tenant.
-- Post-login: `admin` → `/admin`; resto → `/dashboard`. El layout de `/dashboard` redirige admins a `/admin`.
+- Post-login: `admin` → `/admin`; resto → `/dashboard`. El middleware de Next verifica el JWT (`JWT_SECRET` server-only) y redirige por rol (`/admin` ↔ `/dashboard`).
+
+## Seguridad operativa
+
+- En `production`, `COOKIE_SECURE=true` y `JWT_SECRET` no puede ser el valor `dev-only` del example.
+- Rate limit (`@nestjs/throttler`): 10 req/min en login/register/forgot/reset; 120 req/min global en el resto.
+- Imágenes: validación por magic bytes; en production el upload exige R2 (sin disco local ni `/uploads` estático).
+- `admin-web/.env.example` documenta `NEXT_PUBLIC_API_URL` y `JWT_SECRET` (middleware).
 
 ## IA
 

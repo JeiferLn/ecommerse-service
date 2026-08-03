@@ -404,20 +404,14 @@ Incluye:
 - Auth
 - Users
 - Companies
-- Roles
-- Permissions
-- Products
-- Categories
-- Inventory
-- Customers
-- Conversations
-- Messages
-- AI
-- Documents
-- Orders
-- Payments
-- Billing
-- Subscriptions
+- Roles (matriz `ROLE_CAPABILITIES` en `@commerce-ai/types`; sin tabla Permission)
+- Dashboard (stats empresa + plataforma)
+- Products / Categories / Inventory (stock en variantes)
+- Storage (R2 o local en desarrollo)
+- Customers *(roadmap)*
+- Conversations / Messages *(roadmap)*
+- AI / Documents *(roadmap)*
+- Orders / Payments / Billing / Subscriptions *(roadmap)*
 
 ---
 

@@ -16,6 +16,7 @@ import { Prisma, type ProductStatus } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { detectImageMime } from "../common/detect-image-mime";
 import { StorageService } from "../storage/storage.service";
 import { CreateProductDto, CreateVariantDto } from "./dto/create-product.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
@@ -284,16 +285,19 @@ export class ProductsService {
       throw new BadRequestException("Debes subir una imagen");
     }
 
+    const detectedMime = detectImageMime(file.buffer);
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    if (!allowed.includes(file.mimetype)) {
-      throw new BadRequestException("Formato de imagen no soportado");
+    if (!detectedMime || !allowed.includes(detectedMime)) {
+      throw new BadRequestException(
+        "Formato de imagen no soportado o archivo inválido (se requiere JPEG, PNG, WebP o GIF)",
+      );
     }
 
     const uploaded = await this.storageService.uploadProductImage({
       companyId: scopedCompanyId,
       productId,
       fileName: file.originalname,
-      contentType: file.mimetype,
+      contentType: detectedMime,
       body: file.buffer,
     });
 

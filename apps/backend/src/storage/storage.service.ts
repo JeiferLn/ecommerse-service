@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
@@ -18,7 +18,7 @@ export class StorageService {
   private readonly publicUrl: string | null;
   private readonly localUploadDir: string;
   private readonly apiPublicUrl: string;
-  private readonly mode: "r2" | "local";
+  private readonly mode: "r2" | "local" | "disabled";
 
   constructor(private readonly configService: ConfigService) {
     const accountId = this.configService.get<string>("R2_ACCOUNT_ID");
@@ -27,6 +27,7 @@ export class StorageService {
     const bucket = this.configService.get<string>("R2_BUCKET");
     const publicUrl = this.configService.get<string>("R2_PUBLIC_URL");
     const port = this.configService.get<number>("PORT") ?? 4000;
+    const nodeEnv = this.configService.get<string>("NODE_ENV") ?? "development";
 
     this.localUploadDir =
       this.configService.get<string>("LOCAL_UPLOAD_DIR")?.trim() ||
@@ -49,10 +50,19 @@ export class StorageService {
       return;
     }
 
-    this.mode = "local";
     this.client = null;
     this.bucket = null;
     this.publicUrl = null;
+
+    if (nodeEnv === "production") {
+      this.mode = "disabled";
+      this.logger.error(
+        "R2 no configurado en production: el upload de imágenes estará deshabilitado.",
+      );
+      return;
+    }
+
+    this.mode = "local";
     this.logger.warn(
       `R2 no configurado: usando almacenamiento local en ${this.localUploadDir} (URL pública ${this.apiPublicUrl}/uploads/...).`,
     );
@@ -66,6 +76,10 @@ export class StorageService {
     return this.mode === "r2";
   }
 
+  usesLocalDisk(): boolean {
+    return this.mode === "local";
+  }
+
   async uploadProductImage(params: {
     companyId: string;
     productId: string;
@@ -73,6 +87,12 @@ export class StorageService {
     contentType: string;
     body: Buffer;
   }): Promise<UploadedObject> {
+    if (this.mode === "disabled") {
+      throw new ServiceUnavailableException(
+        "Almacenamiento no disponible en production sin R2. Configura las variables R2_*.",
+      );
+    }
+
     const extension = extname(params.fileName).toLowerCase() || ".bin";
     const key = `companies/${params.companyId}/products/${params.productId}/${randomUUID()}${extension}`;
 
@@ -95,6 +115,10 @@ export class StorageService {
   }
 
   async deleteObject(key: string): Promise<void> {
+    if (this.mode === "disabled") {
+      return;
+    }
+
     if (this.mode === "r2") {
       await this.client!.send(
         new DeleteObjectCommand({
