@@ -85,7 +85,7 @@ export class CompaniesController {
     return {
       status: "success",
       data: await this.companiesService.updateCommerceSettings(user.companyId, dto),
-      message: "Envíos y pagos actualizados",
+      message: "Envíos actualizados",
     };
   }
 

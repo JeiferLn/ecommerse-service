@@ -11,13 +11,15 @@ import type {
 
 import { PrismaService } from "../prisma/prisma.service";
 import { ListConversationsQueryDto } from "./dto/list-conversations-query.dto";
-import { WhatsAppCloudClient } from "./whatsapp-cloud.client";
+import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
+import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 
 @Injectable()
 export class WhatsAppInboxService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cloudClient: WhatsAppCloudClient,
+    private readonly twilioClient: TwilioWhatsAppClient,
+    private readonly connectionService: WhatsAppConnectionService,
   ) {}
 
   async listConversations(
@@ -83,6 +85,7 @@ export class WhatsAppInboxService {
     conversationId: string,
     text: string,
   ): Promise<WhatsAppMessage> {
+    await this.connectionService.assertCommerceConfigured(companyId);
     const conversation = await this.findOwnedConversation(companyId, conversationId);
     const connection = await this.prisma.whatsAppConnection.findUnique({
       where: { id: conversation.waConnectionId },
@@ -100,9 +103,8 @@ export class WhatsAppInboxService {
     let status: "sent" | "failed" = "sent";
 
     try {
-      const result = await this.cloudClient.sendText({
-        phoneNumberId: connection.phoneNumberId,
-        accessToken: connection.accessToken,
+      const result = await this.twilioClient.sendText({
+        from: connection.twilioWhatsAppNumber,
         to: conversation.customerWaId,
         text: body,
       });
@@ -140,6 +142,7 @@ export class WhatsAppInboxService {
     conversationId: string,
     handler: "bot" | "human",
   ): Promise<ConversationSummary> {
+    await this.connectionService.assertCommerceConfigured(companyId);
     const conversation = await this.findOwnedConversation(companyId, conversationId);
     const updated = await this.prisma.conversation.update({
       where: { id: conversation.id },
@@ -165,9 +168,8 @@ export class WhatsAppInboxService {
         let wamid: string | null = null;
         let status: "sent" | "failed" = "sent";
         try {
-          const result = await this.cloudClient.sendText({
-            phoneNumberId: connection.phoneNumberId,
-            accessToken: connection.accessToken,
+          const result = await this.twilioClient.sendText({
+            from: connection.twilioWhatsAppNumber,
             to: conversation.customerWaId,
             text,
           });

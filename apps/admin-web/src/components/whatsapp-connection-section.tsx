@@ -7,7 +7,7 @@ import {
 } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, MessageSquareText, Trash2, Truck } from "lucide-react";
+import { ExternalLink, MessageSquareText, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -20,11 +20,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
+import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
 
 const connectionSchema = z.object({
-  phoneNumberId: z.string().min(1, "Phone Number ID es obligatorio"),
-  accessToken: z.string().optional(),
-  wabaId: z.string().optional(),
+  twilioWhatsAppNumber: z
+    .string()
+    .regex(/^\+[1-9]\d{7,14}$/, "Usa formato E.164 con +: +14155238886"),
   displayPhoneNumber: z.string().optional(),
   isActive: z.boolean(),
 });
@@ -32,7 +33,10 @@ const connectionSchema = z.object({
 type ConnectionValues = z.infer<typeof connectionSchema>;
 
 const simulateSchema = z.object({
-  from: z.string().min(5, "Indica el número del cliente (wa_id)"),
+  from: z
+    .string()
+    .min(8, "Indica el número del cliente en E.164")
+    .regex(/^\+?[1-9]\d{7,14}$/, "Ej. +573001112233"),
   text: z.string().min(1, "Escribe un mensaje"),
   customerName: z.string().optional(),
 });
@@ -54,11 +58,13 @@ export function WhatsAppConnectionSection() {
     enabled: Boolean(user?.companyId && canManage),
   });
 
-  const { data: company } = useQuery({
+  const { data: company, isLoading: companyLoading } = useQuery({
     queryKey: ["company", user?.companyId],
     queryFn: () => apiFetch<CompanyDetails>("/company"),
     enabled: Boolean(user?.companyId),
   });
+
+  const commerceReady = Boolean(company?.commerce.isConfigured);
 
   const {
     register,
@@ -70,9 +76,7 @@ export function WhatsAppConnectionSection() {
   } = useForm<ConnectionValues>({
     resolver: zodResolver(connectionSchema),
     defaultValues: {
-      phoneNumberId: "",
-      accessToken: "",
-      wabaId: "",
+      twilioWhatsAppNumber: "",
       displayPhoneNumber: "",
       isActive: true,
     },
@@ -83,31 +87,22 @@ export function WhatsAppConnectionSection() {
       return;
     }
     reset({
-      phoneNumberId: connection.phoneNumberId,
-      accessToken: "",
-      wabaId: connection.wabaId ?? "",
+      twilioWhatsAppNumber: connection.twilioWhatsAppNumber,
       displayPhoneNumber: connection.displayPhoneNumber ?? "",
       isActive: connection.isActive,
     });
   }, [connection, reset]);
 
   const saveMutation = useMutation({
-    mutationFn: (values: ConnectionValues) => {
-      const token = values.accessToken?.trim();
-      if (!connection && !token) {
-        throw new ApiClientError(400, "Access Token es obligatorio al crear la conexión");
-      }
-      return apiFetch<WhatsAppConnection>("/whatsapp/connection", {
+    mutationFn: (values: ConnectionValues) =>
+      apiFetch<WhatsAppConnection>("/whatsapp/connection", {
         method: "PUT",
         body: JSON.stringify({
-          phoneNumberId: values.phoneNumberId.trim(),
-          ...(token ? { accessToken: token } : {}),
-          wabaId: values.wabaId?.trim() || undefined,
+          twilioWhatsAppNumber: values.twilioWhatsAppNumber.trim(),
           displayPhoneNumber: values.displayPhoneNumber?.trim() || undefined,
           isActive: values.isActive,
         }),
-      });
-    },
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["whatsapp-connection"] });
     },
@@ -117,9 +112,7 @@ export function WhatsAppConnectionSection() {
     mutationFn: () => apiFetch<null>("/whatsapp/connection", { method: "DELETE" }),
     onSuccess: () => {
       reset({
-        phoneNumberId: "",
-        accessToken: "",
-        wabaId: "",
+        twilioWhatsAppNumber: "",
         displayPhoneNumber: "",
         isActive: true,
       });
@@ -131,7 +124,7 @@ export function WhatsAppConnectionSection() {
   const simulateForm = useForm<SimulateValues>({
     resolver: zodResolver(simulateSchema),
     defaultValues: {
-      from: "573001112233",
+      from: "+573001112233",
       text: "Hola, ¿tienen este producto?",
       customerName: "Cliente demo",
     },
@@ -167,7 +160,7 @@ export function WhatsAppConnectionSection() {
     );
   }
 
-  if (isLoading) {
+  if (isLoading || companyLoading) {
     return <p className="text-sm text-muted-foreground">Cargando conexión…</p>;
   }
 
@@ -179,29 +172,14 @@ export function WhatsAppConnectionSection() {
     );
   }
 
+  if (!commerceReady) {
+    return <WhatsAppCommerceRequiredGate />;
+  }
+
   const isActive = watch("isActive");
 
   return (
     <div className="flex flex-col gap-6">
-      {company && !company.commerce.isConfigured && (
-        <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex gap-3">
-            <Truck className="mt-0.5 size-5 shrink-0 text-amber-800 dark:text-amber-200" aria-hidden />
-            <div>
-              <p className="text-sm font-medium text-amber-950 dark:text-amber-50">
-                Configura envíos y pagos
-              </p>
-              <p className="text-sm text-amber-900/80 dark:text-amber-100/80">
-                Sin país, transportadoras y métodos de pago, el bot no puede cerrar una venta solo.
-              </p>
-            </div>
-          </div>
-          <Button asChild variant="outline" size="sm" className="shrink-0">
-            <Link href="/dashboard/settings#envios-y-pagos">Ir a configuración</Link>
-          </Button>
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-3">
         <Button asChild variant="outline">
           <Link href="/dashboard/whatsapp/inbox">
@@ -224,10 +202,10 @@ export function WhatsAppConnectionSection() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Conexión Cloud API</CardTitle>
+          <CardTitle>Conexión Twilio WhatsApp</CardTitle>
           <CardDescription>
-            Pega el Phone Number ID y el token de acceso de Meta para esta empresa. Una App Meta de
-            plataforma; una conexión por empresa.
+            Account SID y Auth Token van en el backend (`.env` de plataforma). Aquí solo vinculas el
+            número WhatsApp de Twilio de esta empresa (sandbox o sender aprobado).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -236,45 +214,27 @@ export function WhatsAppConnectionSection() {
             onSubmit={handleSubmit((values) => saveMutation.mutate(values))}
           >
             <div className="flex flex-col gap-2">
-              <Label htmlFor="wa-phone-number-id">Phone Number ID</Label>
+              <Label htmlFor="wa-twilio-number">Número WhatsApp (E.164)</Label>
               <Input
-                id="wa-phone-number-id"
-                placeholder="test-phone-1"
-                {...register("phoneNumberId")}
+                id="wa-twilio-number"
+                placeholder="+14155238886"
+                {...register("twilioWhatsAppNumber")}
               />
-              {errors.phoneNumberId && (
-                <p className="text-sm text-destructive">{errors.phoneNumberId.message}</p>
+              <p className="text-xs text-muted-foreground">
+                Sandbox típico: +14155238886. Sin prefijo <code>whatsapp:</code>.
+              </p>
+              {errors.twilioWhatsAppNumber && (
+                <p className="text-sm text-destructive">{errors.twilioWhatsAppNumber.message}</p>
               )}
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="wa-token">Access Token</Label>
+              <Label htmlFor="wa-display">Número visible (opcional, wa.me)</Label>
               <Input
-                id="wa-token"
-                type="password"
-                autoComplete="off"
-                placeholder={
-                  connection
-                    ? `Actual: ${connection.accessTokenMasked} (vacío = conservar)`
-                    : "EAA… o dummy-token"
-                }
-                {...register("accessToken")}
+                id="wa-display"
+                placeholder="+57 300 111 2233"
+                {...register("displayPhoneNumber")}
               />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="wa-display">Número visible (wa.me)</Label>
-                <Input
-                  id="wa-display"
-                  placeholder="+57 300 111 2233"
-                  {...register("displayPhoneNumber")}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="wa-waba">WABA ID (opcional)</Label>
-                <Input id="wa-waba" placeholder="…" {...register("wabaId")} />
-              </div>
             </div>
 
             <label className="inline-flex items-center gap-2 text-sm">
@@ -301,7 +261,10 @@ export function WhatsAppConnectionSection() {
             )}
 
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={saveMutation.isPending || (!isDirty && Boolean(connection))}>
+              <Button
+                type="submit"
+                disabled={saveMutation.isPending || (!isDirty && Boolean(connection))}
+              >
                 {saveMutation.isPending ? "Guardando…" : "Guardar conexión"}
               </Button>
               {connection && (
@@ -328,9 +291,8 @@ export function WhatsAppConnectionSection() {
         <CardHeader>
           <CardTitle>Simular mensaje entrante</CardTitle>
           <CardDescription>
-            Inyecta un mensaje sintético sin Meta. Requiere conexión guardada. Genera conversación,
-            mensaje inbound y auto-reply (con IA si el backend tiene `AI_ENABLED=true` y
-            `OPENROUTER_API_KEY`, usando el catálogo activo).
+            Inyecta un mensaje sintético sin Twilio. Requiere conexión guardada. Genera conversación,
+            mensaje inbound y auto-reply (con IA si el backend tiene `AI_ENABLED=true`).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -340,8 +302,8 @@ export function WhatsAppConnectionSection() {
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="sim-from">Cliente (wa_id)</Label>
-                <Input id="sim-from" {...simulateForm.register("from")} />
+                <Label htmlFor="sim-from">Cliente (E.164)</Label>
+                <Input id="sim-from" placeholder="+573001112233" {...simulateForm.register("from")} />
                 {simulateForm.formState.errors.from && (
                   <p className="text-sm text-destructive">
                     {simulateForm.formState.errors.from.message}

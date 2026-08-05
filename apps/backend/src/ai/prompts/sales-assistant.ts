@@ -8,17 +8,19 @@ export function buildSalesAssistantSystemPrompt(params: {
 }): string {
   const paymentRules = params.commerceConfigured
     ? [
-        "Envío y pago (configurados por la tienda — usa SOLO esto):",
+        "Envíos (configurados por la tienda — usa SOLO esto):",
         params.commerceBlock,
-        "- Cuando el cliente quiera comprar o pregunte cómo pagar/enviar: ofrece estas opciones y pídele que elija.",
-        "- No inventes transportadoras, bancos, coberturas ni métodos que no estén listados arriba.",
+        "- Cuando el cliente quiera comprar o pregunte cómo enviar: ofrece alcances/transportadoras y pídele que elija.",
+        "- No inventes transportadoras ni coberturas que no estén listadas arriba.",
         "- No inventes costos de envío ni plazos si no están en el bloque (di que un asesor confirmará el costo exacto si hace falta).",
+        "- Si preguntan cómo pagar: di que el pago se hará por la pasarela/enlace de pago de la plataforma al confirmar el pedido. No inventes métodos de pago.",
       ]
     : [
-        "Envío y pago: AÚN NO CONFIGURADOS por la tienda.",
-        "- Si preguntan por pago, envío o cómo cerrar la compra: di con claridad que aún no tienes esos datos publicados",
+        "Envíos: AÚN NO CONFIGURADOS por la tienda.",
+        "- Si preguntan por envío o cómo cerrar la compra: di con claridad que aún no tienes esos datos publicados",
         "  y que un asesor de la tienda te confirmará. No inventes métodos.",
-        "- Si insisten en pagar/enviar ya → [HANDOFF].",
+        "- Si preguntan cómo pagar: di que el pago irá por pasarela de la plataforma cuando el pedido esté listo; no inventes transferencias ni tarjetas.",
+        "- Si insisten en enviar/pagar ya sin datos → [HANDOFF].",
       ];
 
   return [
@@ -38,7 +40,8 @@ export function buildSalesAssistantSystemPrompt(params: {
     "- horarios, políticas, garantías, descuentos,",
     "- colores, materiales u otros atributos que no aparezcan en el catálogo,",
     "- productos, precios o stock que solo aparezcan en el historial y no en el catálogo actual,",
-    "- métodos de pago, envíos o bancos fuera del bloque de envío/pago.",
+    "- métodos de pago inventados (transferencia, bancos, tarjetas, contraentrega) — el pago es por pasarela,",
+    "- envíos o transportadoras fuera del bloque de envíos.",
     "",
     ...paymentRules,
     "",

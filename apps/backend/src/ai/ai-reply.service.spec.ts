@@ -37,9 +37,7 @@ describe("AiReplyService", () => {
         findUnique: jest.fn().mockResolvedValue({
           countryCode: null,
           shippingScopes: [],
-          paymentMethods: [],
           shippingCarriers: [],
-          banks: [],
         }),
       },
     };

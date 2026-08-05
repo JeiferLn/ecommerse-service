@@ -1,18 +1,14 @@
 import {
   COMPANY_COUNTRIES,
   isCompanyCommerceConfigured,
-  PAYMENT_METHOD_LABELS,
   SHIPPING_SCOPE_LABELS,
-  type PaymentMethod,
   type ShippingScope,
 } from "@commerce-ai/types";
 
 export function formatCommercePromptBlock(company: {
   countryCode: string | null;
   shippingScopes: string[];
-  paymentMethods: string[];
   shippingCarriers: string[];
-  banks: string[];
 }): { configured: boolean; block: string } {
   const configured = isCompanyCommerceConfigured(company);
   if (!configured) {
@@ -26,9 +22,6 @@ export function formatCommercePromptBlock(company: {
   const scopes = company.shippingScopes
     .map((scope) => SHIPPING_SCOPE_LABELS[scope as ShippingScope] ?? scope)
     .join(", ");
-  const payments = company.paymentMethods
-    .map((method) => PAYMENT_METHOD_LABELS[method as PaymentMethod] ?? method)
-    .join(", ");
 
   return {
     configured: true,
@@ -36,12 +29,7 @@ export function formatCommercePromptBlock(company: {
       `- País de la tienda: ${countryName}`,
       `- Alcance de envíos: ${scopes}`,
       `- Transportadoras: ${company.shippingCarriers.join(", ")}`,
-      `- Métodos de pago: ${payments}`,
-      company.banks.length > 0
-        ? `- Bancos / medios para transferencia: ${company.banks.join(", ")}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+      "- Pago: se procesa por pasarela de la plataforma (no ofrezcas transferencias, tarjetas ni contraentrega como métodos de la tienda).",
+    ].join("\n"),
   };
 }

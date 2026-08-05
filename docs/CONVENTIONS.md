@@ -138,15 +138,15 @@ Reglas al añadir endpoints:
 - Capacidad `viewDashboard` en la matriz de empresa; el staff `admin` no usa capacidades de tenant.
 - Post-login: `admin` → `/admin`; resto → `/dashboard`. El middleware de Next verifica el JWT (`JWT_SECRET` server-only) y redirige por rol (`/admin` ↔ `/dashboard`).
 
-## WhatsApp (Fase 5)
+## WhatsApp (Fase 5 — Twilio)
 
-- **Arquitectura:** 1 App Meta de plataforma + 1 `WhatsAppConnection` por empresa (`phoneNumberId` único → tenant). Credenciales por empresa en DB (no en `.env` global). Env de plataforma: `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_GRAPH_API_VERSION`, `WHATSAPP_AUTO_REPLY_*`, `WHATSAPP_SKIP_SIGNATURE`, `WHATSAPP_SIMULATE_SEND`.
-- **Webhook único:** `GET/POST /api/v1/whatsapp/webhook` (`@Public()`). Meta verifica con `hub.verify_token`; POST valida `X-Hub-Signature-256` salvo `WHATSAPP_SKIP_SIGNATURE=true` fuera de production. El tenant se resuelve por `metadata.phone_number_id`.
-- **Simulación sin Meta:** `POST /api/v1/whatsapp/webhook/simulate` (`@Roles("owner","manager")`) inyecta el mismo flujo de ingestión. Envíos: `WhatsAppCloudClient` no llama a Graph si `WHATSAPP_SIMULATE_SEND=true` o el token es dummy/`test-`.
+- **Arquitectura:** 1 cuenta Twilio de plataforma (`TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` en `.env`) + 1 `WhatsAppConnection` por empresa (`twilioWhatsAppNumber` E.164 único → tenant).
+- **Webhook único:** `POST /api/v1/whatsapp/webhook` (`@Public()`), body form-urlencoded. Valida `X-Twilio-Signature` salvo `TWILIO_SKIP_SIGNATURE=true` fuera de production (requiere `TWILIO_WEBHOOK_URL`). El tenant se resuelve por `To`.
+- **Envío:** `TwilioWhatsAppClient` → Messages API; no llama a Twilio si `WHATSAPP_SIMULATE_SEND=true` o SID/token dummy/`test-`.
+- **Simulación:** `POST /api/v1/whatsapp/webhook/simulate` (`@Roles("owner","manager")`) inyecta el mismo flujo de ingestión.
 - **Inbox:** conversaciones/mensajes aislados por `companyId`. Auto-reply fijo o IA (Fase 6) según `AI_ENABLED`. Handler `pending` | `bot` | `human`.
-- **Secretos:** el GET de conexión solo expone `accessTokenMasked`; nunca el token completo.
 - **Capacidades:** `canManageWhatsapp` / `canViewWhatsapp`. Admin UI: `/dashboard/whatsapp`, `/dashboard/whatsapp/inbox`.
-- Fuera de alcance: Embedded Signup / Tech Provider, plantillas, App Review, e2e real Graph.
+- Fuera de alcance inmediato: subcuentas Twilio por empresa, plantillas HSM, media.
 
 ## Seguridad operativa
 
@@ -161,9 +161,9 @@ Reglas al añadir endpoints:
 - Proveedor por defecto **OpenRouter** (`AI_PROVIDER=openrouter`) vía HTTP compatible con chat completions. `AI_PROVIDER=mock` para tests.
 - Env: `AI_ENABLED`, `OPENROUTER_API_KEY`, `AI_BASE_URL`, `AI_MODEL` (demo típico `openrouter/free`), `AI_MAX_PRODUCTS`, `AI_HISTORY_LIMIT`, `AI_FALLBACK_TEXT`, `AI_HTTP_REFERER`, `AI_APP_TITLE`.
 - Flujo: inbound WhatsApp → routing handler → `AiReplyService` (catálogo `active` + historial + bloque envíos/pagos de la empresa) → outbound. Si falla / basura / `[HANDOFF]` / sin productos: `AI_FALLBACK_TEXT` y el hilo queda en el inbox.
-- Comercio: país, alcances, transportadoras, métodos de pago y bancos en `Company` (UI Configuración); si no están configurados, el prompt prohíbe inventar y empuja a asesor.
+- Comercio: país, alcances y transportadoras en `Company` (UI Configuración). El pago será por pasarela (Fase 9); si envíos no están configurados, WhatsApp queda bloqueado.
 - Prompts en `src/ai/prompts/` separados del servicio.
-- **Prod (futuro):** modelo de pago + key real, Meta Cloud real; no asumir calidad del modelo free.
+- **Prod (futuro):** modelo de pago + key real, Twilio WhatsApp real; no asumir calidad del modelo free.
 - Sin RAG/pgvector aún (Fase 7). Sin UI de settings de IA por empresa.
 
 ## Variables de entorno

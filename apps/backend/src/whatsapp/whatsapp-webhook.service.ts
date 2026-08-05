@@ -12,31 +12,13 @@ import type { Env } from "../config/env.validation";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiReplyService } from "../ai/ai-reply.service";
 import { detectsBotChoice, detectsHumanRequest } from "./conversation-handler";
-import { WhatsAppCloudClient } from "./whatsapp-cloud.client";
-
-interface CloudContact {
-  wa_id?: string;
-  profile?: { name?: string };
-}
-
-interface CloudTextMessage {
-  id?: string;
-  from?: string;
-  type?: string;
-  text?: { body?: string };
-  timestamp?: string;
-}
-
-interface CloudChangeValue {
-  messaging_product?: string;
-  metadata?: { phone_number_id?: string; display_phone_number?: string };
-  contacts?: CloudContact[];
-  messages?: CloudTextMessage[];
-  statuses?: Array<{ id?: string; status?: string }>;
-}
+import { normalizeWhatsAppE164 } from "./phone.util";
+import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
+import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 
 export interface InboundMessageInput {
-  phoneNumberId: string;
+  /** Número Twilio de la empresa (E.164), usado para resolver tenant. */
+  twilioWhatsAppNumber: string;
   from: string;
   text: string;
   customerName?: string | null;
@@ -51,98 +33,96 @@ export class WhatsAppWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
-    private readonly cloudClient: WhatsAppCloudClient,
+    private readonly twilioClient: TwilioWhatsAppClient,
     private readonly aiReplyService: AiReplyService,
+    private readonly connectionService: WhatsAppConnectionService,
   ) {}
 
-  verifyChallenge(mode?: string, token?: string, challenge?: string): string {
-    const expected = this.config.get("WHATSAPP_VERIFY_TOKEN", { infer: true });
-    if (mode !== "subscribe" || !expected || token !== expected || !challenge) {
-      throw new UnauthorizedException("Verificación de webhook rechazada");
-    }
-    return challenge;
-  }
-
-  assertSignature(rawBody: Buffer | undefined, signatureHeader: string | undefined): void {
-    const skip = this.config.get("WHATSAPP_SKIP_SIGNATURE", { infer: true });
-    const secret = this.config.get("WHATSAPP_APP_SECRET", { infer: true });
+  /**
+   * Valida X-Twilio-Signature. Requiere TWILIO_WEBHOOK_URL (URL pública exacta)
+   * salvo TWILIO_SKIP_SIGNATURE en non-production.
+   */
+  assertTwilioSignature(
+    signatureHeader: string | undefined,
+    params: Record<string, string>,
+  ): void {
+    const skip = this.config.get("TWILIO_SKIP_SIGNATURE", { infer: true });
     const nodeEnv = this.config.get("NODE_ENV", { infer: true });
 
     if (skip && nodeEnv !== "production") {
       return;
     }
 
-    if (!secret) {
-      throw new UnauthorizedException("WHATSAPP_APP_SECRET no configurado");
+    const authToken = this.config.get("TWILIO_AUTH_TOKEN", { infer: true })?.trim();
+    const webhookUrl = this.config.get("TWILIO_WEBHOOK_URL", { infer: true })?.trim();
+
+    if (!authToken) {
+      throw new UnauthorizedException("TWILIO_AUTH_TOKEN no configurado");
     }
-    if (!rawBody || !signatureHeader?.startsWith("sha256=")) {
-      throw new UnauthorizedException("Firma de webhook inválida");
+    if (!webhookUrl) {
+      throw new UnauthorizedException("TWILIO_WEBHOOK_URL no configurado");
+    }
+    if (!signatureHeader) {
+      throw new UnauthorizedException("Firma de webhook Twilio ausente");
     }
 
-    const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
-    const provided = signatureHeader.slice("sha256=".length);
+    const data = Object.keys(params)
+      .sort()
+      .reduce((acc, key) => acc + key + params[key], webhookUrl);
+    const expected = createHmac("sha1", authToken).update(Buffer.from(data, "utf8")).digest("base64");
+
     const expectedBuf = Buffer.from(expected, "utf8");
-    const providedBuf = Buffer.from(provided, "utf8");
-
+    const providedBuf = Buffer.from(signatureHeader, "utf8");
     if (
       expectedBuf.length !== providedBuf.length ||
       !timingSafeEqual(expectedBuf, providedBuf)
     ) {
-      throw new UnauthorizedException("Firma de webhook inválida");
+      throw new UnauthorizedException("Firma de webhook Twilio inválida");
     }
   }
 
-  async handleWebhookPayload(payload: unknown): Promise<{ processed: number }> {
-    const body = payload as {
-      object?: string;
-      entry?: Array<{
-        changes?: Array<{ value?: CloudChangeValue; field?: string }>;
-      }>;
-    };
+  async handleTwilioWebhook(params: Record<string, string>): Promise<{ processed: number }> {
+    const messageSid = params.MessageSid || params.SmsSid || null;
+    const status = params.MessageStatus || params.SmsStatus;
 
-    if (body.object !== "whatsapp_business_account" || !Array.isArray(body.entry)) {
+    // Status callback (sin Body): actualizar mensaje existente.
+    if (status && messageSid && !params.Body) {
+      await this.applyStatus(messageSid, status);
       return { processed: 0 };
     }
 
-    let processed = 0;
+    const fromRaw = params.From;
+    const toRaw = params.To;
+    const body = params.Body?.trim();
 
-    for (const entry of body.entry) {
-      for (const change of entry.changes ?? []) {
-        const value = change.value;
-        if (!value) {
-          continue;
-        }
-
-        const phoneNumberId = value.metadata?.phone_number_id;
-        if (!phoneNumberId) {
-          continue;
-        }
-
-        if (Array.isArray(value.statuses) && value.statuses.length > 0) {
-          await this.applyStatuses(value.statuses);
-        }
-
-        const messages = value.messages ?? [];
-        for (const message of messages) {
-          if (message.type !== "text" || !message.from || !message.text?.body) {
-            continue;
-          }
-          const contactName =
-            value.contacts?.find((c) => c.wa_id === message.from)?.profile?.name ?? null;
-          await this.ingestInbound({
-            phoneNumberId,
-            from: message.from,
-            text: message.text.body,
-            customerName: contactName,
-            wamid: message.id ?? null,
-            rawPayload: message as Prisma.InputJsonValue,
-          });
-          processed += 1;
-        }
-      }
+    if (!fromRaw || !toRaw || !body) {
+      // Puede ser un evento que no nos interesa.
+      return { processed: 0 };
     }
 
-    return { processed };
+    const twilioWhatsAppNumber = normalizeWhatsAppE164(toRaw);
+    const from = normalizeWhatsAppE164(fromRaw);
+    if (!twilioWhatsAppNumber || !from) {
+      this.logger.warn(`Twilio webhook con números inválidos To=${toRaw} From=${fromRaw}`);
+      return { processed: 0 };
+    }
+
+    try {
+      await this.ingestInbound({
+        twilioWhatsAppNumber,
+        from,
+        text: body,
+        customerName: params.ProfileName?.trim() || null,
+        wamid: messageSid,
+        rawPayload: params as unknown as Prisma.InputJsonValue,
+      });
+    } catch (error) {
+      // Twilio reintenta 4xx/5xx; si falta comercio o conexión, acusamos recibo sin procesar.
+      this.logger.warn(`Twilio inbound no procesado: ${String(error)}`);
+      return { processed: 0 };
+    }
+
+    return { processed: 1 };
   }
 
   async simulateInbound(
@@ -153,6 +133,8 @@ export class WhatsAppWebhookService {
       throw new BadRequestException("No perteneces a una empresa");
     }
 
+    await this.connectionService.assertCommerceConfigured(companyId);
+
     const connection = await this.prisma.whatsAppConnection.findUnique({
       where: { companyId },
     });
@@ -160,12 +142,17 @@ export class WhatsAppWebhookService {
       throw new BadRequestException("Configura una conexión WhatsApp activa primero");
     }
 
+    const from = normalizeWhatsAppE164(input.from);
+    if (!from) {
+      throw new BadRequestException("Número del cliente inválido (usa E.164, ej. +573001112233)");
+    }
+
     return this.ingestInbound({
-      phoneNumberId: connection.phoneNumberId,
-      from: input.from.trim(),
+      twilioWhatsAppNumber: connection.twilioWhatsAppNumber,
+      from,
       text: input.text.trim(),
       customerName: input.customerName?.trim() || null,
-      wamid: `wamid.sim.in.${Date.now()}`,
+      wamid: `SM_sim_in_${Date.now()}`,
       rawPayload: { simulated: true, from: input.from, text: input.text },
     });
   }
@@ -176,12 +163,25 @@ export class WhatsAppWebhookService {
     messageId: string;
   }> {
     const connection = await this.prisma.whatsAppConnection.findUnique({
-      where: { phoneNumberId: input.phoneNumberId },
+      where: { twilioWhatsAppNumber: input.twilioWhatsAppNumber },
     });
 
     if (!connection || !connection.isActive) {
-      this.logger.warn(`No active WhatsApp connection for phoneNumberId=${input.phoneNumberId}`);
+      this.logger.warn(
+        `No active WhatsApp connection for twilioWhatsAppNumber=${input.twilioWhatsAppNumber}`,
+      );
       throw new BadRequestException("Conexión WhatsApp no encontrada o inactiva");
+    }
+
+    try {
+      await this.connectionService.assertCommerceConfigured(connection.companyId);
+    } catch {
+      this.logger.warn(
+        `Inbound ignorado: empresa ${connection.companyId} sin envíos configurados`,
+      );
+      throw new BadRequestException(
+        "Configura envíos (país, cobertura y transportadoras) en Configuración antes de usar WhatsApp. Solo el dueño de la empresa puede hacerlo.",
+      );
     }
 
     const now = new Date();
@@ -223,37 +223,32 @@ export class WhatsAppWebhookService {
     return { conversationId: conversation.id, messageId: inbound.id };
   }
 
-  private async applyStatuses(
-    statuses: Array<{ id?: string; status?: string }>,
-  ): Promise<void> {
-    for (const status of statuses) {
-      if (!status.id || !status.status) {
-        continue;
-      }
-      const mapped =
-        status.status === "failed"
-          ? "failed"
-          : status.status === "sent" ||
-              status.status === "delivered" ||
-              status.status === "read"
-            ? "sent"
-            : null;
-      if (!mapped) {
-        continue;
-      }
-      await this.prisma.message.updateMany({
-        where: { wamid: status.id },
-        data: { status: mapped },
-      });
+  private async applyStatus(messageSid: string, status: string): Promise<void> {
+    const mapped =
+      status === "failed" || status === "undelivered"
+        ? "failed"
+        : status === "sent" ||
+            status === "delivered" ||
+            status === "read" ||
+            status === "queued" ||
+            status === "sending" ||
+            status === "received"
+          ? "sent"
+          : null;
+    if (!mapped) {
+      return;
     }
+    await this.prisma.message.updateMany({
+      where: { wamid: messageSid },
+      data: { status: mapped },
+    });
   }
 
   private async maybeAutoReply(
     connection: {
       id: string;
       companyId: string;
-      phoneNumberId: string;
-      accessToken: string;
+      twilioWhatsAppNumber: string;
     },
     conversationId: string,
     customerWaId: string,
@@ -276,7 +271,6 @@ export class WhatsAppWebhookService {
     let nextHandler: "pending" | "bot" | "human" | null = null;
 
     if (conversation.handler === "human") {
-      // Cliente pide volver al bot; el asesor también puede reactivarlo desde el inbox.
       if (!detectsBotChoice(customerText)) {
         return;
       }
@@ -331,9 +325,8 @@ export class WhatsAppWebhookService {
     let status: "sent" | "failed" = "sent";
 
     try {
-      sendResult = await this.cloudClient.sendText({
-        phoneNumberId: connection.phoneNumberId,
-        accessToken: connection.accessToken,
+      sendResult = await this.twilioClient.sendText({
+        from: connection.twilioWhatsAppNumber,
         to: customerWaId,
         text,
       });

@@ -175,15 +175,8 @@ export const SHIPPING_SCOPE_LABELS: Record<ShippingScope, string> = {
   international: "Internacional",
 };
 
-export type PaymentMethod = "debit_card" | "credit_card" | "bank_transfer";
-
-export const PAYMENT_METHODS: PaymentMethod[] = ["debit_card", "credit_card", "bank_transfer"];
-
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  debit_card: "Tarjeta débito",
-  credit_card: "Tarjeta crédito",
-  bank_transfer: "Transferencia bancaria",
-};
+/** Reservado para Fase 9 (pasarela); la tienda no configura métodos de pago en el chat. */
+export type PaymentMethod = "debit_card" | "credit_card" | "bank_transfer" | "cash_on_delivery";
 
 export const COMPANY_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = [
   { code: "CO", name: "Colombia" },
@@ -211,30 +204,20 @@ export const COMPANY_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = 
 export interface CompanyCommerceSettings {
   countryCode: string | null;
   shippingScopes: ShippingScope[];
-  paymentMethods: PaymentMethod[];
   shippingCarriers: string[];
-  banks: string[];
-  /** true si hay país, al menos un alcance de envío, transportadoras, pagos y bancos si aplica transferencia */
+  /** true si hay país, al menos un alcance de envío y transportadoras */
   isConfigured: boolean;
 }
 
 export function isCompanyCommerceConfigured(settings: {
   countryCode: string | null;
   shippingScopes: readonly string[];
-  paymentMethods: readonly string[];
   shippingCarriers: readonly string[];
-  banks: readonly string[];
 }): boolean {
   if (!settings.countryCode?.trim()) {
     return false;
   }
   if (settings.shippingScopes.length === 0 || settings.shippingCarriers.length === 0) {
-    return false;
-  }
-  if (settings.paymentMethods.length === 0) {
-    return false;
-  }
-  if (settings.paymentMethods.includes("bank_transfer") && settings.banks.length === 0) {
     return false;
   }
   return true;
@@ -443,11 +426,9 @@ export const CONVERSATION_HANDLER_LABELS: Record<ConversationHandler, string> = 
 export interface WhatsAppConnection {
   id: string;
   companyId: string;
-  phoneNumberId: string;
-  wabaId: string | null;
+  /** Número WhatsApp E.164 (ej. +14155238886), sin prefijo whatsapp: */
+  twilioWhatsAppNumber: string;
   displayPhoneNumber: string | null;
-  /** Token enmascarado; nunca se reexpone el valor completo en GET. */
-  accessTokenMasked: string;
   isActive: boolean;
   waMeLink: string | null;
   createdAt: string;

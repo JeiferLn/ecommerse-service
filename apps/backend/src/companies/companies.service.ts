@@ -11,7 +11,6 @@ import type {
   CompanyInvitation,
   CompanyMember,
   InviteResult,
-  PaymentMethod,
   RemoveMemberResult,
   ShippingScope,
 } from "@commerce-ai/types";
@@ -139,14 +138,7 @@ export class CompaniesService {
     }
 
     const shippingCarriers = this.normalizeStringList(dto.shippingCarriers);
-    const banks = this.normalizeStringList(dto.banks);
-    const paymentMethods = dto.paymentMethods;
 
-    if (paymentMethods.includes("bank_transfer") && banks.length === 0) {
-      throw new BadRequestException(
-        "Si aceptas transferencia, indica al menos un banco o medio (Nequi, Bancolombia, etc.)",
-      );
-    }
     if (dto.shippingScopes.length > 0 && shippingCarriers.length === 0) {
       throw new BadRequestException(
         "Indica al menos una empresa de transporte / transportadora",
@@ -158,9 +150,10 @@ export class CompaniesService {
       data: {
         countryCode: dto.countryCode?.trim() ? dto.countryCode.trim().toUpperCase() : null,
         shippingScopes: dto.shippingScopes,
-        paymentMethods,
         shippingCarriers,
-        banks,
+        // El pago lo maneja la pasarela (Fase 9); no lo configura la tienda en el chat.
+        paymentMethods: [],
+        banks: [],
       },
       select: COMPANY_DETAILS_SELECT,
     });
@@ -211,7 +204,6 @@ export class CompaniesService {
     createdAt: Date;
   }): CompanyDetails {
     const shippingScopes = company.shippingScopes as ShippingScope[];
-    const paymentMethods = company.paymentMethods as PaymentMethod[];
     return {
       id: company.id,
       name: company.name,
@@ -224,15 +216,11 @@ export class CompaniesService {
       commerce: {
         countryCode: company.countryCode,
         shippingScopes,
-        paymentMethods,
         shippingCarriers: company.shippingCarriers,
-        banks: company.banks,
         isConfigured: isCompanyCommerceConfigured({
           countryCode: company.countryCode,
           shippingScopes,
-          paymentMethods,
           shippingCarriers: company.shippingCarriers,
-          banks: company.banks,
         }),
       },
       createdAt: company.createdAt.toISOString(),

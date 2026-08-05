@@ -2,6 +2,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import cookieParser from "cookie-parser";
+import express from "express";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -26,6 +27,8 @@ export async function createApp(): Promise<NestExpressApplication> {
   app.setGlobalPrefix("api/v1");
   app.enableCors({ origin: corsOrigins, credentials: true });
   app.use(cookieParser());
+  // Twilio envía application/x-www-form-urlencoded
+  app.use(express.urlencoded({ extended: false }));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

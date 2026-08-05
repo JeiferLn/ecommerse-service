@@ -49,18 +49,14 @@ export class AiReplyService {
         select: {
           countryCode: true,
           shippingScopes: true,
-          paymentMethods: true,
           shippingCarriers: true,
-          banks: true,
         },
       });
       const commerce = formatCommercePromptBlock(
         companyCommerce ?? {
           countryCode: null,
           shippingScopes: [],
-          paymentMethods: [],
           shippingCarriers: [],
-          banks: [],
         },
       );
 

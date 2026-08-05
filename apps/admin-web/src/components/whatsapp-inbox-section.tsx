@@ -3,6 +3,7 @@
 import {
   canManageWhatsapp,
   CONVERSATION_HANDLER_LABELS,
+  type CompanyDetails,
   type ConversationSummary,
   type PaginatedResponse,
   type WhatsAppMessage,
@@ -12,6 +13,7 @@ import { ArrowLeft, Bot, Eraser, RotateCcw, Send, UserRound } from "lucide-react
 import Link from "next/link";
 import { useState } from "react";
 
+import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,6 +28,13 @@ export function WhatsAppInboxSection() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
+  const { data: company, isLoading: companyLoading } = useQuery({
+    queryKey: ["company", user?.companyId],
+    queryFn: () => apiFetch<CompanyDetails>("/company"),
+    enabled: Boolean(user?.companyId),
+  });
+  const commerceReady = Boolean(company?.commerce.isConfigured);
+
   const {
     data: conversations,
     isLoading,
@@ -34,7 +43,7 @@ export function WhatsAppInboxSection() {
     queryKey: ["whatsapp-conversations", user?.companyId],
     queryFn: () =>
       apiFetch<PaginatedResponse<ConversationSummary>>("/whatsapp/conversations?page=1&perPage=50"),
-    enabled: Boolean(user?.companyId),
+    enabled: Boolean(user?.companyId) && commerceReady,
   });
 
   const { data: messages, isLoading: messagesLoading } = useQuery({
@@ -94,6 +103,24 @@ export function WhatsAppInboxSection() {
   const selected = conversations?.items.find((item) => item.id === selectedId) ?? null;
   const isResetting = resetChatMutation.isPending || clearAllMutation.isPending;
   const isHandlerBusy = handlerMutation.isPending;
+
+  if (companyLoading) {
+    return <p className="text-sm text-muted-foreground">Cargando…</p>;
+  }
+
+  if (!commerceReady) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Button asChild variant="ghost" className="w-fit px-0">
+          <Link href="/dashboard/whatsapp">
+            <ArrowLeft className="size-4" aria-hidden />
+            Conexión WhatsApp
+          </Link>
+        </Button>
+        <WhatsAppCommerceRequiredGate />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

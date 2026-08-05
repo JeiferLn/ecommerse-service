@@ -5,14 +5,36 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { WhatsAppConnection as WhatsAppConnectionDto } from "@commerce-ai/types";
+import { isCompanyCommerceConfigured } from "@commerce-ai/types";
 import { Prisma } from "@prisma/client";
 
 import { PrismaService } from "../prisma/prisma.service";
 import { UpsertWhatsAppConnectionDto } from "./dto/upsert-connection.dto";
+import { normalizeWhatsAppE164 } from "./phone.util";
 
 @Injectable()
 export class WhatsAppConnectionService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * WhatsApp solo se puede usar si el dueño configuró envíos.
+   */
+  async assertCommerceConfigured(companyId: string | null): Promise<void> {
+    const scopedCompanyId = this.requireCompany(companyId);
+    const company = await this.prisma.company.findUnique({
+      where: { id: scopedCompanyId },
+      select: {
+        countryCode: true,
+        shippingScopes: true,
+        shippingCarriers: true,
+      },
+    });
+    if (!company || !isCompanyCommerceConfigured(company)) {
+      throw new BadRequestException(
+        "Configura envíos (país, cobertura y transportadoras) en Configuración antes de usar WhatsApp. Solo el dueño de la empresa puede hacerlo.",
+      );
+    }
+  }
 
   async get(companyId: string | null): Promise<WhatsAppConnectionDto | null> {
     const scopedCompanyId = this.requireCompany(companyId);
@@ -26,36 +48,27 @@ export class WhatsAppConnectionService {
     companyId: string | null,
     dto: UpsertWhatsAppConnectionDto,
   ): Promise<WhatsAppConnectionDto> {
+    await this.assertCommerceConfigured(companyId);
     const scopedCompanyId = this.requireCompany(companyId);
-    const phoneNumberId = dto.phoneNumberId.trim();
-    const accessToken = dto.accessToken?.trim() || null;
-    const displayPhoneNumber = dto.displayPhoneNumber?.trim() || null;
-    const wabaId = dto.wabaId?.trim() || null;
-
-    const existing = await this.prisma.whatsAppConnection.findUnique({
-      where: { companyId: scopedCompanyId },
-    });
-
-    if (!existing && !accessToken) {
-      throw new BadRequestException("accessToken es obligatorio al crear la conexión");
+    const twilioWhatsAppNumber = normalizeWhatsAppE164(dto.twilioWhatsAppNumber);
+    if (!/^\+[1-9]\d{7,14}$/.test(twilioWhatsAppNumber)) {
+      throw new BadRequestException("Usa formato E.164 con +: +14155238886");
     }
+    const displayPhoneNumber =
+      dto.displayPhoneNumber?.trim() || twilioWhatsAppNumber;
 
     try {
       const connection = await this.prisma.whatsAppConnection.upsert({
         where: { companyId: scopedCompanyId },
         create: {
           companyId: scopedCompanyId,
-          phoneNumberId,
-          accessToken: accessToken!,
+          twilioWhatsAppNumber,
           displayPhoneNumber,
-          wabaId,
           isActive: dto.isActive ?? true,
         },
         update: {
-          phoneNumberId,
-          ...(accessToken ? { accessToken } : {}),
+          twilioWhatsAppNumber,
           displayPhoneNumber,
-          wabaId,
           ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         },
       });
@@ -63,7 +76,7 @@ export class WhatsAppConnectionService {
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException(
-          "Ese phoneNumberId ya está vinculado a otra empresa",
+          "Ese número WhatsApp de Twilio ya está vinculado a otra empresa",
         );
       }
       throw error;
@@ -88,13 +101,6 @@ export class WhatsAppConnectionService {
     return companyId;
   }
 
-  private maskToken(token: string): string {
-    if (token.length <= 8) {
-      return "••••••••";
-    }
-    return `${token.slice(0, 4)}…${token.slice(-4)}`;
-  }
-
   private buildWaMeLink(displayPhoneNumber: string | null): string | null {
     if (!displayPhoneNumber) {
       return null;
@@ -109,10 +115,8 @@ export class WhatsAppConnectionService {
   private toDto(connection: {
     id: string;
     companyId: string;
-    phoneNumberId: string;
-    wabaId: string | null;
+    twilioWhatsAppNumber: string;
     displayPhoneNumber: string | null;
-    accessToken: string;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -120,12 +124,12 @@ export class WhatsAppConnectionService {
     return {
       id: connection.id,
       companyId: connection.companyId,
-      phoneNumberId: connection.phoneNumberId,
-      wabaId: connection.wabaId,
+      twilioWhatsAppNumber: connection.twilioWhatsAppNumber,
       displayPhoneNumber: connection.displayPhoneNumber,
-      accessTokenMasked: this.maskToken(connection.accessToken),
       isActive: connection.isActive,
-      waMeLink: this.buildWaMeLink(connection.displayPhoneNumber),
+      waMeLink: this.buildWaMeLink(
+        connection.displayPhoneNumber ?? connection.twilioWhatsAppNumber,
+      ),
       createdAt: connection.createdAt.toISOString(),
       updatedAt: connection.updatedAt.toISOString(),
     };

@@ -1,20 +1,13 @@
-import { IsBoolean, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
+import { IsBoolean, IsOptional, IsString, Matches, MinLength } from "class-validator";
 
 export class UpsertWhatsAppConnectionDto {
+  /** E.164 con +: +14155238886 o +573001112233 */
   @IsString()
-  @MinLength(1, { message: "phoneNumberId es obligatorio" })
-  phoneNumberId!: string;
-
-  /** Obligatorio al crear; opcional al actualizar (se conserva el existente). */
-  @IsOptional()
-  @ValidateIf((_, value) => value !== undefined && value !== null && value !== "")
-  @IsString()
-  @MinLength(1, { message: "accessToken es obligatorio" })
-  accessToken?: string;
-
-  @IsOptional()
-  @IsString()
-  wabaId?: string;
+  @MinLength(8, { message: "Indica el número WhatsApp de Twilio" })
+  @Matches(/^\+[1-9]\d{7,14}$/, {
+    message: "Usa formato E.164 con +: +14155238886",
+  })
+  twilioWhatsAppNumber!: string;
 
   @IsOptional()
   @IsString()

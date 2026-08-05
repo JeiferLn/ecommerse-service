@@ -15,7 +15,7 @@ export default function SettingsPage() {
           Configuración
         </h1>
         <p className="text-muted-foreground">
-          Administra el perfil de tu empresa y cómo cobra y envía el bot.
+          Administra el perfil de tu empresa y cómo envía el bot. El pago irá por pasarela.
         </p>
       </div>
       <CompanySettingsForm />

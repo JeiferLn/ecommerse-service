@@ -287,32 +287,41 @@ Incluye:
 
 ---
 
-# Fase 5 — Integración con WhatsApp
+# Fase 5 — Integración con WhatsApp (Twilio)
 
 Objetivo:
 
-Conectar la plataforma con WhatsApp Cloud API de forma multi-tenant, con modo simulación mientras Meta no entrega número/token de prueba de forma fiable.
+Conectar la plataforma con WhatsApp vía **Twilio**, multi-tenant, con modo simulación para desarrollo local.
 
 Incluye (implementado):
 
-- Modelo `WhatsAppConnection` (1:1 empresa) + `Conversation` + `Message`
-- Webhook único público (`GET/POST /api/v1/whatsapp/webhook`) — tenant por `phoneNumberId`
-- CRUD de conexión por empresa (`/whatsapp/connection`) con token enmascarado en GET
+- Modelo `WhatsAppConnection` (1:1 empresa) con `twilioWhatsAppNumber` + `Conversation` + `Message`
+- Credenciales de plataforma en `.env` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`); número por empresa en DB
+- Webhook único público (`POST /api/v1/whatsapp/webhook`) — tenant por `To` (número Twilio)
+- CRUD de conexión por empresa (`/whatsapp/connection`)
 - Inbox: listar conversaciones, hilo y envío manual de texto
-- `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin Graph API
-- Auto-reply fijo configurable (`WHATSAPP_AUTO_REPLY_*`); con `AI_ENABLED=true` responde la IA (Fase 6)
+- `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin llamadas reales
+- Auto-reply configurable; con `AI_ENABLED=true` responde la IA (Fase 6)
 - Admin: `/dashboard/whatsapp` (conexión + simular) e `/dashboard/whatsapp/inbox`
 
-Pendiente hasta credenciales Meta reales:
+Pendiente hasta Twilio/prod real:
 
-- Validación punta a punta contra Graph API (Callback URL + verify token + firma)
-- Embedded Signup / Tech Provider, plantillas, App Review
+- Validación punta a punta con sandbox o sender aprobado + ngrok
+- Firma `X-Twilio-Signature` con `TWILIO_WEBHOOK_URL` público
+- Plantillas / ventana 24h (reglas de WhatsApp vía Twilio)
 
-Cómo probar sin Meta:
+Cómo probar en local:
 
-1. Guardar conexión fake (`phoneNumberId: test-phone-1`, token `dummy-…`)
-2. Simular mensaje entrante desde el admin o `POST /whatsapp/webhook/simulate`
-3. Ver conversación + auto-reply en el inbox
+1. Poner `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` (o dejar `WHATSAPP_SIMULATE_SEND=true`)
+2. Guardar conexión con el número sandbox/sender (`+14155238886`)
+3. Simular mensaje entrante desde el admin o `POST /whatsapp/webhook/simulate`
+4. Ver conversación + auto-reply en el inbox
+
+Webhook real (sandbox):
+
+1. ngrok/cloudflared → backend `:4000`
+2. En Twilio Sandbox: When a message comes in → `POST https://<host>/api/v1/whatsapp/webhook`
+3. `join` desde tu WhatsApp al sandbox y escribe al número
 
 ---
 
@@ -331,7 +340,7 @@ Incluye (implementado):
 - Enganche en auto-reply de WhatsApp cuando `AI_ENABLED=true`
 - Fallback fijo (`AI_FALLBACK_TEXT`) si la IA falla, basura/CoT, o pide humano (`[HANDOFF]`)
 - Routing bot / asesor (`pending` → `bot` | `human`) + reactivación desde inbox
-- Envíos y pagos configurables en `/dashboard/settings` (país, alcance, transportadoras, métodos, bancos) inyectados al prompt
+- Envíos configurables en `/dashboard/settings` (país, alcance, transportadoras) inyectados al prompt; el pago será por pasarela
 - Tests unitarios de provider, catálogo y reply
 
 Configuración (development / demo):

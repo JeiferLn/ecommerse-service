@@ -4,7 +4,8 @@ import { Test, TestingModule } from "@nestjs/testing";
 
 import { AiReplyService } from "../ai/ai-reply.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { WhatsAppCloudClient } from "./whatsapp-cloud.client";
+import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
+import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
 
 describe("WhatsAppWebhookService", () => {
@@ -14,15 +15,15 @@ describe("WhatsAppWebhookService", () => {
     conversation: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
     message: { create: jest.Mock; updateMany: jest.Mock };
   };
-  let cloudClient: { sendText: jest.Mock };
+  let twilioClient: { sendText: jest.Mock };
   let aiReplyService: { generateReply: jest.Mock };
   let configValues: Record<string, unknown>;
 
   beforeEach(async () => {
     configValues = {
-      WHATSAPP_VERIFY_TOKEN: "verify-me",
-      WHATSAPP_APP_SECRET: "app-secret",
-      WHATSAPP_SKIP_SIGNATURE: false,
+      TWILIO_AUTH_TOKEN: "auth-token",
+      TWILIO_SKIP_SIGNATURE: false,
+      TWILIO_WEBHOOK_URL: "https://example.com/api/v1/whatsapp/webhook",
       NODE_ENV: "test",
       WHATSAPP_AUTO_REPLY_ENABLED: true,
       WHATSAPP_AUTO_REPLY_TEXT: "Auto reply",
@@ -37,8 +38,8 @@ describe("WhatsAppWebhookService", () => {
       conversation: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
       message: { create: jest.fn(), updateMany: jest.fn() },
     };
-    cloudClient = {
-      sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "wamid.out.1" }),
+    twilioClient = {
+      sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "SM_out_1" }),
     };
     aiReplyService = {
       generateReply: jest.fn().mockResolvedValue({ text: "Respuesta IA", requestedHandoff: false }),
@@ -54,30 +55,23 @@ describe("WhatsAppWebhookService", () => {
             get: (key: string) => configValues[key],
           },
         },
-        { provide: WhatsAppCloudClient, useValue: cloudClient },
+        { provide: TwilioWhatsAppClient, useValue: twilioClient },
         { provide: AiReplyService, useValue: aiReplyService },
+        {
+          provide: WhatsAppConnectionService,
+          useValue: { assertCommerceConfigured: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
     service = module.get(WhatsAppWebhookService);
   });
 
-  it("verifica el challenge del webhook", () => {
-    expect(service.verifyChallenge("subscribe", "verify-me", "12345")).toBe("12345");
-  });
-
-  it("rechaza challenge con token incorrecto", () => {
-    expect(() => service.verifyChallenge("subscribe", "wrong", "12345")).toThrow(
-      UnauthorizedException,
-    );
-  });
-
   it("en pending pregunta bot o asesor", async () => {
     prisma.whatsAppConnection.findUnique.mockResolvedValue({
       id: "conn-1",
       companyId: "company-a",
-      phoneNumberId: "phone-a",
-      accessToken: "dummy-token",
+      twilioWhatsAppNumber: "+14155238886",
       isActive: true,
     });
     prisma.conversation.upsert.mockResolvedValue({
@@ -92,12 +86,12 @@ describe("WhatsAppWebhookService", () => {
     prisma.conversation.update.mockResolvedValue({});
 
     await service.ingestInbound({
-      phoneNumberId: "phone-a",
-      from: "57300",
+      twilioWhatsAppNumber: "+14155238886",
+      from: "+573001112233",
       text: "Hola",
     });
 
-    expect(cloudClient.sendText).toHaveBeenCalledWith(
+    expect(twilioClient.sendText).toHaveBeenCalledWith(
       expect.objectContaining({ text: "¿Bot o asesor?" }),
     );
     expect(aiReplyService.generateReply).not.toHaveBeenCalled();
@@ -107,8 +101,7 @@ describe("WhatsAppWebhookService", () => {
     prisma.whatsAppConnection.findUnique.mockResolvedValue({
       id: "conn-1",
       companyId: "company-a",
-      phoneNumberId: "phone-a",
-      accessToken: "dummy-token",
+      twilioWhatsAppNumber: "+14155238886",
       isActive: true,
     });
     prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "pending" });
@@ -119,8 +112,8 @@ describe("WhatsAppWebhookService", () => {
     prisma.conversation.update.mockResolvedValue({});
 
     await service.ingestInbound({
-      phoneNumberId: "phone-a",
-      from: "57300",
+      twilioWhatsAppNumber: "+14155238886",
+      from: "+573001112233",
       text: "bot",
     });
 
@@ -129,7 +122,7 @@ describe("WhatsAppWebhookService", () => {
         data: expect.objectContaining({ handler: "bot" }),
       }),
     );
-    expect(cloudClient.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: "Ok bot" }));
+    expect(twilioClient.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: "Ok bot" }));
   });
 
   it("en modo bot con mención asesor pasa a human", async () => {
@@ -137,8 +130,7 @@ describe("WhatsAppWebhookService", () => {
     prisma.whatsAppConnection.findUnique.mockResolvedValue({
       id: "conn-1",
       companyId: "company-a",
-      phoneNumberId: "phone-a",
-      accessToken: "dummy-token",
+      twilioWhatsAppNumber: "+14155238886",
       isActive: true,
     });
     prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "bot" });
@@ -149,8 +141,8 @@ describe("WhatsAppWebhookService", () => {
     prisma.conversation.update.mockResolvedValue({});
 
     await service.ingestInbound({
-      phoneNumberId: "phone-a",
-      from: "57300",
+      twilioWhatsAppNumber: "+14155238886",
+      from: "+573001112233",
       text: "quiero un asesor",
     });
 
@@ -160,14 +152,48 @@ describe("WhatsAppWebhookService", () => {
       }),
     );
     expect(aiReplyService.generateReply).not.toHaveBeenCalled();
-    expect(cloudClient.sendText).toHaveBeenCalledWith(
+    expect(twilioClient.sendText).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Ok asesor" }),
     );
   });
 
-  it("omite firma cuando WHATSAPP_SKIP_SIGNATURE=true fuera de production", () => {
-    configValues.WHATSAPP_SKIP_SIGNATURE = true;
+  it("omite firma cuando TWILIO_SKIP_SIGNATURE=true fuera de production", () => {
+    configValues.TWILIO_SKIP_SIGNATURE = true;
     configValues.NODE_ENV = "development";
-    expect(() => service.assertSignature(undefined, undefined)).not.toThrow();
+    expect(() => service.assertTwilioSignature(undefined, {})).not.toThrow();
+  });
+
+  it("rechaza firma ausente cuando skip=false", () => {
+    expect(() => service.assertTwilioSignature(undefined, { Body: "hola" })).toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it("procesa webhook Twilio inbound por To", async () => {
+    prisma.whatsAppConnection.findUnique.mockResolvedValue({
+      id: "conn-1",
+      companyId: "company-a",
+      twilioWhatsAppNumber: "+14155238886",
+      isActive: true,
+    });
+    prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "pending" });
+    prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
+    prisma.message.create
+      .mockResolvedValueOnce({ id: "msg-in-1" })
+      .mockResolvedValueOnce({ id: "msg-out-1" });
+    prisma.conversation.update.mockResolvedValue({});
+
+    const result = await service.handleTwilioWebhook({
+      MessageSid: "SM123",
+      From: "whatsapp:+573001112233",
+      To: "whatsapp:+14155238886",
+      Body: "Hola",
+      ProfileName: "Ana",
+    });
+
+    expect(result.processed).toBe(1);
+    expect(prisma.whatsAppConnection.findUnique).toHaveBeenCalledWith({
+      where: { twilioWhatsAppNumber: "+14155238886" },
+    });
   });
 });

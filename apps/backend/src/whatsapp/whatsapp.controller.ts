@@ -7,7 +7,6 @@ import {
   HttpCode,
   Post,
   Put,
-  Query,
   Req,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -30,34 +29,30 @@ export class WhatsAppController {
     private readonly webhookService: WhatsAppWebhookService,
   ) {}
 
-  @Public()
-  @Get("webhook")
-  verifyWebhook(
-    @Query("hub.mode") mode?: string,
-    @Query("hub.verify_token") token?: string,
-    @Query("hub.challenge") challenge?: string,
-  ): string {
-    return this.webhookService.verifyChallenge(mode, token, challenge);
-  }
-
+  /**
+   * Webhook Twilio (form-urlencoded). Acepta mensajes inbound y status callbacks.
+   * Responde 200 vacío (Twilio no usa challenge GET de Meta).
+   */
   @Public()
   @Post("webhook")
   @HttpCode(200)
   async receiveWebhook(
-    @Req() req: Request & { rawBody?: Buffer },
-    @Headers("x-hub-signature-256") signature?: string,
-    @Body() body?: unknown,
+    @Req() req: Request,
+    @Headers("x-twilio-signature") signature?: string,
+    @Body() body?: Record<string, unknown>,
   ): Promise<{ status: string }> {
+    const params = this.toStringRecord(body ?? {});
+
     try {
-      this.webhookService.assertSignature(req.rawBody, signature);
+      this.webhookService.assertTwilioSignature(signature, params);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      throw new UnauthorizedException("Firma de webhook inválida");
+      throw new UnauthorizedException("Firma de webhook Twilio inválida");
     }
 
-    await this.webhookService.handleWebhookPayload(body);
+    await this.webhookService.handleTwilioWebhook(params);
     return { status: "ok" };
   }
 
@@ -102,5 +97,20 @@ export class WhatsAppController {
   ): Promise<ApiResponse<null>> {
     await this.connectionService.remove(user.companyId);
     return { status: "success", data: null, message: "Conexión eliminada" };
+  }
+
+  private toStringRecord(body: Record<string, unknown>): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (value == null) {
+        continue;
+      }
+      if (typeof value === "string") {
+        result[key] = value;
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        result[key] = String(value);
+      }
+    }
+    return result;
   }
 }

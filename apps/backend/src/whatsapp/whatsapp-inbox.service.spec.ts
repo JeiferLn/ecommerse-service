@@ -2,7 +2,8 @@ import { NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 
 import { PrismaService } from "../prisma/prisma.service";
-import { WhatsAppCloudClient } from "./whatsapp-cloud.client";
+import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
+import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppInboxService } from "./whatsapp-inbox.service";
 
 describe("WhatsAppInboxService", () => {
@@ -18,7 +19,7 @@ describe("WhatsAppInboxService", () => {
     whatsAppConnection: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
-  let cloudClient: { sendText: jest.Mock };
+  let twilioClient: { sendText: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -37,15 +38,19 @@ describe("WhatsAppInboxService", () => {
         return ops;
       }),
     };
-    cloudClient = {
-      sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "wamid.out" }),
+    twilioClient = {
+      sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "SM_out" }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WhatsAppInboxService,
         { provide: PrismaService, useValue: prisma },
-        { provide: WhatsAppCloudClient, useValue: cloudClient },
+        { provide: TwilioWhatsAppClient, useValue: twilioClient },
+        {
+          provide: WhatsAppConnectionService,
+          useValue: { assertCommerceConfigured: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -60,6 +65,7 @@ describe("WhatsAppInboxService", () => {
         companyId: "company-a",
         customerWaId: "57300",
         customerName: "Ana",
+        handler: "pending",
         lastMessageAt: new Date("2026-08-01T00:00:00.000Z"),
         createdAt: new Date("2026-08-01T00:00:00.000Z"),
         updatedAt: new Date("2026-08-01T00:00:00.000Z"),

@@ -46,11 +46,17 @@ const envSchema = z
     API_PUBLIC_URL: z.string().optional(),
     /** Carpeta local de imágenes cuando R2 no está configurado. Default: ./uploads */
     LOCAL_UPLOAD_DIR: z.string().optional(),
-    /** App Secret de Meta (firma X-Hub-Signature-256 del webhook). */
-    WHATSAPP_APP_SECRET: z.string().optional(),
-    /** Token de verificación del challenge GET del webhook (compartido, una URL). */
-    WHATSAPP_VERIFY_TOKEN: z.string().optional(),
-    WHATSAPP_GRAPH_API_VERSION: z.string().default("v21.0"),
+    /** Twilio Account SID (plataforma). */
+    TWILIO_ACCOUNT_SID: z.string().optional(),
+    /** Twilio Auth Token (plataforma; firma de webhook + envíos). */
+    TWILIO_AUTH_TOKEN: z.string().optional(),
+    /** En development/test permite omitir la firma X-Twilio-Signature. */
+    TWILIO_SKIP_SIGNATURE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    /** URL pública exacta del webhook para validar firma. Ej: https://xxx.ngrok.io/api/v1/whatsapp/webhook */
+    TWILIO_WEBHOOK_URL: z.string().optional(),
     WHATSAPP_AUTO_REPLY_ENABLED: z
       .enum(["true", "false"])
       .default("true")
@@ -58,12 +64,7 @@ const envSchema = z
     WHATSAPP_AUTO_REPLY_TEXT: z
       .string()
       .default("Gracias por tu mensaje. Te responderemos pronto."),
-    /** En development/test permite omitir la firma del webhook. */
-    WHATSAPP_SKIP_SIGNATURE: z
-      .enum(["true", "false"])
-      .default("false")
-      .transform((value) => value === "true"),
-    /** Si true, nunca llama a Graph API (marca outbound como sent simulado). */
+    /** Si true, no llama a la API de Twilio al enviar (outbound simulado). */
     WHATSAPP_SIMULATE_SEND: z
       .enum(["true", "false"])
       .default("false")
@@ -130,6 +131,17 @@ const envSchema = z
         code: "custom",
         path: ["JWT_SECRET"],
         message: "En production JWT_SECRET no puede ser el valor de desarrollo (dev-only)",
+      });
+    }
+    if (
+      !env.WHATSAPP_SIMULATE_SEND &&
+      (!env.TWILIO_ACCOUNT_SID?.trim() || !env.TWILIO_AUTH_TOKEN?.trim())
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["TWILIO_ACCOUNT_SID"],
+        message:
+          "En production con WHATSAPP_SIMULATE_SEND=false se requieren TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN",
       });
     }
   });
