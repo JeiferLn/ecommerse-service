@@ -13,7 +13,7 @@ describe("WhatsAppWebhookService", () => {
   let prisma: {
     whatsAppConnection: { findUnique: jest.Mock };
     conversation: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
-    message: { create: jest.Mock; updateMany: jest.Mock };
+    message: { create: jest.Mock; updateMany: jest.Mock; findMany: jest.Mock };
   };
   let twilioClient: { sendText: jest.Mock };
   let aiReplyService: { generateReply: jest.Mock };
@@ -36,7 +36,7 @@ describe("WhatsAppWebhookService", () => {
     prisma = {
       whatsAppConnection: { findUnique: jest.fn() },
       conversation: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
-      message: { create: jest.fn(), updateMany: jest.fn() },
+      message: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     };
     twilioClient = {
       sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "SM_out_1" }),
@@ -97,7 +97,7 @@ describe("WhatsAppWebhookService", () => {
     expect(aiReplyService.generateReply).not.toHaveBeenCalled();
   });
 
-  it("al elegir bot confirma y no llama IA todavía", async () => {
+  it("al elegir bot confirma y no llama IA si no había pregunta previa", async () => {
     prisma.whatsAppConnection.findUnique.mockResolvedValue({
       id: "conn-1",
       companyId: "company-a",
@@ -106,6 +106,7 @@ describe("WhatsAppWebhookService", () => {
     });
     prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "pending" });
     prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
+    prisma.message.findMany.mockResolvedValue([{ body: "bot" }]);
     prisma.message.create
       .mockResolvedValueOnce({ id: "msg-in-1" })
       .mockResolvedValueOnce({ id: "msg-out-1" });
@@ -122,7 +123,93 @@ describe("WhatsAppWebhookService", () => {
         data: expect.objectContaining({ handler: "bot" }),
       }),
     );
+    expect(twilioClient.sendText).toHaveBeenCalledTimes(1);
     expect(twilioClient.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: "Ok bot" }));
+    expect(aiReplyService.generateReply).not.toHaveBeenCalled();
+  });
+
+  it("al elegir bot confirma y responde la pregunta previa pendiente", async () => {
+    configValues.AI_ENABLED = true;
+    prisma.whatsAppConnection.findUnique.mockResolvedValue({
+      id: "conn-1",
+      companyId: "company-a",
+      twilioWhatsAppNumber: "+14155238886",
+      isActive: true,
+    });
+    prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "pending" });
+    prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
+    prisma.message.findMany.mockResolvedValue([
+      { body: "un bot por favor" },
+      { body: "Hola, que productos tienen en stock?" },
+    ]);
+    prisma.message.create
+      .mockResolvedValueOnce({ id: "msg-in-1" })
+      .mockResolvedValueOnce({ id: "msg-out-1" })
+      .mockResolvedValueOnce({ id: "msg-out-2" });
+    prisma.conversation.update.mockResolvedValue({});
+    aiReplyService.generateReply.mockResolvedValue({
+      text: "Tenemos Camiseta Azul en stock.",
+      requestedHandoff: false,
+    });
+
+    await service.ingestInbound({
+      twilioWhatsAppNumber: "+14155238886",
+      from: "+573001112233",
+      text: "un bot por favor",
+    });
+
+    expect(aiReplyService.generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerText: "Hola, que productos tienen en stock?",
+      }),
+    );
+    expect(twilioClient.sendText).toHaveBeenCalledTimes(2);
+    expect(twilioClient.sendText).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ text: "Ok bot" }),
+    );
+    expect(twilioClient.sendText).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ text: "Tenemos Camiseta Azul en stock." }),
+    );
+  });
+
+  it("al elegir bot con pregunta en el mismo mensaje responde esa pregunta", async () => {
+    configValues.AI_ENABLED = true;
+    prisma.whatsAppConnection.findUnique.mockResolvedValue({
+      id: "conn-1",
+      companyId: "company-a",
+      twilioWhatsAppNumber: "+14155238886",
+      isActive: true,
+    });
+    prisma.conversation.upsert.mockResolvedValue({ id: "conv-1", handler: "pending" });
+    prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
+    prisma.message.findMany.mockResolvedValue([
+      { body: "bot, disculpa que productos tienen disponibles" },
+      { body: "Hola" },
+    ]);
+    prisma.message.create
+      .mockResolvedValueOnce({ id: "msg-in-1" })
+      .mockResolvedValueOnce({ id: "msg-out-1" })
+      .mockResolvedValueOnce({ id: "msg-out-2" });
+    prisma.conversation.update.mockResolvedValue({});
+    aiReplyService.generateReply.mockResolvedValue({
+      text: "Tenemos Case blanco.",
+      requestedHandoff: false,
+    });
+
+    await service.ingestInbound({
+      twilioWhatsAppNumber: "+14155238886",
+      from: "+573001112233",
+      text: "bot, disculpa que productos tienen disponibles",
+    });
+
+    expect(aiReplyService.generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerText: "que productos tienen disponibles",
+      }),
+    );
+    expect(twilioClient.sendText).toHaveBeenCalledTimes(2);
   });
 
   it("en modo bot con mención asesor pasa a human", async () => {

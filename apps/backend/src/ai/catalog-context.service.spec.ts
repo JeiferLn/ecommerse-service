@@ -100,4 +100,26 @@ describe("CatalogContextService", () => {
     expect(result.catalogBlock).toContain("ningún producto ACTIVO coincide");
     expect(result.catalogBlock).not.toContain("Camiseta");
   });
+
+  it("en pregunta de catálogo/stock incluye productos aunque no haya match de nombre", async () => {
+    prisma.company.findUnique.mockResolvedValue({ name: "Tienda" });
+    prisma.product.count.mockResolvedValue(1);
+    prisma.product.findMany.mockResolvedValue([
+      {
+        name: "Camiseta",
+        description: null,
+        updatedAt: new Date("2026-08-01"),
+        category: { name: "Ropa" },
+        variants: [{ sku: "C-1", name: "M", price: 20, stock: 2 }],
+      },
+    ]);
+
+    const result = await service.buildForCompany(
+      "company-a",
+      "que productos tienen en stock?",
+    );
+
+    expect(result.catalogBlock).toContain("Camiseta");
+    expect(result.catalogBlock).not.toContain("ningún producto ACTIVO coincide");
+  });
 });

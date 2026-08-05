@@ -75,6 +75,9 @@ export class CatalogContextService {
 
     if (hasMatch) {
       selected = scored.filter((item) => item.score > 0).slice(0, detailLimit);
+    } else if (overviewAsk) {
+      // "¿qué productos tienen / en stock?" → mostrar ejemplos del catálogo, no vacío.
+      selected = scored.slice(0, detailLimit);
     } else if (productIntent && tokens.length > 0) {
       // No rellenar con productos ajenos: evita inventar stock desde el historial.
       selected = [];
@@ -114,7 +117,7 @@ export class CatalogContextService {
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
-    return /(que venden|que tienen|que articulos|que productos|catalogo|catálogo|que ofecen|que ofrecen)/.test(
+    return /(que venden|que tienen|que articulos|que productos|catalogo|que ofecen|que ofrecen|en stock|disponibles|que hay|que ofrecen)/.test(
       normalized,
     );
   }

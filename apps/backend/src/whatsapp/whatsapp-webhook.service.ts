@@ -11,7 +11,7 @@ import type { Prisma } from "@prisma/client";
 import type { Env } from "../config/env.validation";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiReplyService } from "../ai/ai-reply.service";
-import { detectsBotChoice, detectsHumanRequest } from "./conversation-handler";
+import { detectsBotChoice, detectsHumanRequest, extractResidualAfterBotChoice } from "./conversation-handler";
 import { normalizeWhatsAppE164 } from "./phone.util";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
@@ -267,50 +267,86 @@ export class WhatsAppWebhookService {
       return;
     }
 
-    let text: string | null = null;
+    const outboundTexts: string[] = [];
     let nextHandler: "pending" | "bot" | "human" | null = null;
+    const aiEnabled = this.config.get("AI_ENABLED", { infer: true });
 
     if (conversation.handler === "human") {
       if (!detectsBotChoice(customerText)) {
         return;
       }
       nextHandler = "bot";
-      text = this.config.get("WHATSAPP_HANDLER_BOT_CONFIRM_TEXT", { infer: true });
+      outboundTexts.push(this.config.get("WHATSAPP_HANDLER_BOT_CONFIRM_TEXT", { infer: true }));
+      const followUp = await this.buildBotFollowUpAfterChoice({
+        connection,
+        conversationId,
+        customerText,
+        aiEnabled,
+      });
+      if (followUp) {
+        if (followUp.requestedHandoff) {
+          nextHandler = "human";
+          outboundTexts.push(
+            this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+          );
+        } else {
+          outboundTexts.push(followUp.text);
+        }
+      }
     } else if (conversation.handler === "pending") {
       if (detectsHumanRequest(customerText)) {
         nextHandler = "human";
-        text = this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true });
+        outboundTexts.push(
+          this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+        );
       } else if (detectsBotChoice(customerText)) {
         nextHandler = "bot";
-        text = this.config.get("WHATSAPP_HANDLER_BOT_CONFIRM_TEXT", { infer: true });
+        outboundTexts.push(this.config.get("WHATSAPP_HANDLER_BOT_CONFIRM_TEXT", { infer: true }));
+        const followUp = await this.buildBotFollowUpAfterChoice({
+          connection,
+          conversationId,
+          customerText,
+          aiEnabled,
+        });
+        if (followUp) {
+          if (followUp.requestedHandoff) {
+            nextHandler = "human";
+            outboundTexts.push(
+              this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+            );
+          } else {
+            outboundTexts.push(followUp.text);
+          }
+        }
       } else {
-        text = this.config.get("WHATSAPP_HANDLER_CHOICE_TEXT", { infer: true });
+        outboundTexts.push(this.config.get("WHATSAPP_HANDLER_CHOICE_TEXT", { infer: true }));
       }
     } else if (conversation.handler === "bot") {
       if (detectsHumanRequest(customerText)) {
         nextHandler = "human";
-        text = this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true });
-      } else {
-        const aiEnabled = this.config.get("AI_ENABLED", { infer: true });
-        if (aiEnabled) {
-          const reply = await this.aiReplyService.generateReply({
-            companyId: connection.companyId,
-            conversationId,
-            customerText,
-          });
-          if (reply.requestedHandoff) {
-            nextHandler = "human";
-            text = this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true });
-          } else {
-            text = reply.text;
-          }
+        outboundTexts.push(
+          this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+        );
+      } else if (aiEnabled) {
+        const reply = await this.aiReplyService.generateReply({
+          companyId: connection.companyId,
+          conversationId,
+          customerText,
+        });
+        if (reply.requestedHandoff) {
+          nextHandler = "human";
+          outboundTexts.push(
+            this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+          );
         } else {
-          text = this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true });
+          outboundTexts.push(reply.text);
         }
+      } else {
+        outboundTexts.push(this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true }));
       }
     }
 
-    if (!text) {
+    if (outboundTexts.length === 0) {
       return;
     }
 
@@ -321,14 +357,123 @@ export class WhatsAppWebhookService {
       });
     }
 
+    for (const text of outboundTexts) {
+      await this.sendOutboundText({
+        connection,
+        conversationId,
+        customerWaId,
+        text,
+      });
+    }
+
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt: new Date() },
+    });
+  }
+
+  /**
+   * Si el cliente eligió bot tras (o junto a) una pregunta real,
+   * genera la respuesta para enviarla como 2º mensaje.
+   */
+  private async buildBotFollowUpAfterChoice(params: {
+    connection: { companyId: string };
+    conversationId: string;
+    customerText: string;
+    aiEnabled: boolean;
+  }): Promise<{ text: string; requestedHandoff: boolean } | null> {
+    if (!params.aiEnabled) {
+      return null;
+    }
+
+    const pendingQuestion = await this.findQuestionForBotFollowUp(
+      params.conversationId,
+      params.customerText,
+    );
+    if (!pendingQuestion) {
+      return null;
+    }
+
+    return this.aiReplyService.generateReply({
+      companyId: params.connection.companyId,
+      conversationId: params.conversationId,
+      customerText: pendingQuestion,
+    });
+  }
+
+  /** Pregunta del mismo mensaje (bot + pregunta) o del inbound previo. */
+  private async findQuestionForBotFollowUp(
+    conversationId: string,
+    customerText: string,
+  ): Promise<string | null> {
+    const fromCurrent = extractResidualAfterBotChoice(customerText);
+    if (fromCurrent && !this.isOnlyGreeting(fromCurrent)) {
+      return fromCurrent;
+    }
+
+    return this.findPriorCustomerQuestion(conversationId);
+  }
+
+  /** Último inbound con intención real, ignorando elecciones bot/asesor y saludos sueltos. */
+  private async findPriorCustomerQuestion(conversationId: string): Promise<string | null> {
+    const recent = await this.prisma.message.findMany({
+      where: { conversationId, direction: "inbound" },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: { body: true },
+    });
+
+    for (const message of recent) {
+      const body = message.body.trim();
+      if (!body) {
+        continue;
+      }
+      if (detectsHumanRequest(body)) {
+        continue;
+      }
+      if (detectsBotChoice(body)) {
+        const residual = extractResidualAfterBotChoice(body);
+        if (residual && !this.isOnlyGreeting(residual)) {
+          return residual;
+        }
+        continue;
+      }
+      if (this.isOnlyGreeting(body)) {
+        continue;
+      }
+      return body;
+    }
+
+    return null;
+  }
+
+  private isOnlyGreeting(text: string): boolean {
+    const normalized = text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
+    const greetingOnly =
+      /^(hola|buenas|buenos\s+dias|buenas\s+tardes|buenas\s+noches|hey|saludos|que\s+tal|hi|hello)[!?.\s]*$/i.test(
+        normalized,
+      );
+    return greetingOnly;
+  }
+
+  private async sendOutboundText(params: {
+    connection: { twilioWhatsAppNumber: string };
+    conversationId: string;
+    customerWaId: string;
+    text: string;
+  }): Promise<void> {
     let sendResult: { simulated: boolean; wamid: string | null };
     let status: "sent" | "failed" = "sent";
 
     try {
       sendResult = await this.twilioClient.sendText({
-        from: connection.twilioWhatsAppNumber,
-        to: customerWaId,
-        text,
+        from: params.connection.twilioWhatsAppNumber,
+        to: params.customerWaId,
+        text: params.text,
       });
     } catch (error) {
       this.logger.error(`Auto-reply failed: ${String(error)}`);
@@ -338,18 +483,13 @@ export class WhatsAppWebhookService {
 
     await this.prisma.message.create({
       data: {
-        conversationId,
+        conversationId: params.conversationId,
         direction: "outbound",
         wamid: sendResult.wamid,
         type: "text",
-        body: text,
+        body: params.text,
         status,
       },
-    });
-
-    await this.prisma.conversation.update({
-      where: { id: conversationId },
-      data: { lastMessageAt: new Date() },
     });
   }
 }

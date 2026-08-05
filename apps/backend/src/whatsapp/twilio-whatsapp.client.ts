@@ -38,7 +38,7 @@ export class TwilioWhatsAppClient {
     if (simulate) {
       const wamid = `SM_sim_${Date.now()}`;
       this.logger.log(
-        `Simulated Twilio WhatsApp send to ${params.to} from ${params.from}: ${params.text.slice(0, 80)}`,
+        `Envío local simulado (sin Twilio) to ${params.to} from ${params.from}: ${params.text.slice(0, 80)}`,
       );
       return { simulated: true, wamid };
     }

@@ -104,11 +104,23 @@ export class AiReplyService {
       });
       const content = this.sanitizeModelOutput(result.content);
 
-      if (!content || this.isHandoff(content) || this.looksLikeInternalReasoning(content)) {
-        this.logger.warn(
-          `AI handoff/empty/garbage reply for conversation=${input.conversationId}`,
-        );
+      if (this.isHandoff(content)) {
+        this.logger.warn(`AI handoff marker for conversation=${input.conversationId}`);
         return { text: fallback, requestedHandoff: true };
+      }
+
+      if (!content || this.looksLikeInternalReasoning(content)) {
+        this.logger.warn(
+          `AI empty/garbage reply for conversation=${input.conversationId}; using catalog fallback if possible`,
+        );
+        const overviewFallback = this.buildCatalogOverviewFallback(
+          catalog.catalogBlock,
+          input.customerText,
+        );
+        return {
+          text: overviewFallback ?? fallback,
+          requestedHandoff: false,
+        };
       }
 
       return {
@@ -190,5 +202,34 @@ export class AiReplyService {
       normalized.toUpperCase().includes(HANDOFF_MARKER) ||
       /^\[?\s*handoff\s*\]?$/i.test(normalized)
     );
+  }
+
+  /** Si el modelo falla en una pregunta de catálogo, lista 2-3 nombres del bloque. */
+  private buildCatalogOverviewFallback(
+    catalogBlock: string,
+    customerText: string,
+  ): string | null {
+    const normalized = customerText
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const overviewAsk =
+      /(que venden|que tienen|que articulos|que productos|catalogo|en stock|disponibles|que hay)/.test(
+        normalized,
+      );
+    if (!overviewAsk) {
+      return null;
+    }
+
+    const names = [...catalogBlock.matchAll(/^- (.+?)(?:\s\[|\s—|\s\|)/gm)]
+      .map((match) => match[1]?.trim())
+      .filter((name): name is string => Boolean(name))
+      .slice(0, 3);
+
+    if (names.length === 0) {
+      return null;
+    }
+
+    return `Ahora mismo tenemos: ${names.join(", ")}. ¿Quieres precio o más detalles de alguno?`;
   }
 }

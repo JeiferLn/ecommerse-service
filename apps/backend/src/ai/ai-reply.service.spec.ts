@@ -139,7 +139,8 @@ describe("AiReplyService", () => {
       customerText: "qué artículos venden?",
     });
 
-    expect(result.requestedHandoff).toBe(true);
+    expect(result.requestedHandoff).toBe(false);
+    expect(result.text).toContain("Camiseta");
   });
 
   it("descarta monólogos / razonamiento interno en inglés", async () => {
@@ -155,7 +156,7 @@ describe("AiReplyService", () => {
       customerText: "quiero 3 gorras",
     });
 
-    expect(result.requestedHandoff).toBe(true);
+    expect(result.requestedHandoff).toBe(false);
     expect(result.text).toBe("Fallback humano");
   });
 
