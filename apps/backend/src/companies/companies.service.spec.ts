@@ -9,9 +9,24 @@ import {
 import { Prisma, type User } from "@prisma/client";
 
 import { MailService } from "../mail/mail.service";
+import { KnowledgeService } from "../knowledge/knowledge.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { CompaniesService } from "./companies.service";
+
+const emptyKnowledge = {
+  isConfigured: false,
+  missingTypes: ["guide", "faq", "warranty", "policy"] as const,
+  slots: [],
+};
+
+const companyDetailsBase = {
+  countryCode: null as string | null,
+  shippingScopes: [] as string[],
+  paymentMethods: [] as string[],
+  shippingCarriers: [] as string[],
+  banks: [] as string[],
+};
 
 const mockUser: User = {
   id: "user-2",
@@ -138,6 +153,10 @@ describe("CompaniesService", () => {
         .mockResolvedValue(),
     };
 
+    const knowledgeService = {
+      getSettings: jest.fn().mockResolvedValue(emptyKnowledge),
+    };
+
     const configService = {
       get: jest.fn((key: string) => {
         switch (key) {
@@ -164,6 +183,7 @@ describe("CompaniesService", () => {
         { provide: UsersService, useValue: usersService },
         { provide: MailService, useValue: mailService },
         { provide: ConfigService, useValue: configService },
+        { provide: KnowledgeService, useValue: knowledgeService },
       ],
     }).compile();
 
@@ -181,6 +201,7 @@ describe("CompaniesService", () => {
         website: null,
         address: null,
         description: null,
+        ...companyDetailsBase,
         createdAt: new Date("2026-01-15T10:00:00.000Z"),
       });
 
@@ -195,6 +216,13 @@ describe("CompaniesService", () => {
         website: null,
         address: null,
         description: null,
+        commerce: {
+          countryCode: null,
+          shippingScopes: [],
+          shippingCarriers: [],
+          isConfigured: false,
+        },
+        knowledge: emptyKnowledge,
         createdAt: "2026-01-15T10:00:00.000Z",
       });
     });
@@ -224,6 +252,7 @@ describe("CompaniesService", () => {
         website: "https://empresa.com",
         address: "Calle 1",
         description: "Vendemos ropa",
+        ...companyDetailsBase,
         createdAt: new Date("2026-01-15T10:00:00.000Z"),
       });
 
@@ -256,6 +285,11 @@ describe("CompaniesService", () => {
           website: true,
           address: true,
           description: true,
+          countryCode: true,
+          shippingScopes: true,
+          paymentMethods: true,
+          shippingCarriers: true,
+          banks: true,
           createdAt: true,
         },
       });
@@ -268,6 +302,13 @@ describe("CompaniesService", () => {
         website: "https://empresa.com",
         address: "Calle 1",
         description: "Vendemos ropa",
+        commerce: {
+          countryCode: null,
+          shippingScopes: [],
+          shippingCarriers: [],
+          isConfigured: false,
+        },
+        knowledge: emptyKnowledge,
         createdAt: "2026-01-15T10:00:00.000Z",
       });
     });
@@ -283,6 +324,7 @@ describe("CompaniesService", () => {
         website: null,
         address: null,
         description: null,
+        ...companyDetailsBase,
         createdAt: new Date("2026-01-15T10:00:00.000Z"),
       });
 

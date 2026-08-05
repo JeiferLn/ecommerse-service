@@ -102,6 +102,14 @@ const envSchema = z
       .default(
         "Listo. Un asesor de la tienda continuará esta conversación por aquí.",
       ),
+    /** Embeddings para RAG (Fase 7). */
+    EMBEDDING_PROVIDER: z.enum(["openrouter", "mock"]).default("openrouter"),
+    EMBEDDING_MODEL: z.string().default("openai/text-embedding-3-small"),
+    /** Dimensión fija del modelo (text-embedding-3-small = 1536). */
+    EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
+    RAG_TOP_K: z.coerce.number().int().positive().default(4),
+    RAG_CHUNK_SIZE: z.coerce.number().int().positive().default(700),
+    RAG_CHUNK_OVERLAP: z.coerce.number().int().nonnegative().default(80),
   })
   .superRefine((env, ctx) => {
     if (
@@ -114,6 +122,17 @@ const envSchema = z
         code: "custom",
         path: ["OPENROUTER_API_KEY"],
         message: "En production con AI_ENABLED y openrouter se requiere OPENROUTER_API_KEY",
+      });
+    }
+    if (
+      env.EMBEDDING_PROVIDER === "openrouter" &&
+      env.NODE_ENV === "production" &&
+      !env.OPENROUTER_API_KEY?.trim()
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["OPENROUTER_API_KEY"],
+        message: "En production con EMBEDDING_PROVIDER=openrouter se requiere OPENROUTER_API_KEY",
       });
     }
     if (env.NODE_ENV !== "production") {

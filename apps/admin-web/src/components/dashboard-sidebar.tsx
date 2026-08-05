@@ -3,7 +3,14 @@
 import { canViewMembers, canViewWhatsapp, type UserRole } from "@commerce-ai/types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderTree, LayoutDashboard, MessageCircle, Package, Settings, Users } from "lucide-react";
+import {
+  FolderTree,
+  LayoutDashboard,
+  MessageCircle,
+  Package,
+  Settings,
+  Users,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";

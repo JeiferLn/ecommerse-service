@@ -33,6 +33,7 @@ export type CompanyCapability =
   | "operateOrders"
   | "manageWhatsapp"
   | "viewWhatsapp"
+  | "manageKnowledge"
   | "manageBilling";
 
 type CompanyRole = Exclude<UserRole, "admin">;
@@ -49,6 +50,7 @@ export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, bo
     operateOrders: true,
     manageWhatsapp: true,
     viewWhatsapp: true,
+    manageKnowledge: true,
     manageBilling: true,
   },
   manager: {
@@ -62,6 +64,7 @@ export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, bo
     operateOrders: true,
     manageWhatsapp: true,
     viewWhatsapp: true,
+    manageKnowledge: true,
     manageBilling: false,
   },
   user: {
@@ -75,6 +78,7 @@ export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, bo
     operateOrders: true,
     manageWhatsapp: false,
     viewWhatsapp: true,
+    manageKnowledge: false,
     manageBilling: false,
   },
 };
@@ -116,6 +120,10 @@ export function canManageWhatsapp(role: UserRole): boolean {
 
 export function canViewWhatsapp(role: UserRole): boolean {
   return hasCapability(role, "viewWhatsapp");
+}
+
+export function canManageKnowledge(role: UserRole): boolean {
+  return hasCapability(role, "manageKnowledge");
 }
 
 export type CompanyType =
@@ -240,6 +248,7 @@ export interface CompanyDetails {
   address: string | null;
   description: string | null;
   commerce: CompanyCommerceSettings;
+  knowledge: CompanyKnowledgeSettings;
   createdAt: string;
 }
 
@@ -311,6 +320,113 @@ export interface Category {
   slug: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type KnowledgeDocumentType = "faq" | "policy" | "warranty" | "guide";
+
+export type KnowledgeDocumentStatus = "draft" | "active" | "archived";
+
+/** Los 4 PDFs obligatorios para habilitar WhatsApp. */
+export const REQUIRED_KNOWLEDGE_TYPES: readonly KnowledgeDocumentType[] = [
+  "guide",
+  "faq",
+  "warranty",
+  "policy",
+] as const;
+
+export const KNOWLEDGE_DOCUMENT_TYPE_LABELS: Record<KnowledgeDocumentType, string> = {
+  guide: "Guía del asistente",
+  faq: "FAQ",
+  warranty: "Política de garantías",
+  policy: "Políticas de la tienda",
+};
+
+export const KNOWLEDGE_DOCUMENT_TYPE_REASONS: Record<KnowledgeDocumentType, string> = {
+  guide:
+    "Instrucciones para el bot: tono, qué puede y no puede hacer, cuándo escalar a un humano, y cómo presentar productos o precios.",
+  faq:
+    "Preguntas frecuentes ya resueltas (horarios, tallas, stock, medios de pago, tiempos de respuesta). El bot las usa para responder sin inventar.",
+  warranty:
+    "Condiciones de garantía: cobertura, plazos, qué sí/no aplica, cómo reclamar y qué datos o evidencia pedir al cliente.",
+  policy:
+    "Reglas de la tienda: envíos y zonas, cambios/devoluciones, cancelaciones, datos de contacto y cualquier política que el cliente deba conocer.",
+};
+
+export const KNOWLEDGE_DOCUMENT_STATUS_LABELS: Record<KnowledgeDocumentStatus, string> = {
+  draft: "Borrador",
+  active: "Activo",
+  archived: "Archivado",
+};
+
+export const KNOWLEDGE_DOCUMENT_TYPES: KnowledgeDocumentType[] = Object.keys(
+  KNOWLEDGE_DOCUMENT_TYPE_LABELS,
+) as KnowledgeDocumentType[];
+
+export const KNOWLEDGE_DOCUMENT_STATUSES: KnowledgeDocumentStatus[] = Object.keys(
+  KNOWLEDGE_DOCUMENT_STATUS_LABELS,
+) as KnowledgeDocumentStatus[];
+
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  type: KnowledgeDocumentType;
+  body: string;
+  status: KnowledgeDocumentStatus;
+  fileKey: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  chunksCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Slot fijo en Configuración (siempre 4). */
+export interface KnowledgeSlot {
+  type: KnowledgeDocumentType;
+  title: string;
+  reason: string;
+  uploaded: boolean;
+  documentId: string | null;
+  fileName: string | null;
+  chunksCount: number;
+  updatedAt: string | null;
+}
+
+export interface CompanyKnowledgeSettings {
+  isConfigured: boolean;
+  missingTypes: KnowledgeDocumentType[];
+  slots: KnowledgeSlot[];
+}
+
+export function isCompanyKnowledgeConfigured(
+  docs: ReadonlyArray<{
+    type: string;
+    status: string;
+    fileKey?: string | null;
+  }>,
+): boolean {
+  return REQUIRED_KNOWLEDGE_TYPES.every((type) =>
+    docs.some(
+      (doc) =>
+        doc.type === type && doc.status === "active" && Boolean(doc.fileKey?.trim()),
+    ),
+  );
+}
+
+export function getMissingKnowledgeTypes(
+  docs: ReadonlyArray<{
+    type: string;
+    status: string;
+    fileKey?: string | null;
+  }>,
+): KnowledgeDocumentType[] {
+  return REQUIRED_KNOWLEDGE_TYPES.filter(
+    (type) =>
+      !docs.some(
+        (doc) =>
+          doc.type === type && doc.status === "active" && Boolean(doc.fileKey?.trim()),
+      ),
+  );
 }
 
 export interface ProductVariant {

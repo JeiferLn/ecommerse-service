@@ -10,6 +10,7 @@ import { CompaniesModule } from "./companies/companies.module";
 import { validateEnv } from "./config/env.validation";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
+import { KnowledgeModule } from "./knowledge/knowledge.module";
 import { MailModule } from "./mail/mail.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProductsModule } from "./products/products.module";
@@ -38,6 +39,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
     CategoriesModule,
     ProductsModule,
     DashboardModule,
+    KnowledgeModule,
     AiModule,
     WhatsAppModule,
   ],

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { AiProviderFactory } from "./ai-provider.factory";
 import { AiReplyService } from "./ai-reply.service";
 import { CatalogContextService } from "./catalog-context.service";
@@ -7,6 +8,7 @@ import { MockChatProvider } from "./mock-chat.provider";
 import { OpenRouterChatProvider } from "./openrouter-chat.provider";
 
 @Module({
+  imports: [KnowledgeModule],
   providers: [
     OpenRouterChatProvider,
     MockChatProvider,

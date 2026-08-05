@@ -160,11 +160,20 @@ Reglas al añadir endpoints:
 - Proveedores abstraídos detrás de `AiChatProvider` (`apps/backend/src/ai/`); nunca acoplar lógica de negocio al SDK de OpenAI.
 - Proveedor por defecto **OpenRouter** (`AI_PROVIDER=openrouter`) vía HTTP compatible con chat completions. `AI_PROVIDER=mock` para tests.
 - Env: `AI_ENABLED`, `OPENROUTER_API_KEY`, `AI_BASE_URL`, `AI_MODEL` (demo típico `openrouter/free`), `AI_MAX_PRODUCTS`, `AI_HISTORY_LIMIT`, `AI_FALLBACK_TEXT`, `AI_HTTP_REFERER`, `AI_APP_TITLE`.
-- Flujo: inbound WhatsApp → routing handler → `AiReplyService` (catálogo `active` + historial + bloque envíos/pagos de la empresa) → outbound. Si falla / basura / `[HANDOFF]` / sin productos: `AI_FALLBACK_TEXT` y el hilo queda en el inbox.
+- Flujo: inbound WhatsApp → routing handler → `AiReplyService` (catálogo `active` + **RAG** + historial + bloque envíos) → outbound. Si falla / basura / `[HANDOFF]` / sin productos: `AI_FALLBACK_TEXT` y el hilo queda en el inbox.
 - Comercio: país, alcances y transportadoras en `Company` (UI Configuración). El pago será por pasarela (Fase 9); si envíos no están configurados, WhatsApp queda bloqueado.
 - Prompts en `src/ai/prompts/` separados del servicio.
 - **Prod (futuro):** modelo de pago + key real, Twilio WhatsApp real; no asumir calidad del modelo free.
-- Sin RAG/pgvector aún (Fase 7). Sin UI de settings de IA por empresa.
+- Sin UI de settings de IA por empresa.
+
+## RAG / conocimiento (Fase 7)
+
+- Módulo `apps/backend/src/knowledge/`: **4 PDFs obligatorios** (`guide` | `faq` | `warranty` | `policy`), un documento por tipo (`@@unique([companyId, type])`), chunking, embeddings (`EmbeddingProvider`), retrieval con pgvector.
+- Subida: `PUT /knowledge/:type/file` (multipart PDF); parseo con `pdf-parse` (solo texto seleccionable); delete `DELETE /knowledge/:type`.
+- Capability `manageKnowledge` (owner + manager). Admin: `/dashboard/settings#conocimiento` (sin entrada en el sidebar; `/dashboard/knowledge` redirige ahí).
+- WhatsApp exige `isCompanyCommerceConfigured` **y** `isCompanyKnowledgeConfigured` (4 PDFs activos con `fileKey`). Docs de texto legado sin PDF no cuentan.
+- Env: `EMBEDDING_PROVIDER` (`openrouter` | `mock`), `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` (1536), `RAG_TOP_K`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`.
+- El `ragBlock` se inyecta en `buildSalesAssistantSystemPrompt` junto al catálogo.
 
 ## Variables de entorno
 

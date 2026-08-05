@@ -62,6 +62,7 @@ model Company {
   products      Product[]
   whatsappConnection WhatsAppConnection?
   conversations Conversation[]
+  knowledgeDocuments KnowledgeDocument[]
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 }
@@ -262,4 +263,56 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([wamid])
+}
+
+enum KnowledgeDocumentType {
+  faq
+  policy
+  warranty
+  guide
+}
+
+enum KnowledgeDocumentStatus {
+  draft
+  active
+  archived
+}
+
+/// Documento de conocimiento de la empresa (FAQ, política, garantía, guía).
+model KnowledgeDocument {
+  id        String                  @id @default(cuid())
+  companyId String
+  company   Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title     String
+  type      KnowledgeDocumentType
+  body      String
+  status    KnowledgeDocumentStatus @default(draft)
+  fileKey   String?
+  fileName  String?
+  mimeType  String?
+  chunks    KnowledgeChunk[]
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@unique([companyId, type])
+  @@index([companyId])
+  @@index([companyId, status])
+}
+
+/// Fragmento indexado con embedding pgvector (dimensión fija 1536).
+model KnowledgeChunk {
+  id         String            @id @default(cuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// Denormalizado para filtrar por tenant en retrieval SQL.
+  companyId  String
+  content    String
+  chunkIndex Int
+  /// pgvector; se escribe/lee con SQL raw.
+  embedding  Unsupported("vector")?
+  createdAt  DateTime          @default(now())
+
+  @@index([documentId])
+  @@index([companyId])
+  @@unique([documentId, chunkIndex])
 }

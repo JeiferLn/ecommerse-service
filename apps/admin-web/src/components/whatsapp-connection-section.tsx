@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
 import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
+import { WhatsAppKnowledgeRequiredGate } from "@/components/whatsapp-knowledge-required-gate";
 
 const connectionSchema = z.object({
   twilioWhatsAppNumber: z
@@ -65,6 +66,8 @@ export function WhatsAppConnectionSection() {
   });
 
   const commerceReady = Boolean(company?.commerce.isConfigured);
+  const knowledgeReady = Boolean(company?.knowledge.isConfigured);
+  const missingKnowledge = company?.knowledge.missingTypes ?? [];
 
   const {
     register,
@@ -174,6 +177,10 @@ export function WhatsAppConnectionSection() {
 
   if (!commerceReady) {
     return <WhatsAppCommerceRequiredGate />;
+  }
+
+  if (!knowledgeReady) {
+    return <WhatsAppKnowledgeRequiredGate missingTypes={missingKnowledge} />;
   }
 
   const isActive = watch("isActive");

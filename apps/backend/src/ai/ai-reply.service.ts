@@ -8,6 +8,15 @@ import { CatalogContextService } from "./catalog-context.service";
 import { HANDOFF_MARKER, type ChatMessage } from "./ai.types";
 import { formatCommercePromptBlock } from "./commerce-prompt";
 import { buildSalesAssistantSystemPrompt } from "./prompts/sales-assistant";
+import {
+  buildSalesScopeRedirect,
+  isClearlyOffTopicSalesQuery,
+  looksLikeOffTopicAssistantReply,
+} from "./sales-scope";
+import {
+  KnowledgeRetrievalService,
+  type RetrievedChunk,
+} from "../knowledge/knowledge-retrieval.service";
 
 export interface GenerateReplyInput {
   companyId: string;
@@ -29,10 +38,13 @@ export class AiReplyService {
     private readonly config: ConfigService<Env, true>,
     private readonly providerFactory: AiProviderFactory,
     private readonly catalogContext: CatalogContextService,
+    private readonly knowledgeRetrieval: KnowledgeRetrievalService,
   ) {}
 
   async generateReply(input: GenerateReplyInput): Promise<GenerateReplyResult> {
     const fallback = this.config.get("AI_FALLBACK_TEXT", { infer: true });
+    let ragBlock = "";
+    let ragChunks: RetrievedChunk[] = [];
 
     try {
       const catalog = await this.catalogContext.buildForCompany(
@@ -40,7 +52,25 @@ export class AiReplyService {
         input.customerText,
       );
 
-      if (catalog.productCount === 0) {
+      if (isClearlyOffTopicSalesQuery(input.customerText)) {
+        this.logger.log(
+          `Off-topic sales query blocked conversation=${input.conversationId}`,
+        );
+        return {
+          text: buildSalesScopeRedirect(catalog.companyName),
+          requestedHandoff: false,
+        };
+      }
+
+      const retrieved = await this.knowledgeRetrieval.retrieve(
+        input.companyId,
+        input.customerText,
+      );
+      ragBlock = retrieved.ragBlock;
+      ragChunks = retrieved.chunks;
+
+      // Sin catálogo ni documentos: no hay con qué responder.
+      if (catalog.productCount === 0 && ragChunks.length === 0) {
         return { text: fallback, requestedHandoff: true };
       }
 
@@ -92,6 +122,7 @@ export class AiReplyService {
             totalActiveCount: catalog.totalActiveCount,
             commerceBlock: commerce.block,
             commerceConfigured: commerce.configured,
+            ragBlock,
           }),
         },
         ...historyMessages,
@@ -111,14 +142,23 @@ export class AiReplyService {
 
       if (!content || this.looksLikeInternalReasoning(content)) {
         this.logger.warn(
-          `AI empty/garbage reply for conversation=${input.conversationId}; using catalog fallback if possible`,
-        );
-        const overviewFallback = this.buildCatalogOverviewFallback(
-          catalog.catalogBlock,
-          input.customerText,
+          `AI empty/garbage reply for conversation=${input.conversationId}; using RAG/catalog fallback`,
         );
         return {
-          text: overviewFallback ?? fallback,
+          text:
+            this.buildKnowledgeFallback(ragChunks) ??
+            this.buildCatalogOverviewFallback(catalog.catalogBlock, input.customerText) ??
+            fallback,
+          requestedHandoff: false,
+        };
+      }
+
+      if (looksLikeOffTopicAssistantReply(content)) {
+        this.logger.warn(
+          `AI off-topic tutorial blocked conversation=${input.conversationId}`,
+        );
+        return {
+          text: buildSalesScopeRedirect(catalog.companyName),
           requestedHandoff: false,
         };
       }
@@ -129,7 +169,22 @@ export class AiReplyService {
       };
     } catch (error) {
       this.logger.error(`AI reply failed: ${String(error)}`);
-      return { text: fallback, requestedHandoff: false };
+      // Si el modelo falló pero ya teníamos documentos, responde con ellos.
+      if (ragChunks.length === 0) {
+        try {
+          const recovered = await this.knowledgeRetrieval.retrieve(
+            input.companyId,
+            input.customerText,
+          );
+          ragChunks = recovered.chunks;
+        } catch {
+          // ignore
+        }
+      }
+      return {
+        text: this.buildKnowledgeFallback(ragChunks) ?? fallback,
+        requestedHandoff: false,
+      };
     }
   }
 
@@ -202,6 +257,22 @@ export class AiReplyService {
       normalized.toUpperCase().includes(HANDOFF_MARKER) ||
       /^\[?\s*handoff\s*\]?$/i.test(normalized)
     );
+  }
+
+  /** Si el modelo falla pero hay RAG, resume el fragmento más relevante. */
+  private buildKnowledgeFallback(chunks: RetrievedChunk[]): string | null {
+    const best = chunks[0];
+    if (!best?.content?.trim()) {
+      return null;
+    }
+
+    const cleaned = best.content
+      .replace(/^#+\s*/gm, "")
+      .replace(/\*\*/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const snippet = cleaned.length > 280 ? `${cleaned.slice(0, 277).trim()}…` : cleaned;
+    return `Según nuestra información de "${best.documentTitle}": ${snippet}`;
   }
 
   /** Si el modelo falla en una pregunta de catálogo, lista 2-3 nombres del bloque. */

@@ -52,11 +52,27 @@ export class OpenRouterChatProvider implements AiChatProvider {
 
     const data = (await response.json()) as {
       model?: string;
-      choices?: Array<{ message?: { content?: string | null } }>;
+      choices?: Array<{
+        message?: { content?: string | null | Array<{ type?: string; text?: string }> };
+        text?: string;
+      }>;
     };
 
-    const content = data.choices?.[0]?.message?.content?.trim();
+    const rawContent = data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text;
+    let content = "";
+    if (typeof rawContent === "string") {
+      content = rawContent.trim();
+    } else if (Array.isArray(rawContent)) {
+      content = rawContent
+        .map((part) => (typeof part?.text === "string" ? part.text : ""))
+        .join("")
+        .trim();
+    }
+
     if (!content) {
+      this.logger.warn(
+        `OpenRouter empty content (model=${model}). keys=${JSON.stringify(Object.keys(data.choices?.[0] ?? {}))}`,
+      );
       throw new Error("OpenRouter devolvió una respuesta vacía");
     }
 

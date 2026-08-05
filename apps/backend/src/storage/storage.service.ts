@@ -95,23 +95,54 @@ export class StorageService {
 
     const extension = extname(params.fileName).toLowerCase() || ".bin";
     const key = `companies/${params.companyId}/products/${params.productId}/${randomUUID()}${extension}`;
+    return this.putObject({
+      key,
+      body: params.body,
+      contentType: params.contentType,
+    });
+  }
 
+  async uploadKnowledgePdf(params: {
+    companyId: string;
+    type: string;
+    fileName: string;
+    body: Buffer;
+  }): Promise<UploadedObject> {
+    if (this.mode === "disabled") {
+      throw new ServiceUnavailableException(
+        "Almacenamiento no disponible en production sin R2. Configura las variables R2_*.",
+      );
+    }
+
+    const key = `companies/${params.companyId}/knowledge/${params.type}/${randomUUID()}.pdf`;
+    return this.putObject({
+      key,
+      body: params.body,
+      contentType: "application/pdf",
+    });
+  }
+
+  private async putObject(params: {
+    key: string;
+    body: Buffer;
+    contentType: string;
+  }): Promise<UploadedObject> {
     if (this.mode === "r2") {
       await this.client!.send(
         new PutObjectCommand({
           Bucket: this.bucket!,
-          Key: key,
+          Key: params.key,
           Body: params.body,
           ContentType: params.contentType,
         }),
       );
-      return { key, url: `${this.publicUrl}/${key}` };
+      return { key: params.key, url: `${this.publicUrl}/${params.key}` };
     }
 
-    const filePath = join(this.localUploadDir, key);
+    const filePath = join(this.localUploadDir, params.key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, params.body);
-    return { key, url: `${this.apiPublicUrl}/uploads/${key}` };
+    return { key: params.key, url: `${this.apiPublicUrl}/uploads/${params.key}` };
   }
 
   async deleteObject(key: string): Promise<void> {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { CompanyCommerceSettingsForm } from "@/components/company-commerce-settings-form";
+import { CompanyKnowledgeSettingsForm } from "@/components/company-knowledge-settings-form";
 import { CompanySettingsForm } from "@/components/company-settings-form";
 
 export const metadata: Metadata = {
@@ -15,11 +16,17 @@ export default function SettingsPage() {
           Configuración
         </h1>
         <p className="text-muted-foreground">
-          Administra el perfil de tu empresa y cómo envía el bot. El pago irá por pasarela.
+          Administra el perfil de tu empresa, envíos y los PDFs que alimentan al bot. El pago irá por
+          pasarela.
         </p>
       </div>
-      <CompanySettingsForm />
-      <CompanyCommerceSettingsForm />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <CompanySettingsForm />
+        <CompanyCommerceSettingsForm />
+        <div className="xl:col-span-2">
+          <CompanyKnowledgeSettingsForm />
+        </div>
+      </div>
     </div>
   );
 }

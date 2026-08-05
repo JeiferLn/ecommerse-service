@@ -6,10 +6,12 @@ import { AiProviderFactory } from "./ai-provider.factory";
 import { AiReplyService } from "./ai-reply.service";
 import { CatalogContextService } from "./catalog-context.service";
 import { HANDOFF_MARKER } from "./ai.types";
+import { KnowledgeRetrievalService } from "../knowledge/knowledge-retrieval.service";
 
 describe("AiReplyService", () => {
   let service: AiReplyService;
   let catalogContext: { buildForCompany: jest.Mock };
+  let knowledgeRetrieval: { retrieve: jest.Mock };
   let providerComplete: jest.Mock;
   let prisma: {
     message: { findMany: jest.Mock };
@@ -25,6 +27,9 @@ describe("AiReplyService", () => {
         totalActiveCount: 1,
         productCount: 1,
       }),
+    };
+    knowledgeRetrieval = {
+      retrieve: jest.fn().mockResolvedValue({ ragBlock: "", chunks: [] }),
     };
     providerComplete = jest.fn();
     prisma = {
@@ -65,6 +70,7 @@ describe("AiReplyService", () => {
           useValue: { getProvider: () => ({ complete: providerComplete }) },
         },
         { provide: CatalogContextService, useValue: catalogContext },
+        { provide: KnowledgeRetrievalService, useValue: knowledgeRetrieval },
       ],
     }).compile();
 
@@ -80,7 +86,60 @@ describe("AiReplyService", () => {
       customerText: "¿Cuánto cuesta la camiseta?",
     });
 
+    expect(knowledgeRetrieval.retrieve).toHaveBeenCalledWith("c1", "¿Cuánto cuesta la camiseta?");
     expect(result).toEqual({ text: "La camiseta cuesta $10", requestedHandoff: false });
+  });
+
+  it("incluye ragBlock en el system prompt cuando hay documentos", async () => {
+    knowledgeRetrieval.retrieve.mockResolvedValue({
+      ragBlock: "[1] (policy) Devoluciones\nTienes 15 días para devolver.",
+      chunks: [
+        {
+          content: "Tienes 15 días para devolver.",
+          documentTitle: "Devoluciones",
+          documentType: "policy",
+          distance: 0.1,
+        },
+      ],
+    });
+    providerComplete.mockResolvedValue({ content: "Tienes 15 días para devolver.", model: "mock" });
+
+    await service.generateReply({
+      companyId: "c1",
+      conversationId: "conv-1",
+      customerText: "¿puedo devolver?",
+    });
+
+    const messages = providerComplete.mock.calls[0][0].messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(messages[0]?.content).toContain("Tienes 15 días para devolver.");
+  });
+
+  it("si OpenRouter falla usa fallback desde documentos RAG", async () => {
+    knowledgeRetrieval.retrieve.mockResolvedValue({
+      ragBlock: "[1] (warranty) Garantia\nCubre defectos de fabricación.",
+      chunks: [
+        {
+          content: "Cubre defectos de fabricación con factura y fotos.",
+          documentTitle: "Garantia",
+          documentType: "warranty",
+          distance: 0.2,
+        },
+      ],
+    });
+    providerComplete.mockRejectedValue(new Error("OpenRouter devolvió una respuesta vacía"));
+
+    const result = await service.generateReply({
+      companyId: "c1",
+      conversationId: "conv-1",
+      customerText: "llego en mal estado, como lo devuelvo?",
+    });
+
+    expect(result.requestedHandoff).toBe(false);
+    expect(result.text).toContain("Garantia");
+    expect(result.text).toContain("defectos");
   });
 
   it("marca handoff ante [HANDOFF]", async () => {
@@ -167,5 +226,36 @@ describe("AiReplyService", () => {
       ),
     ).toBe(true);
     expect(service.looksLikeInternalReasoning("¡Claro! Tenemos gorras a $20.000.")).toBe(false);
+  });
+
+  it("bloquea mensajes fuera del ámbito de ventas sin llamar al modelo", async () => {
+    const result = await service.generateReply({
+      companyId: "c1",
+      conversationId: "conv-1",
+      customerText: "Hazme un hola mundo en python",
+    });
+
+    expect(providerComplete).not.toHaveBeenCalled();
+    expect(knowledgeRetrieval.retrieve).not.toHaveBeenCalled();
+    expect(result.requestedHandoff).toBe(false);
+    expect(result.text).toContain("Solo puedo ayudarte");
+    expect(result.text).toContain("Tienda");
+  });
+
+  it("reemplaza tutoriales del modelo por redirect de ventas", async () => {
+    providerComplete.mockResolvedValue({
+      content:
+        "¡Claro! Aquí tienes:\n```python\nprint('Hola Mundo')\n```\n### ¿Cómo funciona?\nLa función print muestra texto.",
+      model: "mock",
+    });
+
+    const result = await service.generateReply({
+      companyId: "c1",
+      conversationId: "conv-1",
+      customerText: "cuéntame algo interesante",
+    });
+
+    expect(result.text).toContain("Solo puedo ayudarte");
+    expect(result.text).not.toContain("print");
   });
 });

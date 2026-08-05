@@ -18,6 +18,7 @@ import { isCompanyCommerceConfigured } from "@commerce-ai/types";
 import type { Company } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
+import { KnowledgeService } from "../knowledge/knowledge.service";
 import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
@@ -49,6 +50,7 @@ export class CompaniesService {
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly knowledgeService: KnowledgeService,
   ) {}
 
   async listMembers(companyId: string | null): Promise<CompanyMember[]> {
@@ -84,7 +86,7 @@ export class CompaniesService {
       throw new NotFoundException("Empresa no encontrada");
     }
 
-    return this.toCompanyDetails(company);
+    return await this.toCompanyDetails(company);
   }
 
   async updateCompany(
@@ -118,7 +120,7 @@ export class CompaniesService {
       select: COMPANY_DETAILS_SELECT,
     });
 
-    return this.toCompanyDetails(company);
+    return await this.toCompanyDetails(company);
   }
 
   async updateCommerceSettings(
@@ -158,7 +160,7 @@ export class CompaniesService {
       select: COMPANY_DETAILS_SELECT,
     });
 
-    return this.toCompanyDetails(company);
+    return await this.toCompanyDetails(company);
   }
 
   private nullableText(value: string | undefined): string | null {
@@ -187,7 +189,7 @@ export class CompaniesService {
     return result;
   }
 
-  private toCompanyDetails(company: {
+  private async toCompanyDetails(company: {
     id: string;
     name: string;
     type: CompanyDetails["type"];
@@ -202,8 +204,9 @@ export class CompaniesService {
     shippingCarriers: string[];
     banks: string[];
     createdAt: Date;
-  }): CompanyDetails {
+  }): Promise<CompanyDetails> {
     const shippingScopes = company.shippingScopes as ShippingScope[];
+    const knowledge = await this.knowledgeService.getSettings(company.id);
     return {
       id: company.id,
       name: company.name,
@@ -223,6 +226,7 @@ export class CompaniesService {
           shippingCarriers: company.shippingCarriers,
         }),
       },
+      knowledge,
       createdAt: company.createdAt.toISOString(),
     };
   }

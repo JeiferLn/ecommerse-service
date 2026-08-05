@@ -21,6 +21,18 @@ export class MockChatProvider implements AiChatProvider {
       return { content: HANDOFF_MARKER, model: "mock" };
     }
 
+    if (
+      /\b(hola\s*mundo|hello\s*world|print\s*\(|programa(r|cion)|codigo\s+en\s+python)\b/.test(
+        normalized,
+      )
+    ) {
+      return {
+        content:
+          "Solo puedo ayudarte con productos, pedidos y políticas de nuestra tienda. ¿Buscas algo de nuestro catálogo?",
+        model: "mock",
+      };
+    }
+
     const isGreeting =
       /^(hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|hey|saludos)\b/.test(
         text.trim(),

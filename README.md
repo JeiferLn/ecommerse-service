@@ -368,20 +368,34 @@ Fuera de alcance de Fase 6: RAG/documentos (Fase 7), settings de IA por empresa,
 
 ---
 
-# Fase 7 — RAG
+# Fase 7 — RAG ✅
+
+**Estado:** MVP con **4 PDFs obligatorios** en Configuración (sin documentos opcionales ni texto libre).
 
 Objetivo:
 
-Permitir responder usando documentos de la empresa.
+Permitir responder usando documentos de la empresa (guía, FAQ, garantías, políticas) además del catálogo.
 
-Incluye:
+Incluye (implementado):
 
-- Embeddings
-- pgvector
-- Documentos
-- FAQs
-- Políticas
-- Garantías
+- Modelos `KnowledgeDocument` + `KnowledgeChunk` con **pgvector** (extensión `vector`, embeddings 1536)
+- Un PDF por tipo y empresa (`@@unique([companyId, type])`): `guide`, `faq`, `warranty`, `policy`
+- Subida PDF → extracción de texto → chunk → embedding (OpenRouter o mock) → DB
+- Retrieval top-k por similitud coseno (fallback léxico) inyectado en `AiReplyService`
+- API `GET /api/v1/knowledge`, `PUT /api/v1/knowledge/:type/file`, `DELETE /api/v1/knowledge/:type` (`owner`/`manager`, capability `manageKnowledge`)
+- Admin: sección **Conocimiento** en `/dashboard/settings#conocimiento` (sin nav lateral)
+- **Prerequisito WhatsApp:** envíos configurados **y** los 4 PDFs activos con `fileKey`
+
+Cómo probar:
+
+1. En Configuración → Conocimiento, subir los 4 PDFs (texto seleccionable, no escaneados)
+2. Configurar envíos si aún no lo están
+3. Simular WhatsApp: “¿puedo devolver a los 10 días?”
+4. El bot debe basarse en el texto indexado; preguntas de producto siguen usando el catálogo
+
+Env: `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`, `RAG_TOP_K`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP` (reutiliza `OPENROUTER_API_KEY`).
+
+Fuera de este MVP: OCR / PDFs escaneados, DOCX, settings de IA por empresa.
 
 ---
 
@@ -460,7 +474,7 @@ Incluye:
 - Storage (R2 o local en desarrollo)
 - Customers *(roadmap)*
 - Conversations / Messages *(roadmap)*
-- AI / Documents *(roadmap)*
+- AI / Knowledge (RAG)
 - Orders / Payments / Billing / Subscriptions *(roadmap)*
 
 ---
