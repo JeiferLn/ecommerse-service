@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Headers,
   HttpCode,
   Post,
@@ -22,6 +23,9 @@ import { UpsertWhatsAppConnectionDto } from "./dto/upsert-connection.dto";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
 
+/** TwiML vacío: Twilio exige text/xml en la respuesta del webhook (error 12300 si es JSON). */
+const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+
 @Controller("whatsapp")
 export class WhatsAppController {
   constructor(
@@ -31,16 +35,17 @@ export class WhatsAppController {
 
   /**
    * Webhook Twilio (form-urlencoded). Acepta mensajes inbound y status callbacks.
-   * Responde 200 vacío (Twilio no usa challenge GET de Meta).
+   * Responde TwiML vacío (text/xml). El auto-reply se envía aparte vía REST API.
    */
   @Public()
   @Post("webhook")
   @HttpCode(200)
+  @Header("Content-Type", "text/xml")
   async receiveWebhook(
     @Req() req: Request,
     @Headers("x-twilio-signature") signature?: string,
     @Body() body?: Record<string, unknown>,
-  ): Promise<{ status: string }> {
+  ): Promise<string> {
     const params = this.toStringRecord(body ?? {});
 
     try {
@@ -53,7 +58,7 @@ export class WhatsAppController {
     }
 
     await this.webhookService.handleTwilioWebhook(params);
-    return { status: "ok" };
+    return EMPTY_TWIML;
   }
 
   @Roles("owner", "manager")
