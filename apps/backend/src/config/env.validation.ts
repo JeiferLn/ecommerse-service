@@ -110,7 +110,14 @@ const envSchema = z
     RAG_TOP_K: z.coerce.number().int().positive().default(4),
     RAG_CHUNK_SIZE: z.coerce.number().int().positive().default(700),
     RAG_CHUNK_OVERLAP: z.coerce.number().int().nonnegative().default(80),
-    /** Mercado Pago — credenciales de la app plataforma (Checkout Pro / OAuth). */
+    /**
+     * Mercado Pago — app de plataforma (OAuth para conectar cuentas de comercios).
+     * MP_ACCESS_TOKEN/MP_PUBLIC_KEY ya no se usan para cobros de pedidos (van por empresa).
+     */
+    MP_CLIENT_ID: z.string().optional(),
+    MP_CLIENT_SECRET: z.string().optional(),
+    /** Debe coincidir con Redirect URI de la app en developers.mercadopago.com */
+    MP_REDIRECT_URI: z.string().optional(),
     MP_ACCESS_TOKEN: z.string().optional(),
     MP_PUBLIC_KEY: z.string().optional(),
     /** URL pública del webhook MP (ngrok en local). Si vacío, se usa API_PUBLIC_URL + path. */

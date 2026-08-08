@@ -404,7 +404,7 @@ Fuera de este MVP (no bloquea el cierre): OCR / PDFs escaneados, DOCX, settings 
 
 # Fase 8 — Pedidos ✅
 
-**Estado:** MVP completo. Carrito + pedido desde WhatsApp, checkout público por link, validación de cobertura de envío. Pago stub (pasarela real = Fase 9).
+**Estado:** MVP completo. Carrito + pedido desde WhatsApp, checkout público por link, validación de cobertura de envío. Pago real vía Mercado Pago (Fase 9).
 
 Objetivo:
 
@@ -418,7 +418,7 @@ Incluye (implementado):
 - API: listado/detalle/estado/cancelar + carrito/checkout por `conversationId`
 - Intenciones en bot: `agregar…`, `quiero 2`, `pedir una` (con historial), confirmación `sí` tras oferta, `ver carrito`, `vaciar carrito`, `confirmar pedido`
 - Tras `confirmar pedido`: orden `awaiting_payment` + `checkoutToken` + link `{FRONTEND_URL}/checkout/{token}`
-- Página pública `/checkout/[token]`: resumen + país/depto/municipio (selects) + dirección + **Pagar** (stub → `paid`)
+- Página pública `/checkout/[token]`: resumen + país/depto/municipio (selects) + dirección + **Pagar** (Mercado Pago Checkout Pro)
 - Validación de cobertura (local vs nacional vs internacional) contra ubicación base de la tienda
 - API pública: `GET/POST /api/v1/checkout/:token` (sin JWT)
 - Admin: `/dashboard/orders` + enlace desde inbox; KPIs de pedidos en dashboard
@@ -427,14 +427,14 @@ Cómo probar:
 
 1. Producto activo con stock; envíos con país + depto + municipio base
 2. Bot (simulate o móvil): agregar producto → `ver carrito` → `confirmar pedido`
-3. Abrir el link `/checkout/...` → llenar envío → **Pagar**
+3. Abrir el link `/checkout/...` → llenar envío → **Pagar** (requiere Mercado Pago conectado en la empresa)
 4. Ver pedido en `/dashboard/orders` (estado `paid`, con dirección)
 
-Fuera de este MVP (Fase 9+): pasarela real / payment links, flete calculado, entidad Customer.
+Fuera de este MVP (roadmap): flete calculado, entidad Customer.
 
 ---
 
-# Fase 9 — Pagos
+# Fase 9 — Pagos ✅
 
 Objetivo:
 
@@ -444,22 +444,30 @@ Alcance actual: **Latinoamérica** con **Mercado Pago** (AR, BR, CL, CO, MX, PE,
 
 Incluye:
 
-- Mercado Pago (Payment Links / Checkout Pro) por empresa
+- Mercado Pago (Checkout Pro) **por empresa** (OAuth o Access Token manual)
 - Webhooks de confirmación
 - Confirmación automática del estado `paid`
 - País de la empresa en el registro (países con soporte MP); depto/municipio en configuración
+- WhatsApp bloqueado hasta conectar Mercado Pago
 
 Estado MVP actual:
 
-- ✅ SDK + credenciales de plataforma (`MP_ACCESS_TOKEN` / `MP_PUBLIC_KEY`)
-- ✅ Preferencia de pago desde `/checkout/[token]` → redirección a Checkout Pro
-- ✅ Webhook → marcar `paid` + WhatsApp de confirmación
+- ✅ SDK + OAuth de plataforma (`MP_CLIENT_ID` / `MP_CLIENT_SECRET` / `MP_REDIRECT_URI`)
+- ✅ Conexión por empresa (OAuth o pegar Access Token) en Configuración → Pagos
+- ✅ Preferencia de pago desde `/checkout/[token]` con token del comercio → Checkout Pro
+- ✅ Webhook → marcar `paid` + validación monto/moneda + WhatsApp de confirmación
 - ✅ Checkout bloqueado si ya pagó o el link expiró
-- ⏳ OAuth “Conectar Mercado Pago” por empresa
+- ✅ WhatsApp requiere Mercado Pago conectado
+- ✅ WhatsApp al enviar / entregar / cancelar
 
-Webhook local: expón el API con ngrok y define `API_PUBLIC_URL` o `MP_WEBHOOK_URL`
-(`…/api/v1/payments/mercadopago/webhook`).
+Setup plataforma (app en [developers.mercadopago.com](https://www.mercadopago.com/developers)):
 
+1. Crea una aplicación Checkout Pro
+2. Define Redirect URI = `MP_REDIRECT_URI` (en local: ngrok del API + `/api/v1/payments/mercadopago/oauth/callback`)
+3. Copia Application ID → `MP_CLIENT_ID`, Client Secret → `MP_CLIENT_SECRET`
+4. Webhook: `API_PUBLIC_URL` o `MP_WEBHOOK_URL` (`…/api/v1/payments/mercadopago/webhook`)
+
+Cada dueño conecta **su** cuenta en Configuración → Pagos (botón OAuth o Access Token de prueba). El dinero del pedido llega a esa cuenta.
 ---
 
 # Fase 10 — Suscripciones

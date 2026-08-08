@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { WhatsAppConnection as WhatsAppConnectionDto } from "@commerce-ai/types";
-import { isCompanyCommerceConfigured } from "@commerce-ai/types";
+import { isCompanyCommerceConfigured, isCompanyPaymentsConfigured } from "@commerce-ai/types";
 import { Prisma } from "@prisma/client";
 
 import { KnowledgeService } from "../knowledge/knowledge.service";
@@ -21,7 +21,7 @@ export class WhatsAppConnectionService {
   ) {}
 
   /**
-   * WhatsApp requiere envíos configurados + los 4 PDFs de conocimiento.
+   * WhatsApp requiere envíos + 4 PDFs de conocimiento + Mercado Pago conectado.
    */
   async assertWhatsAppPrerequisites(companyId: string | null): Promise<void> {
     const scopedCompanyId = this.requireCompany(companyId);
@@ -33,6 +33,9 @@ export class WhatsAppConnectionService {
         shippingCity: true,
         shippingScopes: true,
         shippingCarriers: true,
+        mercadoPagoConnection: {
+          select: { accessToken: true },
+        },
       },
     });
     if (!company || !isCompanyCommerceConfigured(company)) {
@@ -46,6 +49,12 @@ export class WhatsAppConnectionService {
       const missing = await this.knowledgeService.getMissingTypes(scopedCompanyId);
       throw new BadRequestException(
         `Sube los 4 PDFs obligatorios en Configuración → Conocimiento antes de usar WhatsApp. Faltan: ${missing.join(", ")}.`,
+      );
+    }
+
+    if (!isCompanyPaymentsConfigured(company.mercadoPagoConnection)) {
+      throw new BadRequestException(
+        "Conecta Mercado Pago en Configuración → Pagos antes de usar WhatsApp. El dinero de los pedidos debe ir a la cuenta de tu empresa.",
       );
     }
   }

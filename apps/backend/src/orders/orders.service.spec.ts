@@ -71,10 +71,11 @@ describe("OrdersService", () => {
         {
           provide: MercadoPagoService,
           useValue: {
-            isConfigured: () => true,
+            getAccessTokenForCompany: jest.fn().mockResolvedValue("TEST-token"),
             preferenceApi: () => ({
               create: jest.fn(),
             }),
+            getWebhookNotificationUrl: () => null,
           },
         },
         {

@@ -1,6 +1,23 @@
-import { Body, Controller, Get, HttpCode, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Post,
+  Put,
+  Query,
+  Res,
+} from "@nestjs/common";
+import type { ApiResponse, CompanyPaymentsSettings } from "@commerce-ai/types";
+import type { Response } from "express";
 
+import type { AuthenticatedUser } from "../auth/auth.types";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Public } from "../common/decorators/public.decorator";
+import { Roles } from "../common/decorators/roles.decorator";
+import { UpsertMercadoPagoConnectionDto } from "./dto/mercadopago-connection.dto";
+import { MercadoPagoConnectionService } from "./mercadopago-connection.service";
 import { MercadoPagoWebhookService } from "./mercadopago-webhook.service";
 
 type MercadoPagoWebhookBody = {
@@ -14,7 +31,77 @@ type MercadoPagoWebhookBody = {
 
 @Controller("payments/mercadopago")
 export class PaymentsController {
-  constructor(private readonly webhookService: MercadoPagoWebhookService) {}
+  constructor(
+    private readonly webhookService: MercadoPagoWebhookService,
+    private readonly connectionService: MercadoPagoConnectionService,
+  ) {}
+
+  @Roles("owner")
+  @Get("connection")
+  async getConnection(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponse<CompanyPaymentsSettings>> {
+    return {
+      status: "success",
+      data: await this.connectionService.getConnection(user.companyId),
+    };
+  }
+
+  @Roles("owner")
+  @Post("oauth/start")
+  async oauthStart(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponse<{ authorizationUrl: string }>> {
+    return {
+      status: "success",
+      data: this.connectionService.buildOAuthStartUrl(user.companyId, user.id),
+    };
+  }
+
+  @Public()
+  @Get("oauth/callback")
+  async oauthCallback(
+    @Query("code") code: string | undefined,
+    @Query("state") state: string | undefined,
+    @Query("error") error: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { redirectUrl } = await this.connectionService.handleOAuthCallback({
+      code,
+      state,
+      error,
+    });
+    res.redirect(302, redirectUrl);
+  }
+
+  @Roles("owner")
+  @Put("connection")
+  async upsertConnection(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpsertMercadoPagoConnectionDto,
+  ): Promise<ApiResponse<CompanyPaymentsSettings>> {
+    return {
+      status: "success",
+      data: await this.connectionService.upsertManual(user.companyId, {
+        accessToken: dto.accessToken,
+        publicKey: dto.publicKey,
+      }),
+      message: "Mercado Pago conectado",
+    };
+  }
+
+  @Roles("owner")
+  @Delete("connection")
+  async disconnect(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponse<null>> {
+    await this.connectionService.disconnect(user.companyId);
+    return {
+      status: "success",
+      data: null,
+      message: "Mercado Pago desconectado. WhatsApp quedó desactivado hasta reconectar pagos.",
+    };
+  }
 
   /** Webhook moderno (JSON) + IPN por query. */
   @Public()
@@ -25,6 +112,7 @@ export class PaymentsController {
     @Query("id") id?: string,
     @Query("type") type?: string,
     @Query("data.id") dataIdQuery?: string,
+    @Query("companyId") companyId?: string,
     @Body() body?: MercadoPagoWebhookBody,
   ): Promise<{ ok: true }> {
     const paymentId = this.resolvePaymentId({
@@ -34,7 +122,7 @@ export class PaymentsController {
       dataIdQuery,
       body,
     });
-    await this.webhookService.handlePaymentNotification(paymentId);
+    await this.webhookService.handlePaymentNotification(paymentId, companyId);
     return { ok: true };
   }
 
@@ -47,6 +135,7 @@ export class PaymentsController {
     @Query("id") id?: string,
     @Query("type") type?: string,
     @Query("data.id") dataIdQuery?: string,
+    @Query("companyId") companyId?: string,
   ): Promise<{ ok: true }> {
     const paymentId = this.resolvePaymentId({
       topic,
@@ -54,7 +143,7 @@ export class PaymentsController {
       type,
       dataIdQuery,
     });
-    await this.webhookService.handlePaymentNotification(paymentId);
+    await this.webhookService.handlePaymentNotification(paymentId, companyId);
     return { ok: true };
   }
 
@@ -74,7 +163,6 @@ export class PaymentsController {
     const candidate = params.dataIdQuery || params.id || fromBody;
 
     if (bodyType && bodyType !== "payment" && params.topic && params.topic !== "payment") {
-      // Aun así, si hay id numérico típico de pago, lo intentamos.
       if (candidate == null) {
         return null;
       }

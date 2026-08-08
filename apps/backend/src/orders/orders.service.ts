@@ -320,11 +320,6 @@ export class OrdersService {
     if (!dto.confirmPayment) {
       throw new BadRequestException("Debes confirmar el pago para continuar");
     }
-    if (!this.mercadoPago.isConfigured()) {
-      throw new BadRequestException(
-        "Mercado Pago no está configurado. Agrega MP_ACCESS_TOKEN en el servidor.",
-      );
-    }
 
     const order = await this.findOrderByCheckoutToken(token, { allowExpiredIfPaid: false });
     if (order.status === "cancelled") {
@@ -335,6 +330,18 @@ export class OrdersService {
     }
     if (order.status !== "awaiting_payment" && order.status !== "confirmed") {
       throw new BadRequestException("Este pedido no está disponible para pago");
+    }
+
+    let companyAccessToken: string;
+    try {
+      companyAccessToken = await this.mercadoPago.getAccessTokenForCompany(order.companyId);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        "La tienda aún no conectó Mercado Pago. El dueño debe hacerlo en Configuración → Pagos.",
+      );
     }
 
     const shippingName = dto.shippingName.trim();
@@ -379,11 +386,14 @@ export class OrdersService {
     };
     // Mercado Pago solo acepta auto_return con back_urls HTTPS (localhost HTTP falla).
     const canAutoReturn = frontendUrl.startsWith("https://");
-    const notificationUrl = this.mercadoPago.getWebhookNotificationUrl();
+    const notificationUrlBase = this.mercadoPago.getWebhookNotificationUrl();
+    const notificationUrl = notificationUrlBase
+      ? `${notificationUrlBase}${notificationUrlBase.includes("?") ? "&" : "?"}companyId=${encodeURIComponent(order.companyId)}`
+      : null;
 
     let preference;
     try {
-      preference = await this.mercadoPago.preferenceApi().create({
+      preference = await this.mercadoPago.preferenceApi(companyAccessToken).create({
         body: {
           items: order.items.map((item) => ({
             id: item.sku || item.id,
@@ -397,6 +407,7 @@ export class OrdersService {
             orderId: order.id,
             orderNumber: order.number,
             checkoutToken: token,
+            companyId: order.companyId,
           },
           payer: {
             name: shippingName,

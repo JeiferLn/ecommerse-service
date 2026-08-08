@@ -5,6 +5,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
 import { MercadoPagoService } from "./mercadopago.service";
 
+const AMOUNT_TOLERANCE = 0.05;
+
 @Injectable()
 export class MercadoPagoWebhookService {
   private readonly logger = new Logger(MercadoPagoWebhookService.name);
@@ -18,23 +20,38 @@ export class MercadoPagoWebhookService {
 
   /**
    * Procesa una notificación de pago de Mercado Pago (webhook o IPN).
-   * Siempre responde OK al caller; errores de negocio se loguean.
+   * `companyId` viene en la query del notification_url (por empresa).
    */
-  async handlePaymentNotification(paymentIdRaw: string | number | null | undefined): Promise<void> {
+  async handlePaymentNotification(
+    paymentIdRaw: string | number | null | undefined,
+    companyIdHint?: string | null,
+  ): Promise<void> {
     if (paymentIdRaw == null || paymentIdRaw === "") {
       this.logger.warn("Webhook MP sin payment id");
       return;
     }
 
-    if (!this.mercadoPago.isConfigured()) {
-      this.logger.warn("Webhook MP recibido pero MP_ACCESS_TOKEN no está configurado");
+    const paymentId = String(paymentIdRaw);
+    let companyId = companyIdHint?.trim() || null;
+
+    if (!companyId) {
+      const existing = await this.prisma.order.findFirst({
+        where: { mpPaymentId: paymentId },
+        select: { companyId: true },
+      });
+      companyId = existing?.companyId ?? null;
+    }
+
+    if (!companyId) {
+      this.logger.warn(
+        `Pago ${paymentId}: sin companyId en webhook ni pedido previo; no se puede consultar con token del comercio`,
+      );
       return;
     }
 
-    const paymentId = String(paymentIdRaw);
     let payment;
     try {
-      payment = await this.mercadoPago.getPayment(paymentId);
+      payment = await this.mercadoPago.getPaymentForCompany(companyId, paymentId);
     } catch (error) {
       this.logger.error(
         `No se pudo consultar el pago ${paymentId}`,
@@ -59,9 +76,38 @@ export class MercadoPagoWebhookService {
       return;
     }
 
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        number: true,
+        companyId: true,
+        currency: true,
+        total: true,
+      },
+    });
+    if (!order) {
+      this.logger.warn(`Pago ${paymentId}: pedido ${orderId} no encontrado`);
+      return;
+    }
+    if (order.companyId !== companyId) {
+      this.logger.warn(
+        `Pago ${paymentId}: companyId del webhook (${companyId}) no coincide con el pedido`,
+      );
+      return;
+    }
+
+    if (!this.amountsMatch(payment, order)) {
+      this.logger.error(
+        `Pago ${paymentId} rechazado: monto/moneda no coinciden con pedido ${order.number} ` +
+          `(MP ${payment.transaction_amount} ${payment.currency_id} vs ${order.total} ${order.currency})`,
+      );
+      return;
+    }
+
     try {
       const result = await this.ordersService.markPaidFromMercadoPago({
-        orderId,
+        orderId: order.id,
         mpPaymentId: paymentId,
       });
 
@@ -78,6 +124,33 @@ export class MercadoPagoWebhookService {
         error instanceof Error ? error.stack : undefined,
       );
     }
+  }
+
+  private amountsMatch(
+    payment: { transaction_amount?: number | null; currency_id?: string | null },
+    order: { total: { toNumber?: () => number } | number; currency: string },
+  ): boolean {
+    const paidAmount =
+      typeof payment.transaction_amount === "number" ? payment.transaction_amount : null;
+    const orderTotal =
+      typeof order.total === "number"
+        ? order.total
+        : typeof order.total?.toNumber === "function"
+          ? order.total.toNumber()
+          : Number(order.total);
+
+    if (paidAmount == null || Number.isNaN(orderTotal)) {
+      return false;
+    }
+    if (Math.abs(paidAmount - orderTotal) > AMOUNT_TOLERANCE) {
+      return false;
+    }
+    const paidCurrency = (payment.currency_id || "").toUpperCase();
+    const orderCurrency = (order.currency || "").toUpperCase();
+    if (paidCurrency && orderCurrency && paidCurrency !== orderCurrency) {
+      return false;
+    }
+    return true;
   }
 
   private async sendPaymentWhatsApp(order: {

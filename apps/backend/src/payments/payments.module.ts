@@ -11,5 +11,6 @@ import { PaymentsController } from "./payments.controller";
   imports: [MercadoPagoModule, forwardRef(() => OrdersModule), PrismaModule],
   controllers: [PaymentsController],
   providers: [MercadoPagoWebhookService, TwilioWhatsAppClient],
+  exports: [MercadoPagoModule],
 })
 export class PaymentsModule {}

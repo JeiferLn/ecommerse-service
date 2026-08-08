@@ -10,6 +10,7 @@ import { Prisma, type User } from "@prisma/client";
 
 import { MailService } from "../mail/mail.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
+import { MercadoPagoConnectionService } from "../payments/mercadopago-connection.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { CompaniesService } from "./companies.service";
@@ -20,6 +21,12 @@ const emptyKnowledge = {
   slots: [],
 };
 
+const emptyPayments = {
+  isConfigured: false,
+  connection: null,
+  oauthAvailable: false,
+};
+
 const companyDetailsBase = {
   countryCode: null as string | null,
   shippingRegion: null as string | null,
@@ -28,6 +35,7 @@ const companyDetailsBase = {
   paymentMethods: [] as string[],
   shippingCarriers: [] as string[],
   banks: [] as string[],
+  mercadoPagoConnection: null,
 };
 
 const mockUser: User = {
@@ -159,6 +167,10 @@ describe("CompaniesService", () => {
       getSettings: jest.fn().mockResolvedValue(emptyKnowledge),
     };
 
+    const mercadoPagoConnection = {
+      toPaymentsSettings: jest.fn().mockReturnValue(emptyPayments),
+    };
+
     const configService = {
       get: jest.fn((key: string) => {
         switch (key) {
@@ -186,6 +198,7 @@ describe("CompaniesService", () => {
         { provide: MailService, useValue: mailService },
         { provide: ConfigService, useValue: configService },
         { provide: KnowledgeService, useValue: knowledgeService },
+        { provide: MercadoPagoConnectionService, useValue: mercadoPagoConnection },
       ],
     }).compile();
 
@@ -227,6 +240,7 @@ describe("CompaniesService", () => {
           isConfigured: false,
         },
         knowledge: emptyKnowledge,
+        payments: emptyPayments,
         createdAt: "2026-01-15T10:00:00.000Z",
       });
     });
@@ -297,6 +311,7 @@ describe("CompaniesService", () => {
           shippingCarriers: true,
           banks: true,
           createdAt: true,
+          mercadoPagoConnection: true,
         },
       });
       expect(company).toEqual({
@@ -317,6 +332,7 @@ describe("CompaniesService", () => {
           isConfigured: false,
         },
         knowledge: emptyKnowledge,
+        payments: emptyPayments,
         createdAt: "2026-01-15T10:00:00.000Z",
       });
     });

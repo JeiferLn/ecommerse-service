@@ -259,6 +259,41 @@ export function isCompanyCommerceConfigured(settings: {
   return true;
 }
 
+export type MercadoPagoConnectionSource = "oauth" | "manual";
+
+/** Vista pública de la conexión MP (sin access/refresh tokens). */
+export interface MercadoPagoConnectionView {
+  isConnected: true;
+  mpUserId: string | null;
+  /** Nickname / usuario de Mercado Libre–Pago. */
+  mpNickname: string | null;
+  mpEmail: string | null;
+  mpFirstName: string | null;
+  mpLastName: string | null;
+  /** Site MP (ej. MCO Colombia, MLM México). */
+  mpSiteId: string | null;
+  publicKey: string | null;
+  source: MercadoPagoConnectionSource;
+  liveMode: boolean;
+  connectedAt: string;
+  tokenExpiresAt: string | null;
+  /** true si la plataforma tiene client_id/secret para OAuth. */
+  oauthAvailable: boolean;
+}
+
+export interface CompanyPaymentsSettings {
+  isConfigured: boolean;
+  connection: MercadoPagoConnectionView | null;
+  /** true si la plataforma puede iniciar OAuth (MP_CLIENT_ID/SECRET). */
+  oauthAvailable: boolean;
+}
+
+export function isCompanyPaymentsConfigured(
+  connection: { accessToken?: string | null } | null | undefined,
+): boolean {
+  return Boolean(connection?.accessToken?.trim());
+}
+
 export interface CompanySummary {
   id: string;
   name: string;
@@ -277,6 +312,7 @@ export interface CompanyDetails {
   description: string | null;
   commerce: CompanyCommerceSettings;
   knowledge: CompanyKnowledgeSettings;
+  payments: CompanyPaymentsSettings;
   createdAt: string;
 }
 

@@ -22,6 +22,7 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
 import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
 import { WhatsAppKnowledgeRequiredGate } from "@/components/whatsapp-knowledge-required-gate";
+import { WhatsAppPaymentsRequiredGate } from "@/components/whatsapp-payments-required-gate";
 
 const connectionSchema = z.object({
   twilioWhatsAppNumber: z
@@ -67,6 +68,7 @@ export function WhatsAppConnectionSection() {
 
   const commerceReady = Boolean(company?.commerce.isConfigured);
   const knowledgeReady = Boolean(company?.knowledge.isConfigured);
+  const paymentsReady = Boolean(company?.payments.isConfigured);
   const missingKnowledge = company?.knowledge.missingTypes ?? [];
 
   const {
@@ -181,6 +183,10 @@ export function WhatsAppConnectionSection() {
 
   if (!knowledgeReady) {
     return <WhatsAppKnowledgeRequiredGate missingTypes={missingKnowledge} />;
+  }
+
+  if (!paymentsReady) {
+    return <WhatsAppPaymentsRequiredGate />;
   }
 
   const isActive = watch("isActive");

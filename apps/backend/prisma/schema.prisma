@@ -65,12 +65,42 @@ model Company {
   categories    Category[]
   products      Product[]
   whatsappConnection WhatsAppConnection?
+  mercadoPagoConnection MercadoPagoConnection?
   conversations Conversation[]
   knowledgeDocuments KnowledgeDocument[]
   carts         Cart[]
   orders        Order[]
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
+}
+
+enum MercadoPagoConnectionSource {
+  oauth
+  manual
+}
+
+/// Credenciales de Mercado Pago del comercio (el dinero llega a su cuenta).
+model MercadoPagoConnection {
+  id              String                       @id @default(cuid())
+  companyId       String                       @unique
+  company         Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accessToken     String
+  refreshToken    String?
+  publicKey       String?
+  /// User ID del vendedor en Mercado Pago.
+  mpUserId        String?
+  mpNickname      String?
+  mpEmail         String?
+  mpFirstName     String?
+  mpLastName      String?
+  /// Site MP (ej. MCO, MLM, MLA).
+  mpSiteId        String?
+  tokenExpiresAt  DateTime?
+  source          MercadoPagoConnectionSource  @default(manual)
+  liveMode        Boolean                      @default(false)
+  connectedAt     DateTime                     @default(now())
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
 }
 
 model CompanyMembership {

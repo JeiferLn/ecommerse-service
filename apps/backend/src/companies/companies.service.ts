@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type {
+import {
   CompanyDetails,
   CompanyInvitation,
   CompanyMember,
@@ -15,11 +15,12 @@ import type {
   ShippingScope,
 } from "@commerce-ai/types";
 import { isCompanyCommerceConfigured, isSupportedCompanyCountry } from "@commerce-ai/types";
-import type { Company } from "@prisma/client";
+import type { Company, MercadoPagoConnection } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { MailService } from "../mail/mail.service";
+import { MercadoPagoConnectionService } from "../payments/mercadopago-connection.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
@@ -43,6 +44,7 @@ const COMPANY_DETAILS_SELECT = {
   shippingCarriers: true,
   banks: true,
   createdAt: true,
+  mercadoPagoConnection: true,
 } as const;
 
 @Injectable()
@@ -53,6 +55,7 @@ export class CompaniesService {
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly knowledgeService: KnowledgeService,
+    private readonly mercadoPagoConnection: MercadoPagoConnectionService,
   ) {}
 
   async listMembers(companyId: string | null): Promise<CompanyMember[]> {
@@ -230,9 +233,13 @@ export class CompaniesService {
     shippingCarriers: string[];
     banks: string[];
     createdAt: Date;
+    mercadoPagoConnection?: MercadoPagoConnection | null;
   }): Promise<CompanyDetails> {
     const shippingScopes = company.shippingScopes as ShippingScope[];
     const knowledge = await this.knowledgeService.getSettings(company.id);
+    const payments = this.mercadoPagoConnection.toPaymentsSettings(
+      company.mercadoPagoConnection ?? null,
+    );
     return {
       id: company.id,
       name: company.name,
@@ -257,6 +264,7 @@ export class CompaniesService {
         }),
       },
       knowledge,
+      payments,
       createdAt: company.createdAt.toISOString(),
     };
   }

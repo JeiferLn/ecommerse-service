@@ -71,15 +71,30 @@ describe("WhatsAppConnectionService prerequisites", () => {
     );
   });
 
-  it("pasa con envíos + 4 PDFs", async () => {
+  it("pasa con envíos + 4 PDFs + Mercado Pago", async () => {
     prisma.company.findUnique.mockResolvedValue({
       countryCode: "CO",
       shippingScopes: ["national"],
       shippingCarriers: ["Servientrega"],
+      mercadoPagoConnection: { accessToken: "TEST-token" },
     });
     knowledgeService.isConfigured.mockResolvedValue(true);
 
     await expect(service.assertWhatsAppPrerequisites("company-a")).resolves.toBeUndefined();
+  });
+
+  it("falla si Mercado Pago no está conectado", async () => {
+    prisma.company.findUnique.mockResolvedValue({
+      countryCode: "CO",
+      shippingScopes: ["national"],
+      shippingCarriers: ["Servientrega"],
+      mercadoPagoConnection: null,
+    });
+    knowledgeService.isConfigured.mockResolvedValue(true);
+
+    await expect(service.assertWhatsAppPrerequisites("company-a")).rejects.toThrow(
+      /Mercado Pago/,
+    );
   });
 
   it("upsert exige prerequisites", async () => {
@@ -87,6 +102,7 @@ describe("WhatsAppConnectionService prerequisites", () => {
       countryCode: "CO",
       shippingScopes: ["national"],
       shippingCarriers: ["Servientrega"],
+      mercadoPagoConnection: { accessToken: "TEST-token" },
     });
     knowledgeService.isConfigured.mockResolvedValue(false);
 
