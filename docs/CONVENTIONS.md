@@ -107,7 +107,7 @@ Reglas al añadir endpoints:
 - Grupos de rutas por zona de acceso:
   - `(public)` — landing y contenido accesible sin sesión.
   - `(auth)` — páginas de autenticación (`/login`, `/register`, `/forgot-password`, `/reset-password`); redirige a `/dashboard` si ya hay sesión.
-  - `(private)` — área autenticada; el middleware redirige a `/login` si no hay cookie `access_token`.
+  - `(private)` — área autenticada; si el access JWT no es válido, el middleware redirige a `/session-refresh?next=...` (que llama a `POST /auth/refresh`) y solo si eso falla a `/login`.
 - La sesión se mantiene con cookie httpOnly (`access_token`); el cliente obtiene el usuario vía `GET /api/v1/auth/me` (TanStack Query, queryKey `["session"]`).
 - Refresh automático de sesión en `src/lib/api.ts`: ante un 401 se llama a `POST /auth/refresh` (single-flight: las peticiones concurrentes comparten la misma promesa) y se reintenta la petición original una vez. Si el refresh falla con 401, se redirige a `/login?next=...`. Los endpoints de auth (`login`, `register`, `forgot-password`, `reset-password`, `refresh`, `logout`) están excluidos del retry. Tras cada rotación se dispara el evento `auth:refreshed` (el SessionProvider invalida `["session"]`).
 - Errores de API: `ApiClientError` (status + message) desde `src/lib/api.ts`.

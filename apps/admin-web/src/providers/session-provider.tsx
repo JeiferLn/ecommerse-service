@@ -28,8 +28,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const onRefreshed = () => {
       void queryClient.invalidateQueries({ queryKey: ["session"] });
     };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void queryClient.invalidateQueries({ queryKey: ["session"] });
+      }
+    };
     window.addEventListener("auth:refreshed", onRefreshed);
-    return () => window.removeEventListener("auth:refreshed", onRefreshed);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("auth:refreshed", onRefreshed);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [queryClient]);
 
   const value = useMemo<SessionContextValue>(

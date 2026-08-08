@@ -17,14 +17,13 @@ export async function middleware(request: NextRequest) {
   const claims = token ? await verifyAccessToken(token) : null;
   const hasValidSession = Boolean(claims);
 
+  // Access expirado/ausente: intentar refresh (cookie path `/api/v1/auth`) en el
+  // cliente antes de echar a login. No borrar cookies aquí — el refresh las rota.
   if (matches(pathname, PRIVATE_ROUTES) && !hasValidSession) {
-    const url = new URL("/login", request.url);
-    url.searchParams.set("next", pathname);
-    const response = NextResponse.redirect(url);
-    if (token) {
-      response.cookies.set(SESSION_COOKIE, "", { maxAge: 0, path: "/" });
-    }
-    return response;
+    const url = new URL("/session-refresh", request.url);
+    const next = `${pathname}${request.nextUrl.search}`;
+    url.searchParams.set("next", next);
+    return NextResponse.redirect(url);
   }
 
   if (

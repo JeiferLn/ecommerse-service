@@ -11,15 +11,6 @@ const NO_REFRESH_PATHS = [
   "/auth/logout",
 ];
 
-const PUBLIC_PAGE_PATHS = [
-  "/",
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
-  "/checkout",
-];
-
 let refreshPromise: Promise<boolean> | null = null;
 
 function refreshSession(): Promise<boolean> {
@@ -65,11 +56,10 @@ export class ApiClientError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const isPublicPage =
-    typeof window !== "undefined" &&
-    PUBLIC_PAGE_PATHS.some((publicPath) => window.location.pathname.startsWith(publicPath));
-  const shouldRefresh =
-    !isPublicPage && !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
+  // Solo se omite el refresh en endpoints de auth que ya gestionan la sesión.
+  // Antes se usaba una lista de páginas públicas con `startsWith("/")`, que
+  // marcaba TODAS las rutas como públicas y desactivaba el refresh por completo.
+  const shouldRefresh = !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
 
   const doFetch = async (): Promise<Response> => {
     const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
