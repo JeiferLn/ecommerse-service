@@ -41,6 +41,7 @@ describe("CatalogContextService", () => {
         updatedAt: new Date("2026-08-01"),
         category: { name: "Ropa" },
         variants: [{ sku: "CA-M", name: "M", price: 25, stock: 3 }],
+        images: [],
       },
       {
         name: "Zapatos",
@@ -48,6 +49,7 @@ describe("CatalogContextService", () => {
         updatedAt: new Date("2026-07-01"),
         category: null,
         variants: [{ sku: "Z-1", name: "42", price: 80, stock: 1 }],
+        images: [],
       },
     ]);
 
@@ -73,6 +75,7 @@ describe("CatalogContextService", () => {
         updatedAt: new Date(2026, 0, index + 1),
         category: null,
         variants: [{ sku: `S${index}`, name: "Default", price: 10, stock: 1 }],
+        images: [],
       })),
     );
 
@@ -92,6 +95,7 @@ describe("CatalogContextService", () => {
         updatedAt: new Date("2026-08-01"),
         category: { name: "Ropa" },
         variants: [{ sku: "C-1", name: "M", price: 20, stock: 2 }],
+        images: [],
       },
     ]);
 
@@ -111,6 +115,7 @@ describe("CatalogContextService", () => {
         updatedAt: new Date("2026-08-01"),
         category: { name: "Ropa" },
         variants: [{ sku: "C-1", name: "M", price: 20, stock: 2 }],
+        images: [],
       },
     ]);
 

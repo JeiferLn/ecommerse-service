@@ -14,7 +14,7 @@ import type {
   RemoveMemberResult,
   ShippingScope,
 } from "@commerce-ai/types";
-import { isCompanyCommerceConfigured } from "@commerce-ai/types";
+import { isCompanyCommerceConfigured, isSupportedCompanyCountry } from "@commerce-ai/types";
 import type { Company } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 
@@ -36,6 +36,8 @@ const COMPANY_DETAILS_SELECT = {
   address: true,
   description: true,
   countryCode: true,
+  shippingRegion: true,
+  shippingCity: true,
   shippingScopes: true,
   paymentMethods: true,
   shippingCarriers: true,
@@ -133,13 +135,27 @@ export class CompaniesService {
 
     const existing = await this.prisma.company.findUnique({
       where: { id: companyId },
-      select: { id: true },
+      select: { id: true, countryCode: true },
     });
     if (!existing) {
       throw new NotFoundException("Empresa no encontrada");
     }
 
     const shippingCarriers = this.normalizeStringList(dto.shippingCarriers);
+    const shippingRegion = this.nullableText(dto.shippingRegion ?? undefined);
+    const shippingCity = this.nullableText(dto.shippingCity ?? undefined);
+
+    // País se fija en el registro; solo se puede completar si aún es null (empresas legacy).
+    let countryCode = existing.countryCode;
+    if (!countryCode) {
+      const incoming = dto.countryCode?.trim() ? dto.countryCode.trim().toUpperCase() : null;
+      if (incoming && !isSupportedCompanyCountry(incoming)) {
+        throw new BadRequestException(
+          "Selecciona un país con soporte de Mercado Pago (LatAm)",
+        );
+      }
+      countryCode = incoming;
+    }
 
     if (dto.shippingScopes.length > 0 && shippingCarriers.length === 0) {
       throw new BadRequestException(
@@ -147,10 +163,18 @@ export class CompaniesService {
       );
     }
 
+    if (dto.shippingScopes.includes("local") && (!shippingRegion || !shippingCity)) {
+      throw new BadRequestException(
+        "Indica departamento y municipio base de la tienda para validar envíos locales",
+      );
+    }
+
     const company = await this.prisma.company.update({
       where: { id: companyId },
       data: {
-        countryCode: dto.countryCode?.trim() ? dto.countryCode.trim().toUpperCase() : null,
+        countryCode,
+        shippingRegion,
+        shippingCity,
         shippingScopes: dto.shippingScopes,
         shippingCarriers,
         // El pago lo maneja la pasarela (Fase 9); no lo configura la tienda en el chat.
@@ -199,6 +223,8 @@ export class CompaniesService {
     address: string | null;
     description: string | null;
     countryCode: string | null;
+    shippingRegion: string | null;
+    shippingCity: string | null;
     shippingScopes: string[];
     paymentMethods: string[];
     shippingCarriers: string[];
@@ -218,10 +244,14 @@ export class CompaniesService {
       description: company.description,
       commerce: {
         countryCode: company.countryCode,
+        shippingRegion: company.shippingRegion,
+        shippingCity: company.shippingCity,
         shippingScopes,
         shippingCarriers: company.shippingCarriers,
         isConfigured: isCompanyCommerceConfigured({
           countryCode: company.countryCode,
+          shippingRegion: company.shippingRegion,
+          shippingCity: company.shippingCity,
           shippingScopes,
           shippingCarriers: company.shippingCarriers,
         }),
@@ -295,7 +325,12 @@ export class CompaniesService {
 
     return this.prisma.$transaction(async (tx) => {
       const company = await tx.company.create({
-        data: { name: dto.name, type: dto.companyType, ownerId: userId },
+        data: {
+          name: dto.name,
+          type: dto.companyType,
+          countryCode: dto.countryCode.trim().toUpperCase(),
+          ownerId: userId,
+        },
       });
 
       await tx.companyMembership.create({

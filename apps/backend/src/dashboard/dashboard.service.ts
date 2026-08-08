@@ -26,7 +26,8 @@ export class DashboardService {
   async getCompanyStats(companyId: string | null): Promise<CompanyDashboardStats> {
     const scopedCompanyId = this.requireCompany(companyId);
 
-    const [products, categoriesTotal, membersTotal] = await Promise.all([
+    const [products, categoriesTotal, membersTotal, ordersTotal, ordersAwaitingPayment, ordersOpen] =
+      await Promise.all([
       this.prisma.product.findMany({
         where: { companyId: scopedCompanyId },
         select: {
@@ -38,6 +39,18 @@ export class DashboardService {
       }),
       this.prisma.category.count({ where: { companyId: scopedCompanyId } }),
       this.prisma.companyMembership.count({ where: { companyId: scopedCompanyId } }),
+      this.prisma.order.count({ where: { companyId: scopedCompanyId } }),
+      this.prisma.order.count({
+        where: { companyId: scopedCompanyId, status: "awaiting_payment" },
+      }),
+      this.prisma.order.count({
+        where: {
+          companyId: scopedCompanyId,
+          status: {
+            in: ["draft", "confirmed", "awaiting_payment", "paid", "preparing", "shipped"],
+          },
+        },
+      }),
     ]);
 
     const statusMap: Record<ProductStatus, number> = {
@@ -85,6 +98,9 @@ export class DashboardService {
       categoriesTotal,
       membersTotal,
       topProductsByStock,
+      ordersTotal,
+      ordersAwaitingPayment,
+      ordersOpen,
     };
   }
 

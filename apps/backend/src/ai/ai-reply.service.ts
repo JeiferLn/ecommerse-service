@@ -27,6 +27,8 @@ export interface GenerateReplyInput {
 export interface GenerateReplyResult {
   text: string;
   requestedHandoff: boolean;
+  /** URLs públicas de imágenes a enviar por WhatsApp ( Twilio MediaUrl ). */
+  imageUrls: string[];
 }
 
 @Injectable()
@@ -45,11 +47,28 @@ export class AiReplyService {
     const fallback = this.config.get("AI_FALLBACK_TEXT", { infer: true });
     let ragBlock = "";
     let ragChunks: RetrievedChunk[] = [];
+    let imageUrls: string[] = [];
 
     try {
+      const historyLimit = this.config.get("AI_HISTORY_LIMIT", { infer: true });
+      const recent = await this.prisma.message.findMany({
+        where: { conversationId: input.conversationId },
+        orderBy: { createdAt: "desc" },
+        take: historyLimit,
+        select: { direction: true, body: true },
+      });
+
+      // Follow-ups ("¿qué precio?", "muéstramelas") necesitan contexto del producto ya mencionado.
+      const priorInbound = recent
+        .filter((message) => message.direction === "inbound")
+        .map((message) => message.body)
+        .reverse()
+        .join(" ");
+      const catalogQuery = `${priorInbound} ${input.customerText}`.trim();
+
       const catalog = await this.catalogContext.buildForCompany(
         input.companyId,
-        input.customerText,
+        catalogQuery,
       );
 
       if (isClearlyOffTopicSalesQuery(input.customerText)) {
@@ -59,25 +78,37 @@ export class AiReplyService {
         return {
           text: buildSalesScopeRedirect(catalog.companyName),
           requestedHandoff: false,
+          imageUrls: [],
         };
       }
 
-      const retrieved = await this.knowledgeRetrieval.retrieve(
-        input.companyId,
-        input.customerText,
-      );
-      ragBlock = retrieved.ragBlock;
-      ragChunks = retrieved.chunks;
+      const productFocused = this.isProductFocusedQuery(input.customerText);
+      if (!productFocused) {
+        const retrieved = await this.knowledgeRetrieval.retrieve(
+          input.companyId,
+          input.customerText,
+        );
+        ragBlock = retrieved.ragBlock;
+        ragChunks = retrieved.chunks;
+      }
 
       // Sin catálogo ni documentos: no hay con qué responder.
       if (catalog.productCount === 0 && ragChunks.length === 0) {
-        return { text: fallback, requestedHandoff: true };
+        return { text: fallback, requestedHandoff: true, imageUrls: [] };
+      }
+
+      if (this.wantsProductImages(input.customerText) || productFocused) {
+        imageUrls = catalog.matchedProducts
+          .flatMap((product) => product.imageUrls)
+          .slice(0, 3);
       }
 
       const companyCommerce = await this.prisma.company.findUnique({
         where: { id: input.companyId },
         select: {
           countryCode: true,
+          shippingRegion: true,
+          shippingCity: true,
           shippingScopes: true,
           shippingCarriers: true,
         },
@@ -85,18 +116,12 @@ export class AiReplyService {
       const commerce = formatCommercePromptBlock(
         companyCommerce ?? {
           countryCode: null,
+          shippingRegion: null,
+          shippingCity: null,
           shippingScopes: [],
           shippingCarriers: [],
         },
       );
-
-      const historyLimit = this.config.get("AI_HISTORY_LIMIT", { infer: true });
-      const recent = await this.prisma.message.findMany({
-        where: { conversationId: input.conversationId },
-        orderBy: { createdAt: "desc" },
-        take: historyLimit,
-        select: { direction: true, body: true },
-      });
 
       const historyMessages: ChatMessage[] = recent
         .reverse()
@@ -137,19 +162,25 @@ export class AiReplyService {
 
       if (this.isHandoff(content)) {
         this.logger.warn(`AI handoff marker for conversation=${input.conversationId}`);
-        return { text: fallback, requestedHandoff: true };
+        return { text: fallback, requestedHandoff: true, imageUrls: [] };
       }
 
       if (!content || this.looksLikeInternalReasoning(content)) {
         this.logger.warn(
           `AI empty/garbage reply for conversation=${input.conversationId}; using RAG/catalog fallback`,
         );
+        const catalogFallback = this.buildCatalogOverviewFallback(
+          catalog.catalogBlock,
+          input.customerText,
+        );
         return {
           text:
+            (productFocused ? catalogFallback : null) ??
             this.buildKnowledgeFallback(ragChunks) ??
-            this.buildCatalogOverviewFallback(catalog.catalogBlock, input.customerText) ??
+            catalogFallback ??
             fallback,
           requestedHandoff: false,
+          imageUrls,
         };
       }
 
@@ -160,17 +191,26 @@ export class AiReplyService {
         return {
           text: buildSalesScopeRedirect(catalog.companyName),
           requestedHandoff: false,
+          imageUrls: [],
         };
       }
 
+      let text = content.replace(HANDOFF_MARKER, "").trim() || fallback;
+      if (this.wantsProductImages(input.customerText) && imageUrls.length > 0) {
+        text = `${text}\n\nTe envío ${imageUrls.length === 1 ? "la foto" : "las fotos"} del producto.`;
+      } else if (this.wantsProductImages(input.customerText) && imageUrls.length === 0) {
+        text = `${text}\n\nPor ahora no tengo fotos cargadas de ese producto en el catálogo.`;
+      }
+
       return {
-        text: content.replace(HANDOFF_MARKER, "").trim() || fallback,
+        text,
         requestedHandoff: false,
+        imageUrls: this.wantsProductImages(input.customerText) ? imageUrls : [],
       };
     } catch (error) {
       this.logger.error(`AI reply failed: ${String(error)}`);
       // Si el modelo falló pero ya teníamos documentos, responde con ellos.
-      if (ragChunks.length === 0) {
+      if (ragChunks.length === 0 && !this.isProductFocusedQuery(input.customerText)) {
         try {
           const recovered = await this.knowledgeRetrieval.retrieve(
             input.companyId,
@@ -184,10 +224,31 @@ export class AiReplyService {
       return {
         text: this.buildKnowledgeFallback(ragChunks) ?? fallback,
         requestedHandoff: false,
+        imageUrls: [],
       };
     }
   }
 
+  /** Preguntas de producto (precio/talla/foto): priorizar catálogo, no FAQ. */
+  private isProductFocusedQuery(text: string): boolean {
+    const normalized = text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return /(precio|cuanto|cuesta|talla|tallas|color|colores|stock|disponible|mostrar|muestra|muestrame|foto|fotos|imagen|imagenes|variante|sku|producto|gorra|gorras|camisa|pantalon)/.test(
+      normalized,
+    );
+  }
+
+  private wantsProductImages(text: string): boolean {
+    const normalized = text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return /(mostrar|muestra|muestrame|ensename|enseñame|foto|fotos|imagen|imagenes|verlas|verlo|verla|puedes\s+mostrar)/.test(
+      normalized,
+    );
+  }
   sanitizeModelOutput(raw: string): string {
     const cleaned = raw
       .replace(/^\s*User Safety\s*:\s*\w+\s*/gim, "")

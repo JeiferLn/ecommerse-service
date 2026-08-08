@@ -11,7 +11,14 @@ const NO_REFRESH_PATHS = [
   "/auth/logout",
 ];
 
-const PUBLIC_PAGE_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password"];
+const PUBLIC_PAGE_PATHS = [
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/checkout",
+];
 
 let refreshPromise: Promise<boolean> | null = null;
 

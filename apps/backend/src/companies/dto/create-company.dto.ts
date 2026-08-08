@@ -1,5 +1,6 @@
+import { COMPANY_COUNTRY_CODES } from "@commerce-ai/types";
 import { CompanyType } from "@prisma/client";
-import { IsEnum, IsString, MaxLength, MinLength } from "class-validator";
+import { IsEnum, IsIn, IsString, MaxLength, MinLength } from "class-validator";
 
 export class CreateCompanyDto {
   @IsString()
@@ -9,4 +10,10 @@ export class CreateCompanyDto {
 
   @IsEnum(CompanyType, { message: "Selecciona un tipo de empresa válido" })
   companyType!: CompanyType;
+
+  @IsString()
+  @IsIn([...COMPANY_COUNTRY_CODES], {
+    message: "Selecciona un país con soporte de Mercado Pago",
+  })
+  countryCode!: string;
 }

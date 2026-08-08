@@ -9,7 +9,7 @@ import {
   type WhatsAppMessage,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Eraser, RotateCcw, Send, UserRound } from "lucide-react";
+import { ArrowLeft, Bot, ClipboardList, Eraser, RotateCcw, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -235,6 +235,12 @@ export function WhatsAppInboxSection() {
               </div>
               {selectedId && canManage && (
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/dashboard/orders?conversationId=${selectedId}`}>
+                      <ClipboardList className="size-4" aria-hidden />
+                      Pedidos
+                    </Link>
+                  </Button>
                   {selected?.handler === "human" && (
                     <Button
                       type="button"
@@ -303,6 +309,14 @@ export function WhatsAppInboxSection() {
                     )}
                   >
                     <p className="whitespace-pre-wrap">{message.body}</p>
+                    {message.type === "image" && /^https?:\/\//i.test(message.body) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={message.body}
+                        alt="Producto"
+                        className="mt-2 max-h-56 w-full rounded-lg object-contain"
+                      />
+                    ) : null}
                     <p
                       className={cn(
                         "mt-1 text-[10px] opacity-70",

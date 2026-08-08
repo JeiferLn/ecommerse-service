@@ -48,6 +48,10 @@ model Company {
   description   String?
   /// ISO 3166-1 alpha-2 (ej. CO, MX)
   countryCode      String?
+  /// Ciudad base de la tienda (necesaria para validar envíos locales).
+  shippingCity     String?
+  /// Departamento / región base de la tienda.
+  shippingRegion   String?
   /// local | national | international
   shippingScopes   String[] @default([])
   /// debit_card | credit_card | bank_transfer
@@ -63,6 +67,8 @@ model Company {
   whatsappConnection WhatsAppConnection?
   conversations Conversation[]
   knowledgeDocuments KnowledgeDocument[]
+  carts         Cart[]
+  orders        Order[]
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 }
@@ -179,6 +185,7 @@ model ProductVariant {
   compareAtPrice Decimal? @db.Decimal(12, 2)
   stock          Int      @default(0)
   attributes     Json?
+  cartItems      CartItem[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -240,6 +247,8 @@ model Conversation {
   handler        ConversationHandler  @default(pending)
   lastMessageAt  DateTime             @default(now())
   messages       Message[]
+  cart           Cart?
+  orders         Order[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -315,4 +324,102 @@ model KnowledgeChunk {
   @@index([documentId])
   @@index([companyId])
   @@unique([documentId, chunkIndex])
+}
+
+enum OrderStatus {
+  draft
+  confirmed
+  awaiting_payment
+  paid
+  preparing
+  shipped
+  delivered
+  cancelled
+}
+
+/// Carrito abierto por conversación WhatsApp (1:1).
+model Cart {
+  id               String       @id @default(cuid())
+  companyId        String
+  company          Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversationId   String       @unique
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  /// true = esperando dirección/datos de envío antes del checkout
+  checkoutPending  Boolean      @default(false)
+  shippingName     String?
+  shippingPhone    String?
+  shippingAddress  String?
+  shippingCity     String?
+  items            CartItem[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([companyId])
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  cartId    String
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity  Int
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([cartId, variantId])
+  @@index([variantId])
+}
+
+model Order {
+  id              String       @id @default(cuid())
+  /// Código legible para el cliente (ej. ORD-A1B2C3)
+  number          String
+  companyId       String
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversationId  String?
+  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  customerWaId    String
+  status          OrderStatus  @default(awaiting_payment)
+  currency        String       @default("COP")
+  subtotal        Decimal      @db.Decimal(12, 2)
+  shippingCost    Decimal      @default(0) @db.Decimal(12, 2)
+  total           Decimal      @db.Decimal(12, 2)
+  shippingName    String?
+  shippingPhone   String?
+  shippingAddress String?
+  shippingCountry String?
+  shippingRegion  String?
+  shippingCity    String?
+  notes           String?
+  /// Si true, el stock ya se descontó y al cancelar se repone.
+  stockDecremented Boolean     @default(true)
+  /// Token opaco para checkout público (/checkout/:token).
+  checkoutToken    String?     @unique
+  checkoutExpiresAt DateTime?
+  items           OrderItem[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([companyId, number])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([conversationId])
+  @@index([customerWaId])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId   String?
+  productName String
+  variantName String
+  sku         String
+  unitPrice   Decimal @db.Decimal(12, 2)
+  quantity    Int
+  lineTotal   Decimal @db.Decimal(12, 2)
+
+  @@index([orderId])
 }

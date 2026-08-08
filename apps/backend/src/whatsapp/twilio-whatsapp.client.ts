@@ -12,6 +12,13 @@ export interface SendTextParams {
   text: string;
 }
 
+export interface SendMediaParams {
+  from: string;
+  to: string;
+  mediaUrl: string;
+  caption?: string;
+}
+
 export interface SendTextResult {
   simulated: boolean;
   wamid: string | null;
@@ -24,6 +31,28 @@ export class TwilioWhatsAppClient {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
   async sendText(params: SendTextParams): Promise<SendTextResult> {
+    return this.dispatch({
+      from: params.from,
+      to: params.to,
+      body: params.text,
+    });
+  }
+
+  async sendMedia(params: SendMediaParams): Promise<SendTextResult> {
+    return this.dispatch({
+      from: params.from,
+      to: params.to,
+      body: params.caption?.trim() || undefined,
+      mediaUrl: params.mediaUrl,
+    });
+  }
+
+  private async dispatch(params: {
+    from: string;
+    to: string;
+    body?: string;
+    mediaUrl?: string;
+  }): Promise<SendTextResult> {
     const accountSid = this.config.get("TWILIO_ACCOUNT_SID", { infer: true })?.trim();
     const authToken = this.config.get("TWILIO_AUTH_TOKEN", { infer: true })?.trim();
     const simulate =
@@ -38,7 +67,9 @@ export class TwilioWhatsAppClient {
     if (simulate) {
       const wamid = `SM_sim_${Date.now()}`;
       this.logger.log(
-        `Envío local simulado (sin Twilio) to ${params.to} from ${params.from}: ${params.text.slice(0, 80)}`,
+        `Envío local simulado (sin Twilio) to ${params.to} from ${params.from}` +
+          (params.mediaUrl ? ` media=${params.mediaUrl}` : "") +
+          (params.body ? `: ${params.body.slice(0, 80)}` : ""),
       );
       return { simulated: true, wamid };
     }
@@ -47,8 +78,13 @@ export class TwilioWhatsAppClient {
     const body = new URLSearchParams({
       From: toTwilioWhatsAppAddress(params.from),
       To: toTwilioWhatsAppAddress(params.to),
-      Body: params.text,
     });
+    if (params.body) {
+      body.set("Body", params.body);
+    }
+    if (params.mediaUrl) {
+      body.set("MediaUrl", params.mediaUrl);
+    }
 
     const credentials = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
     const response = await fetch(url, {

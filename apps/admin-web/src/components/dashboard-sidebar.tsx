@@ -1,9 +1,10 @@
 "use client";
 
-import { canViewMembers, canViewWhatsapp, type UserRole } from "@commerce-ai/types";
+import { canOperateOrders, canViewMembers, canViewWhatsapp, type UserRole } from "@commerce-ai/types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ClipboardList,
   FolderTree,
   LayoutDashboard,
   MessageCircle,
@@ -40,6 +41,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Categorías",
     icon: FolderTree,
     visible: (role) => role !== "admin",
+  },
+  {
+    href: "/dashboard/orders",
+    label: "Pedidos",
+    icon: ClipboardList,
+    visible: (role) => Boolean(role && role !== "admin" && canOperateOrders(role)),
   },
   {
     href: "/dashboard/whatsapp",

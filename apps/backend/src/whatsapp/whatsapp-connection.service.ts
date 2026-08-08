@@ -29,6 +29,8 @@ export class WhatsAppConnectionService {
       where: { id: scopedCompanyId },
       select: {
         countryCode: true,
+        shippingRegion: true,
+        shippingCity: true,
         shippingScopes: true,
         shippingCarriers: true,
       },

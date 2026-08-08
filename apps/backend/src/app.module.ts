@@ -12,6 +12,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
 import { KnowledgeModule } from "./knowledge/knowledge.module";
 import { MailModule } from "./mail/mail.module";
+import { OrdersModule } from "./orders/orders.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProductsModule } from "./products/products.module";
 import { StorageModule } from "./storage/storage.module";
@@ -40,6 +41,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
     ProductsModule,
     DashboardModule,
     KnowledgeModule,
+    OrdersModule,
     AiModule,
     WhatsAppModule,
   ],

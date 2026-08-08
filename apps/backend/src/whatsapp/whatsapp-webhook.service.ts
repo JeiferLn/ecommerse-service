@@ -11,6 +11,8 @@ import type { Prisma } from "@prisma/client";
 import type { Env } from "../config/env.validation";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiReplyService } from "../ai/ai-reply.service";
+import { resolveOrderChatIntent, detectsAffirmativeCartConfirm, botOfferedAddToCart } from "../orders/order-intent";
+import { OrdersService } from "../orders/orders.service";
 import { detectsBotChoice, detectsHumanRequest, extractResidualAfterBotChoice } from "./conversation-handler";
 import { normalizeWhatsAppE164 } from "./phone.util";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
@@ -36,6 +38,7 @@ export class WhatsAppWebhookService {
     private readonly twilioClient: TwilioWhatsAppClient,
     private readonly aiReplyService: AiReplyService,
     private readonly connectionService: WhatsAppConnectionService,
+    private readonly ordersService: OrdersService,
   ) {}
 
   /**
@@ -268,6 +271,7 @@ export class WhatsAppWebhookService {
     }
 
     const outboundTexts: string[] = [];
+    const outboundImageUrls: string[] = [];
     let nextHandler: "pending" | "bot" | "human" | null = null;
     const aiEnabled = this.config.get("AI_ENABLED", { infer: true });
 
@@ -291,6 +295,7 @@ export class WhatsAppWebhookService {
           );
         } else {
           outboundTexts.push(followUp.text);
+          outboundImageUrls.push(...(followUp.imageUrls ?? []));
         }
       }
     } else if (conversation.handler === "pending") {
@@ -316,6 +321,7 @@ export class WhatsAppWebhookService {
             );
           } else {
             outboundTexts.push(followUp.text);
+            outboundImageUrls.push(...(followUp.imageUrls ?? []));
           }
         }
       } else {
@@ -327,26 +333,36 @@ export class WhatsAppWebhookService {
         outboundTexts.push(
           this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
         );
-      } else if (aiEnabled) {
-        const reply = await this.aiReplyService.generateReply({
-          companyId: connection.companyId,
+      } else {
+        const orderReply = await this.tryHandleOrderIntent(
+          connection.companyId,
           conversationId,
           customerText,
-        });
-        if (reply.requestedHandoff) {
-          nextHandler = "human";
-          outboundTexts.push(
-            this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
-          );
+        );
+        if (orderReply) {
+          outboundTexts.push(orderReply);
+        } else if (aiEnabled) {
+          const reply = await this.aiReplyService.generateReply({
+            companyId: connection.companyId,
+            conversationId,
+            customerText,
+          });
+          if (reply.requestedHandoff) {
+            nextHandler = "human";
+            outboundTexts.push(
+              this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+            );
+          } else {
+            outboundTexts.push(reply.text);
+            outboundImageUrls.push(...(reply.imageUrls ?? []));
+          }
         } else {
-          outboundTexts.push(reply.text);
+          outboundTexts.push(this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true }));
         }
-      } else {
-        outboundTexts.push(this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true }));
       }
     }
 
-    if (outboundTexts.length === 0) {
+    if (outboundTexts.length === 0 && outboundImageUrls.length === 0) {
       return;
     }
 
@@ -366,10 +382,101 @@ export class WhatsAppWebhookService {
       });
     }
 
+    for (const mediaUrl of outboundImageUrls.slice(0, 3)) {
+      await this.sendOutboundMedia({
+        connection,
+        conversationId,
+        customerWaId,
+        mediaUrl,
+      });
+    }
+
     await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date() },
     });
+  }
+
+  private async tryHandleOrderIntent(
+    companyId: string,
+    conversationId: string,
+    customerText: string,
+  ): Promise<string | null> {
+    try {
+      const cart = await this.ordersService.getCartForConversation(companyId, conversationId);
+      let intent = resolveOrderChatIntent(customerText);
+
+      // "sí / dale" tras oferta del bot de agregar → tratar como add_to_cart.
+      if (!intent && detectsAffirmativeCartConfirm(customerText)) {
+        const lastBot = await this.prisma.message.findFirst({
+          where: { conversationId, direction: "outbound" },
+          orderBy: { createdAt: "desc" },
+          select: { body: true },
+        });
+        if (lastBot?.body && botOfferedAddToCart(lastBot.body)) {
+          intent = { type: "add_to_cart" };
+        }
+      }
+
+      if (!intent) {
+        return null;
+      }
+
+      if (intent.type === "view_cart") {
+        return this.ordersService.formatCartMessage(cart);
+      }
+
+      if (intent.type === "clear_cart") {
+        const cleared = await this.ordersService.clearCart(companyId, conversationId);
+        return this.ordersService.formatCartMessage(cleared);
+      }
+
+      if (intent.type === "checkout") {
+        const result = await this.ordersService.beginCheckout(companyId, conversationId);
+        return result.message;
+      }
+
+      if (intent.type === "add_to_cart") {
+        let match = await this.ordersService.findVariantForAddIntent(companyId, customerText);
+        if (!match) {
+          // Frases como "me gustaría pedir una" / "sí" / "quiero 2": usar historial + oferta del bot.
+          const recent = await this.prisma.message.findMany({
+            where: { conversationId },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: { body: true, direction: true },
+          });
+          const historyQuery = [
+            ...recent
+              .map((m) => m.body.trim())
+              .filter(Boolean)
+              .reverse(),
+            customerText,
+          ].join(" ");
+          match = await this.ordersService.findVariantForAddIntent(companyId, historyQuery);
+        }
+        if (!match) {
+          // Sin producto claro → IA responde; no FAQ por defecto.
+          return null;
+        }
+        const updated = await this.ordersService.addCartItem(
+          companyId,
+          conversationId,
+          match.variantId,
+          match.quantity,
+        );
+        return `Agregué ${match.label} x${match.quantity}.\n\n${this.ordersService.formatCartMessage(updated)}`;
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.warn(`Order intent failed: ${String(error)}`);
+      const message =
+        error instanceof BadRequestException
+          ? String((error.getResponse() as { message?: string | string[] }).message ?? error.message)
+          : "No pude actualizar el carrito. Intenta de nuevo o pide un asesor.";
+      return Array.isArray(message) ? message.join(" ") : message;
+    }
   }
 
   /**
@@ -381,7 +488,7 @@ export class WhatsAppWebhookService {
     conversationId: string;
     customerText: string;
     aiEnabled: boolean;
-  }): Promise<{ text: string; requestedHandoff: boolean } | null> {
+  }): Promise<{ text: string; requestedHandoff: boolean; imageUrls: string[] } | null> {
     if (!params.aiEnabled) {
       return null;
     }
@@ -489,6 +596,40 @@ export class WhatsAppWebhookService {
         type: "text",
         body: params.text,
         status,
+      },
+    });
+  }
+
+  private async sendOutboundMedia(params: {
+    connection: { twilioWhatsAppNumber: string };
+    conversationId: string;
+    customerWaId: string;
+    mediaUrl: string;
+  }): Promise<void> {
+    let sendResult: { simulated: boolean; wamid: string | null };
+    let status: "sent" | "failed" = "sent";
+
+    try {
+      sendResult = await this.twilioClient.sendMedia({
+        from: params.connection.twilioWhatsAppNumber,
+        to: params.customerWaId,
+        mediaUrl: params.mediaUrl,
+      });
+    } catch (error) {
+      this.logger.error(`Media auto-reply failed: ${String(error)}`);
+      sendResult = { simulated: false, wamid: null };
+      status = "failed";
+    }
+
+    await this.prisma.message.create({
+      data: {
+        conversationId: params.conversationId,
+        direction: "outbound",
+        wamid: sendResult.wamid,
+        type: "image",
+        body: params.mediaUrl,
+        status,
+        rawPayload: { mediaUrl: params.mediaUrl },
       },
     });
   }

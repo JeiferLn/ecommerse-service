@@ -1,6 +1,11 @@
 "use client";
 
-import { COMPANY_TYPES, COMPANY_TYPE_LABELS, type CompanyType } from "@commerce-ai/types";
+import {
+  COMPANY_COUNTRIES,
+  COMPANY_TYPES,
+  COMPANY_TYPE_LABELS,
+  type CompanyType,
+} from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -29,10 +34,18 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import type { SessionUser } from "@/lib/session";
 import { useSession } from "@/providers/session-provider";
 
+const countryCodes = COMPANY_COUNTRIES.map((country) => country.code) as [
+  string,
+  ...string[],
+];
+
 const createCompanySchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres").max(100),
   companyType: z.enum(COMPANY_TYPES as [CompanyType, ...CompanyType[]], {
     message: "Selecciona el tipo de empresa",
+  }),
+  countryCode: z.enum(countryCodes, {
+    message: "Selecciona el país de la empresa",
   }),
 });
 
@@ -52,11 +65,15 @@ export function CreateCompanyDialog({ open, onOpenChange }: CreateCompanyDialogP
     handleSubmit,
     setValue,
     reset,
+    watch,
     formState: { errors },
   } = useForm<CreateCompanyValues>({
     resolver: zodResolver(createCompanySchema),
-    defaultValues: { name: "", companyType: undefined },
+    defaultValues: { name: "", companyType: undefined, countryCode: undefined },
   });
+
+  const companyType = watch("companyType");
+  const countryCode = watch("countryCode");
 
   const mutation = useMutation({
     mutationFn: (values: CreateCompanyValues) =>
@@ -79,7 +96,8 @@ export function CreateCompanyDialog({ open, onOpenChange }: CreateCompanyDialogP
         <DialogHeader>
           <DialogTitle>Crear empresa</DialogTitle>
           <DialogDescription>
-            Crea tu propia empresa y conviértete en su dueño.
+            Crea tu propia empresa y conviértete en su dueño. Elige un país con soporte de Mercado
+            Pago.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -100,7 +118,10 @@ export function CreateCompanyDialog({ open, onOpenChange }: CreateCompanyDialogP
           <div className="flex flex-col gap-2">
             <Label htmlFor="company-type">Tipo de empresa</Label>
             <Select
-              onValueChange={(value) => setValue("companyType", value as CompanyType)}
+              value={companyType}
+              onValueChange={(value) =>
+                setValue("companyType", value as CompanyType, { shouldValidate: true })
+              }
               aria-invalid={Boolean(errors.companyType)}
             >
               <SelectTrigger id="company-type" aria-label="Tipo de empresa">
@@ -116,6 +137,31 @@ export function CreateCompanyDialog({ open, onOpenChange }: CreateCompanyDialogP
             </Select>
             {errors.companyType && (
               <p className="text-sm text-destructive">{errors.companyType.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="company-country">País de la empresa</Label>
+            <Select
+              value={countryCode}
+              onValueChange={(value) =>
+                setValue("countryCode", value, { shouldValidate: true })
+              }
+              aria-invalid={Boolean(errors.countryCode)}
+            >
+              <SelectTrigger id="company-country" aria-label="País de la empresa">
+                <SelectValue placeholder="Selecciona el país" />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {COMPANY_COUNTRIES.map((country) => (
+                  <SelectItem key={country.code} value={country.code}>
+                    {country.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.countryCode && (
+              <p className="text-sm text-destructive">{errors.countryCode.message}</p>
             )}
           </div>
 

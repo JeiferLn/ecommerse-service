@@ -103,7 +103,12 @@ export class AuthService {
         });
 
         const company = await tx.company.create({
-          data: { name: dto.companyName, type: dto.companyType, ownerId: created.id },
+          data: {
+            name: dto.companyName,
+            type: dto.companyType,
+            countryCode: dto.countryCode.trim().toUpperCase(),
+            ownerId: created.id,
+          },
         });
 
         await tx.companyMembership.create({

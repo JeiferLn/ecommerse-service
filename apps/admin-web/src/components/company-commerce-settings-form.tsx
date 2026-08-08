@@ -2,7 +2,6 @@
 
 import {
   canEditCompany,
-  COMPANY_COUNTRIES,
   SHIPPING_SCOPE_LABELS,
   SHIPPING_SCOPES,
   type CompanyDetails,
@@ -13,17 +12,11 @@ import { Plus, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { LocationSelects, type LocationValue } from "@/components/location-selects";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
@@ -83,7 +76,11 @@ export function CompanyCommerceSettingsForm() {
     enabled: Boolean(user?.companyId),
   });
 
-  const [countryCode, setCountryCode] = useState<string>("");
+  const [location, setLocation] = useState<LocationValue>({
+    countryCode: "",
+    region: "",
+    city: "",
+  });
   const [shippingScopes, setShippingScopes] = useState<ShippingScope[]>([]);
   const [shippingCarriers, setShippingCarriers] = useState<string[]>([]);
   const [carrierDraft, setCarrierDraft] = useState("");
@@ -93,7 +90,11 @@ export function CompanyCommerceSettingsForm() {
     if (!company) {
       return;
     }
-    setCountryCode(company.commerce.countryCode ?? "");
+    setLocation({
+      countryCode: company.commerce.countryCode ?? "",
+      region: company.commerce.shippingRegion ?? "",
+      city: company.commerce.shippingCity ?? "",
+    });
     setShippingScopes(company.commerce.shippingScopes);
     setShippingCarriers(company.commerce.shippingCarriers);
     setDirty(false);
@@ -104,7 +105,9 @@ export function CompanyCommerceSettingsForm() {
       apiFetch<CompanyDetails>("/company/commerce", {
         method: "PATCH",
         body: JSON.stringify({
-          countryCode: countryCode || null,
+          countryCode: location.countryCode || null,
+          shippingRegion: location.region.trim() || null,
+          shippingCity: location.city.trim() || null,
           shippingScopes,
           shippingCarriers,
         }),
@@ -156,7 +159,7 @@ export function CompanyCommerceSettingsForm() {
           Envíos
         </CardTitle>
         <CardDescription>
-          El bot necesita país, cobertura y transportadoras para orientar al cliente. El pago se
+          El bot necesita ubicación, cobertura y transportadoras para orientar al cliente. El pago se
           manejará por pasarela de la plataforma (no se configura aquí).
         </CardDescription>
       </CardHeader>
@@ -167,28 +170,22 @@ export function CompanyCommerceSettingsForm() {
           </p>
         )}
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="commerce-country">País de la tienda</Label>
-          <Select
-            value={countryCode || undefined}
-            onValueChange={(value) => {
-              setCountryCode(value);
-              setDirty(true);
-            }}
-            disabled={!canEdit || mutation.isPending}
-          >
-            <SelectTrigger id="commerce-country" aria-label="País">
-              <SelectValue placeholder="Selecciona el país" />
-            </SelectTrigger>
-            <SelectContent className="max-h-72">
-              {COMPANY_COUNTRIES.map((country) => (
-                <SelectItem key={country.code} value={country.code}>
-                  {country.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <LocationSelects
+          idPrefix="commerce"
+          variant="company"
+          lockCountry={Boolean(company.commerce.countryCode)}
+          value={location}
+          disabled={!canEdit || mutation.isPending}
+          onChange={(next) => {
+            setLocation(next);
+            setDirty(true);
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          Departamento y municipio son la base de la tienda (obligatorios si ofreces envío local) y
+          sirven para validar destinos en el checkout. El cliente elige su propio país / depto /
+          municipio al pagar.
+        </p>
 
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium">Alcance de envíos</legend>

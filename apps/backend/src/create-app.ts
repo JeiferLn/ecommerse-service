@@ -7,11 +7,13 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { AppModule } from "./app.module";
+import { AppLogger } from "./common/app-logger";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 
 export async function createApp(): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
+    logger: new AppLogger(),
   });
 
   const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:3000")

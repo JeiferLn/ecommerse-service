@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 
 import { AiReplyService } from "../ai/ai-reply.service";
+import { OrdersService } from "../orders/orders.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
@@ -15,8 +16,16 @@ describe("WhatsAppWebhookService", () => {
     conversation: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
     message: { create: jest.Mock; updateMany: jest.Mock; findMany: jest.Mock };
   };
-  let twilioClient: { sendText: jest.Mock };
+  let twilioClient: { sendText: jest.Mock; sendMedia: jest.Mock };
   let aiReplyService: { generateReply: jest.Mock };
+  let ordersService: {
+    getCartForConversation: jest.Mock;
+    clearCart: jest.Mock;
+    beginCheckout: jest.Mock;
+    findVariantForAddIntent: jest.Mock;
+    addCartItem: jest.Mock;
+    formatCartMessage: jest.Mock;
+  };
   let configValues: Record<string, unknown>;
 
   beforeEach(async () => {
@@ -40,9 +49,26 @@ describe("WhatsAppWebhookService", () => {
     };
     twilioClient = {
       sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "SM_out_1" }),
+      sendMedia: jest.fn().mockResolvedValue({ simulated: true, wamid: "SM_out_img" }),
     };
     aiReplyService = {
-      generateReply: jest.fn().mockResolvedValue({ text: "Respuesta IA", requestedHandoff: false }),
+      generateReply: jest.fn().mockResolvedValue({
+        text: "Respuesta IA",
+        requestedHandoff: false,
+        imageUrls: [],
+      }),
+    };
+    ordersService = {
+      getCartForConversation: jest.fn().mockResolvedValue({
+        id: "cart-1",
+        checkoutPending: false,
+        items: [],
+      }),
+      clearCart: jest.fn(),
+      beginCheckout: jest.fn(),
+      findVariantForAddIntent: jest.fn(),
+      addCartItem: jest.fn(),
+      formatCartMessage: jest.fn().mockReturnValue("Carrito vacío"),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -61,6 +87,7 @@ describe("WhatsAppWebhookService", () => {
           provide: WhatsAppConnectionService,
           useValue: { assertCommerceConfigured: jest.fn().mockResolvedValue(undefined) },
         },
+        { provide: OrdersService, useValue: ordersService },
       ],
     }).compile();
 

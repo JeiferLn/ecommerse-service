@@ -1,6 +1,11 @@
 "use client";
 
-import { COMPANY_TYPES, COMPANY_TYPE_LABELS, type CompanyType } from "@commerce-ai/types";
+import {
+  COMPANY_COUNTRIES,
+  COMPANY_TYPES,
+  COMPANY_TYPE_LABELS,
+  type CompanyType,
+} from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -21,6 +26,11 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import type { SessionUser } from "@/lib/session";
 import { useSession } from "@/providers/session-provider";
 
+const countryCodes = COMPANY_COUNTRIES.map((country) => country.code) as [
+  string,
+  ...string[],
+];
+
 const registerSchema = z
   .object({
     name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -30,6 +40,9 @@ const registerSchema = z
     companyName: z.string().min(2, "El nombre de la empresa debe tener al menos 2 caracteres"),
     companyType: z.enum(COMPANY_TYPES as [CompanyType, ...CompanyType[]], {
       message: "Selecciona el tipo de empresa",
+    }),
+    countryCode: z.enum(countryCodes, {
+      message: "Selecciona el país de la empresa",
     }),
   })
   .refine((values) => values.password === values.confirmPassword, {
@@ -57,6 +70,7 @@ export function RegisterForm() {
       confirmPassword: "",
       companyName: "",
       companyType: undefined,
+      countryCode: undefined,
     },
   });
 
@@ -70,6 +84,7 @@ export function RegisterForm() {
           password: values.password,
           companyName: values.companyName,
           companyType: values.companyType,
+          countryCode: values.countryCode,
         }),
       }),
     onSuccess: async () => {
@@ -140,6 +155,37 @@ export function RegisterForm() {
         />
         {errors.companyType && (
           <p className="text-sm text-destructive">{errors.companyType.message}</p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>País de la empresa</Label>
+        <Controller
+          name="countryCode"
+          control={control}
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger
+                aria-label="País de la empresa"
+                aria-invalid={Boolean(errors.countryCode)}
+              >
+                <SelectValue placeholder="Selecciona el país" />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {COMPANY_COUNTRIES.map((country) => (
+                  <SelectItem key={country.code} value={country.code}>
+                    {country.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+        <p className="text-xs text-muted-foreground">
+          Solo países con soporte de Mercado Pago. Después configurarás departamento y municipio.
+        </p>
+        {errors.countryCode && (
+          <p className="text-sm text-destructive">{errors.countryCode.message}</p>
         )}
       </div>
 

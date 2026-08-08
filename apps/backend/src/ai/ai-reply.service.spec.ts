@@ -26,6 +26,7 @@ describe("AiReplyService", () => {
         categoriesSummary: "Ropa (1)",
         totalActiveCount: 1,
         productCount: 1,
+        matchedProducts: [],
       }),
     };
     knowledgeRetrieval = {
@@ -86,8 +87,13 @@ describe("AiReplyService", () => {
       customerText: "¿Cuánto cuesta la camiseta?",
     });
 
-    expect(knowledgeRetrieval.retrieve).toHaveBeenCalledWith("c1", "¿Cuánto cuesta la camiseta?");
-    expect(result).toEqual({ text: "La camiseta cuesta $10", requestedHandoff: false });
+    // Preguntas de precio usan catálogo; no inyectan FAQ/RAG.
+    expect(knowledgeRetrieval.retrieve).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      text: "La camiseta cuesta $10",
+      requestedHandoff: false,
+      imageUrls: [],
+    });
   });
 
   it("incluye ragBlock en el system prompt cuando hay documentos", async () => {
@@ -164,7 +170,11 @@ describe("AiReplyService", () => {
       customerText: "hola",
     });
 
-    expect(result).toEqual({ text: "Fallback humano", requestedHandoff: false });
+    expect(result).toEqual({
+      text: "Fallback humano",
+      requestedHandoff: false,
+      imageUrls: [],
+    });
   });
 
   it("marca handoff si no hay productos activos", async () => {
@@ -174,6 +184,7 @@ describe("AiReplyService", () => {
       categoriesSummary: "",
       totalActiveCount: 0,
       productCount: 0,
+      matchedProducts: [],
     });
 
     const result = await service.generateReply({

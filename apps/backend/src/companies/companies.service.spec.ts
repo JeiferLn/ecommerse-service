@@ -22,6 +22,8 @@ const emptyKnowledge = {
 
 const companyDetailsBase = {
   countryCode: null as string | null,
+  shippingRegion: null as string | null,
+  shippingCity: null as string | null,
   shippingScopes: [] as string[],
   paymentMethods: [] as string[],
   shippingCarriers: [] as string[],
@@ -218,6 +220,8 @@ describe("CompaniesService", () => {
         description: null,
         commerce: {
           countryCode: null,
+          shippingRegion: null,
+          shippingCity: null,
           shippingScopes: [],
           shippingCarriers: [],
           isConfigured: false,
@@ -286,6 +290,8 @@ describe("CompaniesService", () => {
           address: true,
           description: true,
           countryCode: true,
+          shippingRegion: true,
+          shippingCity: true,
           shippingScopes: true,
           paymentMethods: true,
           shippingCarriers: true,
@@ -304,6 +310,8 @@ describe("CompaniesService", () => {
         description: "Vendemos ropa",
         commerce: {
           countryCode: null,
+          shippingRegion: null,
+          shippingCity: null,
           shippingScopes: [],
           shippingCarriers: [],
           isConfigured: false,
@@ -363,7 +371,7 @@ describe("CompaniesService", () => {
   });
 
   describe("createCompany", () => {
-    const dto = { name: "Mi Nueva Empresa", companyType: "retail" } as const;
+    const dto = { name: "Mi Nueva Empresa", companyType: "retail", countryCode: "CO" } as const;
 
     it("crea la empresa y la membership owner para un usuario sin empresa", async () => {
       usersService.findById.mockResolvedValue(mockUser);
@@ -375,6 +383,7 @@ describe("CompaniesService", () => {
       expect(companyArgs?.data).toMatchObject({
         name: "Mi Nueva Empresa",
         type: "retail",
+        countryCode: "CO",
         ownerId: "user-2",
       });
       const membershipArgs = prisma.companyMembership.create.mock.calls[0]?.[0];

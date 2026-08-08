@@ -30,12 +30,29 @@ export function detectsBotChoice(text: string): boolean {
     return false;
   }
 
+  // "no quiero un asistente / bot" no es elección de bot.
+  if (
+    /\bno\s+(quiero|deseo|necesito|busco).{0,40}\b(el\s+)?(bot|asistente|ia)\b/.test(
+      normalized,
+    ) ||
+    /\bno\s+(el\s+)?(bot|asistente)\b/.test(normalized) ||
+    /\bsin\s+(bot|asistente)\b/.test(normalized)
+  ) {
+    return false;
+  }
+
   return (
-    /^(bot|asistente|ia|virtual)[!?.]*$/i.test(normalized) ||
+    /^(bot|asistente|ia|virtual|un\s+bot)[!?.]*$/i.test(normalized) ||
     /\b(el\s+)?bot\b/.test(normalized) ||
+    /\bun\s+bot\b/.test(normalized) ||
     /\basistente(\s+virtual)?\b/.test(normalized) ||
     /\bautomatico\b/.test(normalized) ||
-    /\binteligencia\s+artificial\b/.test(normalized)
+    /\binteligencia\s+artificial\b/.test(normalized) ||
+    // "el más rápido" ≈ bot (respuesta inmediata)
+    /\b(el\s+)?mas\s+rapido\b/.test(normalized) ||
+    /\b(el\s+)?mas\s+veloz\b/.test(normalized) ||
+    /\bla\s+opcion\s+rapida\b/.test(normalized) ||
+    /\bresponde(r)?\s+rapido\b/.test(normalized)
   );
 }
 

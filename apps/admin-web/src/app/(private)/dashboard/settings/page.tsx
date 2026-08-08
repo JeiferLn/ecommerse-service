@@ -16,8 +16,8 @@ export default function SettingsPage() {
           Configuración
         </h1>
         <p className="text-muted-foreground">
-          Administra el perfil de tu empresa, envíos y los PDFs que alimentan al bot. El pago irá por
-          pasarela.
+          Administra el perfil de tu empresa, envíos y los PDFs que alimentan al bot. El país se
+          elige al registrarte; aquí defines departamento, municipio y cobertura.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

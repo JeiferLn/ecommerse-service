@@ -5,12 +5,19 @@ import type { Decimal } from "@prisma/client/runtime/library";
 import type { Env } from "../config/env.validation";
 import { PrismaService } from "../prisma/prisma.service";
 
+export interface CatalogMatchedProduct {
+  id: string;
+  name: string;
+  imageUrls: string[];
+}
+
 export interface CatalogContextResult {
   companyName: string;
   catalogBlock: string;
   categoriesSummary: string;
   totalActiveCount: number;
   productCount: number;
+  matchedProducts: CatalogMatchedProduct[];
 }
 
 @Injectable()
@@ -38,6 +45,11 @@ export class CatalogContextService {
         variants: {
           select: { sku: true, name: true, price: true, stock: true, attributes: true },
           orderBy: { createdAt: "asc" },
+        },
+        images: {
+          select: { url: true },
+          orderBy: { sortOrder: "asc" },
+          take: 3,
         },
       },
       orderBy: { updatedAt: "desc" },
@@ -91,6 +103,11 @@ export class CatalogContextService {
 
     const lines = selected.map(({ product }) => this.formatProductLine(product));
     const catalogBlock = [unmatchedNote, ...lines].filter(Boolean).join("\n");
+    const matchedProducts = selected.map(({ product }) => ({
+      id: product.id,
+      name: product.name,
+      imageUrls: product.images.map((image) => image.url).filter(Boolean),
+    }));
 
     return {
       companyName: company?.name ?? "la tienda",
@@ -98,6 +115,7 @@ export class CatalogContextService {
       categoriesSummary,
       totalActiveCount,
       productCount: totalActiveCount,
+      matchedProducts,
     };
   }
 
@@ -133,6 +151,7 @@ export class CatalogContextService {
       stock: number;
       attributes: unknown;
     }>;
+    images: Array<{ url: string }>;
   }): string {
     const variants = product.variants
       .map((variant) => {
@@ -152,7 +171,11 @@ export class CatalogContextService {
     const description = product.description
       ? ` — ${product.description.slice(0, 160).replace(/\s+/g, " ").trim()}`
       : "";
-    return `- ${product.name}${category}${description} | Variantes: ${variants || "ninguna"}`;
+    const imagesNote =
+      product.images.length > 0
+        ? ` | Imágenes disponibles: ${product.images.length} (el sistema puede enviarlas por WhatsApp)`
+        : " | Sin imágenes cargadas";
+    return `- ${product.name}${category}${description} | Variantes: ${variants || "ninguna"}${imagesNote}`;
   }
 
   private tokenize(text: string): string[] {

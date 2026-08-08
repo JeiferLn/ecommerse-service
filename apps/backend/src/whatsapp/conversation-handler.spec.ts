@@ -10,8 +10,12 @@ describe("conversation-handler", () => {
 
   it("detecta elección de bot", () => {
     expect(detectsBotChoice("bot")).toBe(true);
+    expect(detectsBotChoice("un bot")).toBe(true);
     expect(detectsBotChoice("asistente virtual")).toBe(true);
+    expect(detectsBotChoice("el mas rapido por favor")).toBe(true);
     expect(detectsBotChoice("asesor")).toBe(false);
+    expect(detectsBotChoice("no quiero un asistente")).toBe(false);
+    expect(detectsBotChoice("no me comunico bien con las personas")).toBe(false);
   });
 
   it("extrae pregunta residual tras elegir bot en el mismo mensaje", () => {

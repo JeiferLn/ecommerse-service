@@ -126,6 +126,14 @@ export function canManageKnowledge(role: UserRole): boolean {
   return hasCapability(role, "manageKnowledge");
 }
 
+export function canManageOrders(role: UserRole): boolean {
+  return hasCapability(role, "manageOrders");
+}
+
+export function canOperateOrders(role: UserRole): boolean {
+  return hasCapability(role, "operateOrders");
+}
+
 export type CompanyType =
   | "retail"
   | "clothing"
@@ -186,39 +194,54 @@ export const SHIPPING_SCOPE_LABELS: Record<ShippingScope, string> = {
 /** Reservado para Fase 9 (pasarela); la tienda no configura métodos de pago en el chat. */
 export type PaymentMethod = "debit_card" | "credit_card" | "bank_transfer" | "cash_on_delivery";
 
+/**
+ * Países soportados para registrar empresas.
+ * Alineado con la cobertura actual de Mercado Pago (LatAm).
+ * Más adelante se podrán sumar otros proveedores / países.
+ */
 export const COMPANY_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = [
+  { code: "AR", name: "Argentina" },
+  { code: "BR", name: "Brasil" },
+  { code: "CL", name: "Chile" },
   { code: "CO", name: "Colombia" },
   { code: "MX", name: "México" },
-  { code: "AR", name: "Argentina" },
-  { code: "CL", name: "Chile" },
   { code: "PE", name: "Perú" },
-  { code: "EC", name: "Ecuador" },
-  { code: "VE", name: "Venezuela" },
   { code: "UY", name: "Uruguay" },
-  { code: "PY", name: "Paraguay" },
-  { code: "BO", name: "Bolivia" },
-  { code: "CR", name: "Costa Rica" },
-  { code: "PA", name: "Panamá" },
-  { code: "GT", name: "Guatemala" },
-  { code: "HN", name: "Honduras" },
-  { code: "SV", name: "El Salvador" },
-  { code: "NI", name: "Nicaragua" },
-  { code: "DO", name: "República Dominicana" },
-  { code: "US", name: "Estados Unidos" },
-  { code: "ES", name: "España" },
-  { code: "BR", name: "Brasil" },
 ];
+
+export const COMPANY_COUNTRY_CODES = COMPANY_COUNTRIES.map((country) => country.code);
+
+export function isSupportedCompanyCountry(code: string | null | undefined): boolean {
+  if (!code?.trim()) {
+    return false;
+  }
+  const normalized = code.trim().toUpperCase();
+  return COMPANY_COUNTRY_CODES.includes(normalized);
+}
+
+export {
+  COLOMBIA_DEPARTMENTS,
+  COLOMBIA_GEO,
+  getColombiaMunicipalities,
+  isValidColombiaLocation,
+} from "./geo/colombia";
 
 export interface CompanyCommerceSettings {
   countryCode: string | null;
+  /** Departamento / región base de la tienda. */
+  shippingRegion: string | null;
+  /** Municipio / ciudad base de la tienda (para validar envíos locales). */
+  shippingCity: string | null;
   shippingScopes: ShippingScope[];
   shippingCarriers: string[];
-  /** true si hay país, al menos un alcance de envío y transportadoras */
+  /** true si hay país, alcance, transportadoras y (si local) depto+municipio. */
   isConfigured: boolean;
 }
 
 export function isCompanyCommerceConfigured(settings: {
   countryCode: string | null;
+  shippingRegion?: string | null;
+  shippingCity?: string | null;
   shippingScopes: readonly string[];
   shippingCarriers: readonly string[];
 }): boolean {
@@ -227,6 +250,11 @@ export function isCompanyCommerceConfigured(settings: {
   }
   if (settings.shippingScopes.length === 0 || settings.shippingCarriers.length === 0) {
     return false;
+  }
+  if (settings.shippingScopes.includes("local")) {
+    if (!settings.shippingRegion?.trim() || !settings.shippingCity?.trim()) {
+      return false;
+    }
   }
   return true;
 }
@@ -499,6 +527,9 @@ export interface CompanyDashboardStats {
   categoriesTotal: number;
   membersTotal: number;
   topProductsByStock: ProductStockSummary[];
+  ordersTotal: number;
+  ordersAwaitingPayment: number;
+  ordersOpen: number;
 }
 
 export interface DailyCount {
@@ -572,4 +603,144 @@ export interface WhatsAppMessage {
   body: string;
   status: MessageStatus | null;
   createdAt: string;
+}
+
+export type OrderStatus =
+  | "draft"
+  | "confirmed"
+  | "awaiting_payment"
+  | "paid"
+  | "preparing"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
+
+export const ORDER_STATUSES: OrderStatus[] = [
+  "draft",
+  "confirmed",
+  "awaiting_payment",
+  "paid",
+  "preparing",
+  "shipped",
+  "delivered",
+  "cancelled",
+];
+
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  draft: "Borrador",
+  confirmed: "Confirmado",
+  awaiting_payment: "Esperando pago",
+  paid: "Pagado",
+  preparing: "En preparación",
+  shipped: "Enviado",
+  delivered: "Entregado",
+  cancelled: "Cancelado",
+};
+
+export interface CartItemView {
+  id: string;
+  variantId: string;
+  productId: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+  stock: number;
+}
+
+export interface CartView {
+  id: string;
+  companyId: string;
+  conversationId: string;
+  checkoutPending: boolean;
+  shippingName: string | null;
+  shippingPhone: string | null;
+  shippingAddress: string | null;
+  shippingCity: string | null;
+  items: CartItemView[];
+  subtotal: number;
+  currency: string;
+  updatedAt: string;
+}
+
+export interface OrderItemView {
+  id: string;
+  variantId: string | null;
+  productName: string;
+  variantName: string;
+  sku: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export interface OrderSummary {
+  id: string;
+  number: string;
+  companyId: string;
+  conversationId: string | null;
+  customerWaId: string;
+  status: OrderStatus;
+  currency: string;
+  subtotal: number;
+  shippingCost: number;
+  total: number;
+  itemsCount: number;
+  shippingCity: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderDetails extends Omit<OrderSummary, "itemsCount"> {
+  shippingName: string | null;
+  shippingPhone: string | null;
+  shippingAddress: string | null;
+  shippingCountry: string | null;
+  shippingRegion: string | null;
+  notes: string | null;
+  /** Link público de checkout (si el pedido aún tiene token activo). */
+  checkoutUrl?: string | null;
+  items: OrderItemView[];
+}
+
+/** Cobertura de envío expuesta al checkout público (sin datos sensibles). */
+export interface CheckoutShippingCoverage {
+  countryCode: string | null;
+  countryName: string | null;
+  baseRegion: string | null;
+  baseCity: string | null;
+  scopes: ShippingScope[];
+  summary: string;
+}
+
+/** Vista pública de checkout (sin datos sensibles de empresa ni WA del cliente). */
+export interface CheckoutOrderView {
+  number: string;
+  status: OrderStatus;
+  currency: string;
+  subtotal: number;
+  shippingCost: number;
+  total: number;
+  companyName: string;
+  shippingName: string | null;
+  shippingPhone: string | null;
+  shippingAddress: string | null;
+  shippingCountry: string | null;
+  shippingRegion: string | null;
+  shippingCity: string | null;
+  shippingCoverage: CheckoutShippingCoverage;
+  expiresAt: string | null;
+  items: OrderItemView[];
+}
+
+export interface CompleteCheckoutPayload {
+  shippingName: string;
+  shippingPhone: string;
+  shippingAddress: string;
+  shippingCountry: string;
+  shippingRegion: string;
+  shippingCity: string;
+  confirmPayment: boolean;
 }

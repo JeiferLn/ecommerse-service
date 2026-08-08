@@ -1,3 +1,4 @@
+import { COMPANY_COUNTRY_CODES } from "@commerce-ai/types";
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -5,7 +6,6 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   ValidateIf,
 } from "class-validator";
@@ -16,8 +16,22 @@ export class UpdateCompanyCommerceDto {
   @IsOptional()
   @ValidateIf((_, value) => value != null && value !== "")
   @IsString()
-  @Matches(/^[A-Z]{2}$/, { message: "Selecciona un país válido" })
+  @IsIn([...COMPANY_COUNTRY_CODES], {
+    message: "Selecciona un país con soporte de Mercado Pago",
+  })
   countryCode?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value != null && value !== "")
+  @IsString()
+  @MaxLength(120, { message: "Departamento máx. 120 caracteres" })
+  shippingRegion?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value != null && value !== "")
+  @IsString()
+  @MaxLength(120, { message: "Municipio máx. 120 caracteres" })
+  shippingCity?: string | null;
 
   @IsArray({ message: "Los alcances de envío deben ser una lista" })
   @ArrayUnique({ message: "Hay alcances de envío duplicados" })

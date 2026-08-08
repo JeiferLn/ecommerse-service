@@ -208,6 +208,7 @@ describe("AuthService", () => {
         password: "password123",
         companyName: "Mi Tienda",
         companyType: "retail",
+        countryCode: "CO",
       });
 
       const userData = txUserCreate.mock.calls[0]?.[0].data as {
@@ -220,9 +221,15 @@ describe("AuthService", () => {
       const companyData = txCompanyCreate.mock.calls[0]?.[0].data as {
         name: string;
         type: string;
+        countryCode: string;
         ownerId: string;
       };
-      expect(companyData).toEqual({ name: "Mi Tienda", type: "retail", ownerId: "user-1" });
+      expect(companyData).toEqual({
+        name: "Mi Tienda",
+        type: "retail",
+        countryCode: "CO",
+        ownerId: "user-1",
+      });
 
       const membershipData = txMembershipCreate.mock.calls[0]?.[0].data as {
         userId: string;
@@ -276,6 +283,7 @@ describe("AuthService", () => {
         password: "password123",
         companyName: "Cualquiera",
         companyType: "retail",
+        countryCode: "MX",
       });
 
       const userData = txUserCreate.mock.calls[0]?.[0].data as { role: string };
@@ -328,6 +336,7 @@ describe("AuthService", () => {
         password: "password123",
         companyName: "Mi Propia Tienda",
         companyType: "retail",
+        countryCode: "AR",
       });
 
       expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
@@ -351,6 +360,7 @@ describe("AuthService", () => {
           password: "password123",
           companyName: "Mi Tienda",
           companyType: "retail",
+          countryCode: "CO",
         }),
       ).rejects.toThrow(ConflictException);
     });

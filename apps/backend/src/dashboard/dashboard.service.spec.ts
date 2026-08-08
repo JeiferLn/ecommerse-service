@@ -12,6 +12,7 @@ describe("DashboardService", () => {
     companyMembership: { count: jest.Mock };
     company: { count: jest.Mock; findMany: jest.Mock };
     user: { count: jest.Mock; findMany: jest.Mock };
+    order: { count: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -35,6 +36,7 @@ describe("DashboardService", () => {
       },
       category: { count: jest.fn().mockResolvedValue(3) },
       companyMembership: { count: jest.fn().mockResolvedValue(4) },
+      order: { count: jest.fn().mockResolvedValue(7) },
       company: {
         count: jest.fn().mockResolvedValue(5),
         findMany: jest.fn().mockResolvedValue([
@@ -72,6 +74,9 @@ describe("DashboardService", () => {
     expect(stats.lowStockProducts.some((item) => item.id === "p1")).toBe(true);
     expect(stats.categoriesTotal).toBe(3);
     expect(stats.membersTotal).toBe(4);
+    expect(stats.ordersTotal).toBe(7);
+    expect(stats.ordersAwaitingPayment).toBe(7);
+    expect(stats.ordersOpen).toBe(7);
   });
 
   it("exige empresa activa para stats de compañía", async () => {

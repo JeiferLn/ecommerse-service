@@ -133,7 +133,7 @@ Reglas al añadir endpoints:
 ## Dashboards (Fase 4)
 
 - Dos superficies separadas:
-  - **Empresa** (`/dashboard`): miembros de tienda (`owner` / `manager` / `user`) con `companyId`. Stats: `GET /api/v1/company/stats`. KPIs reales de catálogo/stock/categorías/miembros; ventas/pedidos/clientes/conversaciones como “Próximamente”.
+  - **Empresa** (`/dashboard`): miembros de tienda (`owner` / `manager` / `user`) con `companyId`. Stats: `GET /api/v1/company/stats`. KPIs de catálogo/stock/categorías/miembros/pedidos; ventas/clientes como “Próximamente”.
   - **Plataforma** (`/admin`): solo rol global `admin`. Stats: `GET /api/v1/admin/stats`. KPIs globales + series de altas 30 días + empresas recientes.
 - Capacidad `viewDashboard` en la matriz de empresa; el staff `admin` no usa capacidades de tenant.
 - Post-login: `admin` → `/admin`; resto → `/dashboard`. El middleware de Next verifica el JWT (`JWT_SECRET` server-only) y redirige por rol (`/admin` ↔ `/dashboard`).
@@ -174,6 +174,14 @@ Reglas al añadir endpoints:
 - WhatsApp exige `isCompanyCommerceConfigured` **y** `isCompanyKnowledgeConfigured` (4 PDFs activos con `fileKey`). Docs de texto legado sin PDF no cuentan.
 - Env: `EMBEDDING_PROVIDER` (`openrouter` | `mock`), `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` (1536), `RAG_TOP_K`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`.
 - El `ragBlock` se inyecta en `buildSalesAssistantSystemPrompt` junto al catálogo.
+
+## Pedidos (Fase 8)
+
+- Módulo `apps/backend/src/orders/`: carrito 1:1 por `Conversation`, pedido con snapshot de ítems, estados y stock al checkout.
+- Capabilities: `operateOrders` (listar/estado/carrito) para owner/manager/user; `manageOrders` (cancelar) para owner/manager.
+- Bot: intenciones en `order-intent.ts` antes del modelo (`agregar`, `ver/vaciar carrito`, `confirmar pedido` + dirección).
+- Checkout deja `awaiting_payment` (pasarela = Fase 9). Admin: `/dashboard/orders`.
+- No inventar medios de pago en el bot; mensaje de confirmación remite a asesor/pasarela.
 
 ## Variables de entorno
 

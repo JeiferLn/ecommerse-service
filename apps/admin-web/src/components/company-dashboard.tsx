@@ -6,7 +6,7 @@ import {
   type ProductStatus,
 } from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Boxes, FolderTree, Package, Users } from "lucide-react";
+import { AlertTriangle, Boxes, ClipboardList, FolderTree, Package, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -132,20 +132,27 @@ export function CompanyDashboard() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {["Ventas", "Pedidos", "Clientes"].map((kpi) => (
-              <Card
-                key={kpi}
-                className="border-border/70 bg-card/50 opacity-80 shadow-brand-sm backdrop-blur-sm"
-              >
-                <CardHeader className="pb-2">
-                  <CardDescription>{kpi}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="font-heading text-3xl font-bold tracking-tight">—</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Próximamente (Fase 8)</p>
-                </CardContent>
-              </Card>
-            ))}
+            <KpiCard
+              label="Pedidos"
+              value={data.ordersTotal}
+              hint={`${data.ordersOpen} abiertos`}
+              icon={ClipboardList}
+            />
+            <KpiCard
+              label="Esperando pago"
+              value={data.ordersAwaitingPayment}
+              hint="Sin pasarela aún (Fase 9)"
+              icon={ClipboardList}
+            />
+            <Card className="border-border/70 bg-card/50 opacity-80 shadow-brand-sm backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardDescription>Ventas / Clientes</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="font-heading text-3xl font-bold tracking-tight">—</p>
+                <p className="mt-1 text-xs text-muted-foreground">Próximamente</p>
+              </CardContent>
+            </Card>
             <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardDescription>Conversaciones</CardDescription>
