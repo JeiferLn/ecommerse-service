@@ -4,12 +4,14 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { Decimal } from "@prisma/client/runtime/library";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { MercadoPagoService } from "../payments/mercadopago.service";
+import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
 import { OrdersService } from "./orders.service";
 
 describe("OrdersService", () => {
   let service: OrdersService;
   let prisma: {
-    conversation: { findFirst: jest.Mock };
+    conversation: { findFirst: jest.Mock; update: jest.Mock };
     cart: { upsert: jest.Mock; update: jest.Mock; findUniqueOrThrow: jest.Mock };
     cartItem: {
       findUnique: jest.Mock;
@@ -22,12 +24,13 @@ describe("OrdersService", () => {
     product: { findMany: jest.Mock };
     company: { findUnique: jest.Mock };
     order: { findUnique: jest.Mock; create: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+    message: { create: jest.Mock };
     $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
     prisma = {
-      conversation: { findFirst: jest.fn() },
+      conversation: { findFirst: jest.fn(), update: jest.fn() },
       cart: { upsert: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
       cartItem: {
         findUnique: jest.fn(),
@@ -40,6 +43,7 @@ describe("OrdersService", () => {
       product: { findMany: jest.fn() },
       company: { findUnique: jest.fn() },
       order: { findUnique: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+      message: { create: jest.fn() },
       $transaction: jest.fn(),
     };
 
@@ -56,6 +60,27 @@ describe("OrdersService", () => {
               }
               throw new Error(`Missing ${key}`);
             },
+            get: (key: string) => {
+              if (key === "FRONTEND_URL") {
+                return "http://localhost:3000";
+              }
+              return undefined;
+            },
+          },
+        },
+        {
+          provide: MercadoPagoService,
+          useValue: {
+            isConfigured: () => true,
+            preferenceApi: () => ({
+              create: jest.fn(),
+            }),
+          },
+        },
+        {
+          provide: TwilioWhatsAppClient,
+          useValue: {
+            sendText: jest.fn().mockResolvedValue({ simulated: true, wamid: "SM_test" }),
           },
         },
       ],

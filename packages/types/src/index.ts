@@ -529,6 +529,8 @@ export interface CompanyDashboardStats {
   topProductsByStock: ProductStockSummary[];
   ordersTotal: number;
   ordersAwaitingPayment: number;
+  /** Pedidos pagados listos para preparar. */
+  ordersPaid: number;
   ordersOpen: number;
 }
 
@@ -742,5 +744,14 @@ export interface CompleteCheckoutPayload {
   shippingCountry: string;
   shippingRegion: string;
   shippingCity: string;
+  /** Indica que el cliente quiere iniciar el cobro (redirige a Mercado Pago). */
   confirmPayment: boolean;
+}
+
+/** Respuesta al iniciar el pago: guarda envío y abre Checkout Pro. */
+export interface CheckoutPaymentStart {
+  order: CheckoutOrderView;
+  preferenceId: string;
+  /** URL de Mercado Pago (init_point / sandbox_init_point). */
+  paymentUrl: string;
 }

@@ -159,6 +159,9 @@ importers:
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
+      mercadopago:
+        specifier: ^3.3.0
+        version: 3.3.0
       nodemailer:
         specifier: ^9.0.3
         version: 9.0.3
@@ -4758,6 +4761,10 @@ packages:
   memfs@3.5.3:
     resolution: {integrity: sha512-UERzLsxzllchadvbPs5aolHh65ISpKpM+ccLbOJ8/vvpBKmAWf+la7dXFy7Mr0ySHbdHrFv5kGFCUHHe6GFEmw==}
     engines: {node: '>= 4.0.0'}
+
+  mercadopago@3.3.0:
+    resolution: {integrity: sha512-TVtMopL6+CQOzU9hIVGVYxTO1DwOL9x3OmSdh7Qi/tawoLMSooQM0m/ttCC67vYsje+rjgZqNPoT9ItDQPm6Pg==}
+    engines: {node: '>=18'}
 
   merge-descriptors@2.0.0:
     resolution: {integrity: sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g==}
@@ -11225,6 +11232,8 @@ snapshots:
   memfs@3.5.3:
     dependencies:
       fs-monkey: 1.1.0
+
+  mercadopago@3.3.0: {}
 
   merge-descriptors@2.0.0: {}
 

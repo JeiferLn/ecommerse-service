@@ -110,6 +110,11 @@ const envSchema = z
     RAG_TOP_K: z.coerce.number().int().positive().default(4),
     RAG_CHUNK_SIZE: z.coerce.number().int().positive().default(700),
     RAG_CHUNK_OVERLAP: z.coerce.number().int().nonnegative().default(80),
+    /** Mercado Pago — credenciales de la app plataforma (Checkout Pro / OAuth). */
+    MP_ACCESS_TOKEN: z.string().optional(),
+    MP_PUBLIC_KEY: z.string().optional(),
+    /** URL pública del webhook MP (ngrok en local). Si vacío, se usa API_PUBLIC_URL + path. */
+    MP_WEBHOOK_URL: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     if (

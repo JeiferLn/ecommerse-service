@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type {
   CartView,
   CheckoutOrderView,
+  CheckoutPaymentStart,
   OrderDetails,
   OrderSummary,
   OrderStatus,
@@ -18,7 +20,9 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { randomBytes } from "node:crypto";
 
 import type { Env } from "../config/env.validation";
+import { MercadoPagoService } from "../payments/mercadopago.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
 import type { CheckoutCartDto } from "./dto/cart.dto";
 import type { CompletePublicCheckoutDto } from "./dto/public-checkout.dto";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
@@ -38,6 +42,13 @@ const OPEN_ORDER_STATUSES: PrismaOrderStatus[] = [
   "shipped",
 ];
 
+const POST_PAYMENT_STATUSES: PrismaOrderStatus[] = [
+  "paid",
+  "preparing",
+  "shipped",
+  "delivered",
+];
+
 const CHECKOUT_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 
 const STATUS_TRANSITIONS: Record<PrismaOrderStatus, PrismaOrderStatus[]> = {
@@ -53,9 +64,13 @@ const STATUS_TRANSITIONS: Record<PrismaOrderStatus, PrismaOrderStatus[]> = {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly mercadoPago: MercadoPagoService,
+    private readonly twilioClient: TwilioWhatsAppClient,
   ) {}
 
   async getCartForConversation(
@@ -186,27 +201,140 @@ export class OrdersService {
   }
 
   async getPublicCheckout(token: string): Promise<CheckoutOrderView> {
-    const order = await this.findOrderByCheckoutToken(token);
+    const order = await this.findOrderByCheckoutToken(token, { allowExpiredIfPaid: true });
     if (order.status === "cancelled") {
       throw new BadRequestException("Este pedido fue cancelado");
     }
     return this.toCheckoutOrderView(order);
   }
 
+  /**
+   * Marca el pedido como pagado desde un webhook de Mercado Pago (idempotente).
+   * @returns newlyPaid=true solo la primera vez que pasa a paid.
+   */
+  async markPaidFromMercadoPago(params: {
+    orderId: string;
+    mpPaymentId: string;
+  }): Promise<{
+    newlyPaid: boolean;
+    order: {
+      id: string;
+      number: string;
+      companyId: string;
+      conversationId: string | null;
+      currency: string;
+      total: Decimal;
+      status: PrismaOrderStatus;
+      items: { productName: string; variantName: string; quantity: number }[];
+    };
+  }> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: params.orderId },
+      include: {
+        items: {
+          select: { productName: true, variantName: true, quantity: true },
+        },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException("Pedido no encontrado para este pago");
+    }
+
+    if (POST_PAYMENT_STATUSES.includes(order.status)) {
+      if (!order.mpPaymentId && params.mpPaymentId) {
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { mpPaymentId: params.mpPaymentId },
+        });
+      }
+      return {
+        newlyPaid: false,
+        order: {
+          id: order.id,
+          number: order.number,
+          companyId: order.companyId,
+          conversationId: order.conversationId,
+          currency: order.currency,
+          total: order.total,
+          status: order.status,
+          items: order.items,
+        },
+      };
+    }
+
+    if (order.status === "cancelled") {
+      throw new BadRequestException("El pedido está cancelado y no se puede marcar como pagado");
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: "paid",
+        mpPaymentId: params.mpPaymentId,
+      },
+      include: {
+        items: {
+          select: { productName: true, variantName: true, quantity: true },
+        },
+      },
+    });
+
+    return {
+      newlyPaid: true,
+      order: {
+        id: updated.id,
+        number: updated.number,
+        companyId: updated.companyId,
+        conversationId: updated.conversationId,
+        currency: updated.currency,
+        total: updated.total,
+        status: updated.status,
+        items: updated.items,
+      },
+    };
+  }
+
+  formatPaymentConfirmedWhatsAppMessage(order: {
+    number: string;
+    currency: string;
+    total: Decimal | number;
+    items: { productName: string; variantName: string; quantity: number }[];
+  }): string {
+    const total =
+      typeof order.total === "number" ? order.total : Number(order.total);
+    const lines = order.items.map(
+      (item) => `• ${item.productName} (${item.variantName}) x${item.quantity}`,
+    );
+    return [
+      `¡Pago confirmado! Pedido ${order.number}.`,
+      ...lines,
+      `Total: $${total.toFixed(2)} ${order.currency}`,
+      "La tienda preparará tu envío. Gracias por tu compra.",
+    ].join("\n");
+  }
+
   async completePublicCheckout(
     token: string,
     dto: CompletePublicCheckoutDto,
-  ): Promise<CheckoutOrderView> {
+  ): Promise<CheckoutPaymentStart> {
     if (!dto.confirmPayment) {
       throw new BadRequestException("Debes confirmar el pago para continuar");
     }
+    if (!this.mercadoPago.isConfigured()) {
+      throw new BadRequestException(
+        "Mercado Pago no está configurado. Agrega MP_ACCESS_TOKEN en el servidor.",
+      );
+    }
 
-    const order = await this.findOrderByCheckoutToken(token);
+    const order = await this.findOrderByCheckoutToken(token, { allowExpiredIfPaid: false });
     if (order.status === "cancelled") {
       throw new BadRequestException("Este pedido fue cancelado");
     }
+    if (POST_PAYMENT_STATUSES.includes(order.status)) {
+      throw new BadRequestException("Este pedido ya fue pagado");
+    }
     if (order.status !== "awaiting_payment" && order.status !== "confirmed") {
-      return this.toCheckoutOrderView(order);
+      throw new BadRequestException("Este pedido no está disponible para pago");
     }
 
     const shippingName = dto.shippingName.trim();
@@ -240,6 +368,64 @@ export class OrdersService {
     }
 
     const countryCode = resolveCountryCode(shippingCountry) ?? shippingCountry.toUpperCase();
+    const frontendUrl = (
+      this.config.get("FRONTEND_URL", { infer: true }) || "http://localhost:3000"
+    ).replace(/\/$/, "");
+    const backBase = `${frontendUrl}/checkout/${token}`;
+    const backUrls = {
+      success: `${backBase}?status=success`,
+      pending: `${backBase}?status=pending`,
+      failure: `${backBase}?status=failure`,
+    };
+    // Mercado Pago solo acepta auto_return con back_urls HTTPS (localhost HTTP falla).
+    const canAutoReturn = frontendUrl.startsWith("https://");
+    const notificationUrl = this.mercadoPago.getWebhookNotificationUrl();
+
+    let preference;
+    try {
+      preference = await this.mercadoPago.preferenceApi().create({
+        body: {
+          items: order.items.map((item) => ({
+            id: item.sku || item.id,
+            title: `${item.productName} (${item.variantName})`.slice(0, 256),
+            quantity: item.quantity,
+            unit_price: Number(item.unitPrice),
+            currency_id: order.currency,
+          })),
+          external_reference: order.id,
+          metadata: {
+            orderId: order.id,
+            orderNumber: order.number,
+            checkoutToken: token,
+          },
+          payer: {
+            name: shippingName,
+            phone: { number: shippingPhone },
+          },
+          back_urls: backUrls,
+          ...(canAutoReturn ? { auto_return: "approved" as const } : {}),
+          ...(notificationUrl ? { notification_url: notificationUrl } : {}),
+          statement_descriptor: order.company.name.slice(0, 22),
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "No se pudo crear el pago en Mercado Pago";
+      throw new BadRequestException(
+        message.includes("auto_return")
+          ? "Mercado Pago rechazó la URL de retorno. En local usamos HTTP sin auto_return."
+          : `Mercado Pago: ${message}`,
+      );
+    }
+
+    const preferenceId = preference.id;
+    const paymentUrl =
+      preference.sandbox_init_point || preference.init_point || null;
+    if (!preferenceId || !paymentUrl) {
+      throw new BadRequestException(
+        "Mercado Pago no devolvió un enlace de pago. Revisa las credenciales.",
+      );
+    }
 
     const updated = await this.prisma.order.update({
       where: { id: order.id },
@@ -250,7 +436,8 @@ export class OrdersService {
         shippingCountry: countryCode,
         shippingRegion,
         shippingCity,
-        status: "paid",
+        status: "awaiting_payment",
+        mpPreferenceId: preferenceId,
       },
       include: {
         items: true,
@@ -266,7 +453,11 @@ export class OrdersService {
       },
     });
 
-    return this.toCheckoutOrderView(updated);
+    return {
+      order: this.toCheckoutOrderView(updated),
+      preferenceId,
+      paymentUrl,
+    };
   }
 
   async checkoutConversation(
@@ -461,7 +652,17 @@ export class OrdersService {
       data: { status: status as PrismaOrderStatus },
       include: { items: true },
     });
-    return this.toOrderDetails(updated);
+    const details = this.toOrderDetails(updated);
+    if (status === "shipped" || status === "delivered") {
+      await this.notifyCustomerOrderStatus({
+        number: updated.number,
+        companyId: updated.companyId,
+        conversationId: updated.conversationId,
+        customerWaId: updated.customerWaId,
+        status: updated.status,
+      });
+    }
+    return details;
   }
 
   async cancelOrder(companyId: string | null, orderId: string): Promise<OrderDetails> {
@@ -492,7 +693,15 @@ export class OrdersService {
       });
     });
 
-    return this.toOrderDetails(updated);
+    const details = this.toOrderDetails(updated);
+    await this.notifyCustomerOrderStatus({
+      number: updated.number,
+      companyId: updated.companyId,
+      conversationId: updated.conversationId,
+      customerWaId: updated.customerWaId,
+      status: updated.status,
+    });
+    return details;
   }
 
   formatCartMessage(cart: CartView): string {
@@ -795,6 +1004,85 @@ export class OrdersService {
     return companyId;
   }
 
+  /** Avisa al cliente por WhatsApp cuando el pedido se envía, entrega o cancela. */
+  private async notifyCustomerOrderStatus(order: {
+    number: string;
+    companyId: string;
+    conversationId: string | null;
+    customerWaId: string;
+    status: PrismaOrderStatus;
+  }): Promise<void> {
+    const textByStatus: Partial<Record<PrismaOrderStatus, string>> = {
+      shipped: [
+        `Tu pedido ${order.number} ya fue enviado.`,
+        "Pronto llegará a tu dirección. Cualquier duda, escríbenos por aquí.",
+      ].join("\n"),
+      delivered: [
+        `Tu pedido ${order.number} fue marcado como entregado.`,
+        "¡Gracias por tu compra!",
+      ].join("\n"),
+      cancelled: [
+        `Tu pedido ${order.number} fue cancelado.`,
+        "Si tienes dudas o quieres hacer otro pedido, escríbenos por aquí.",
+      ].join("\n"),
+    };
+    const text = textByStatus[order.status];
+    if (!text) {
+      return;
+    }
+
+    const conversation = order.conversationId
+      ? await this.prisma.conversation.findFirst({
+          where: { id: order.conversationId, companyId: order.companyId },
+          include: { waConnection: true },
+        })
+      : await this.prisma.conversation.findFirst({
+          where: { companyId: order.companyId, customerWaId: order.customerWaId },
+          include: { waConnection: true },
+          orderBy: { lastMessageAt: "desc" },
+        });
+
+    if (!conversation?.waConnection?.isActive) {
+      this.logger.warn(
+        `Pedido ${order.number}: no se pudo notificar estado ${order.status} (sin WA activo)`,
+      );
+      return;
+    }
+
+    let wamid: string | null = null;
+    let status: "sent" | "failed" = "sent";
+    try {
+      const result = await this.twilioClient.sendText({
+        from: conversation.waConnection.twilioWhatsAppNumber,
+        to: conversation.customerWaId,
+        text,
+      });
+      wamid = result.wamid;
+    } catch (error) {
+      status = "failed";
+      this.logger.warn(
+        `Pedido ${order.number}: falló WhatsApp al notificar ${order.status}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    await this.prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: "outbound",
+        wamid,
+        type: "text",
+        body: text,
+        status,
+      },
+    });
+    await this.prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: new Date() },
+    });
+  }
+
   private async toCartView(cartId: string): Promise<CartView> {
     const cart = await this.prisma.cart.findUniqueOrThrow({
       where: { id: cartId },
@@ -885,7 +1173,10 @@ export class OrdersService {
     return `${this.frontendBaseUrl()}/checkout/${token}`;
   }
 
-  private async findOrderByCheckoutToken(token: string) {
+  private async findOrderByCheckoutToken(
+    token: string,
+    options?: { allowExpiredIfPaid?: boolean },
+  ) {
     const normalized = token.trim();
     if (!normalized) {
       throw new NotFoundException("Checkout no encontrado");
@@ -908,8 +1199,17 @@ export class OrdersService {
     if (!order) {
       throw new NotFoundException("Checkout no encontrado o ya utilizado");
     }
-    if (order.checkoutExpiresAt && order.checkoutExpiresAt.getTime() < Date.now()) {
-      throw new BadRequestException("Este enlace de checkout expiró. Pide uno nuevo por WhatsApp.");
+    const expired =
+      Boolean(order.checkoutExpiresAt) &&
+      order.checkoutExpiresAt!.getTime() < Date.now();
+    if (expired) {
+      const allowPaid =
+        options?.allowExpiredIfPaid && POST_PAYMENT_STATUSES.includes(order.status);
+      if (!allowPaid) {
+        throw new BadRequestException(
+          "Este enlace de checkout expiró. Pide uno nuevo por WhatsApp.",
+        );
+      }
     }
     return order;
   }

@@ -17,8 +17,8 @@ export default async function OrdersPage({
       <div className="flex flex-col gap-2">
         <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Pedidos</h1>
         <p className="text-muted-foreground">
-          Carrito y pedidos tomados por WhatsApp. El cobro por pasarela llega en la Fase 9; aquí
-          gestionas estados e historial.
+          Administra pedidos tomados por WhatsApp. Los pagos confirmados por Mercado Pago aparecen
+          como Pagado, listos para preparar y enviar.
         </p>
       </div>
       <OrdersSection initialConversationId={params.conversationId ?? null} />

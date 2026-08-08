@@ -32,7 +32,7 @@ export class CompletePublicCheckoutDto {
   @MaxLength(120)
   shippingCity!: string;
 
-  /** Stub de pago (Fase 9: reemplazar por confirmación de pasarela). */
+  /** Intent de iniciar cobro con Mercado Pago (Checkout Pro). */
   @Type(() => Boolean)
   @IsBoolean()
   confirmPayment!: boolean;

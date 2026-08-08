@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import type { ApiResponse, CheckoutOrderView } from "@commerce-ai/types";
+import type { ApiResponse, CheckoutOrderView, CheckoutPaymentStart } from "@commerce-ai/types";
 
 import { Public } from "../common/decorators/public.decorator";
 import { CompletePublicCheckoutDto } from "./dto/public-checkout.dto";
@@ -23,11 +23,11 @@ export class CheckoutController {
   async complete(
     @Param("token") token: string,
     @Body() dto: CompletePublicCheckoutDto,
-  ): Promise<ApiResponse<CheckoutOrderView>> {
+  ): Promise<ApiResponse<CheckoutPaymentStart>> {
     return {
       status: "success",
       data: await this.ordersService.completePublicCheckout(token, dto),
-      message: "Pedido pagado (simulado). Gracias por tu compra.",
+      message: "Redirigiendo a Mercado Pago para completar el pago.",
     };
   }
 }

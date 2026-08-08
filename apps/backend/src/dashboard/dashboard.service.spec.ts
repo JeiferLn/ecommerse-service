@@ -76,6 +76,7 @@ describe("DashboardService", () => {
     expect(stats.membersTotal).toBe(4);
     expect(stats.ordersTotal).toBe(7);
     expect(stats.ordersAwaitingPayment).toBe(7);
+    expect(stats.ordersPaid).toBe(7);
     expect(stats.ordersOpen).toBe(7);
   });
 

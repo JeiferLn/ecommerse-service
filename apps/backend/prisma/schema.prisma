@@ -397,6 +397,10 @@ model Order {
   /// Token opaco para checkout público (/checkout/:token).
   checkoutToken    String?     @unique
   checkoutExpiresAt DateTime?
+  /// Preferencia de Mercado Pago (Checkout Pro).
+  mpPreferenceId   String?
+  /// ID del pago aprobado en Mercado Pago.
+  mpPaymentId      String?
   items           OrderItem[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -407,6 +411,7 @@ model Order {
   @@index([companyId, createdAt])
   @@index([conversationId])
   @@index([customerWaId])
+  @@index([mpPaymentId])
 }
 
 model OrderItem {

@@ -26,8 +26,15 @@ export class DashboardService {
   async getCompanyStats(companyId: string | null): Promise<CompanyDashboardStats> {
     const scopedCompanyId = this.requireCompany(companyId);
 
-    const [products, categoriesTotal, membersTotal, ordersTotal, ordersAwaitingPayment, ordersOpen] =
-      await Promise.all([
+    const [
+      products,
+      categoriesTotal,
+      membersTotal,
+      ordersTotal,
+      ordersAwaitingPayment,
+      ordersPaid,
+      ordersOpen,
+    ] = await Promise.all([
       this.prisma.product.findMany({
         where: { companyId: scopedCompanyId },
         select: {
@@ -42,6 +49,9 @@ export class DashboardService {
       this.prisma.order.count({ where: { companyId: scopedCompanyId } }),
       this.prisma.order.count({
         where: { companyId: scopedCompanyId, status: "awaiting_payment" },
+      }),
+      this.prisma.order.count({
+        where: { companyId: scopedCompanyId, status: "paid" },
       }),
       this.prisma.order.count({
         where: {
@@ -100,6 +110,7 @@ export class DashboardService {
       topProductsByStock,
       ordersTotal,
       ordersAwaitingPayment,
+      ordersPaid,
       ordersOpen,
     };
   }

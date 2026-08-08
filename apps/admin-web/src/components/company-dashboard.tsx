@@ -141,18 +141,15 @@ export function CompanyDashboard() {
             <KpiCard
               label="Esperando pago"
               value={data.ordersAwaitingPayment}
-              hint="Sin pasarela aún (Fase 9)"
+              hint="Checkout pendiente"
               icon={ClipboardList}
             />
-            <Card className="border-border/70 bg-card/50 opacity-80 shadow-brand-sm backdrop-blur-sm">
-              <CardHeader className="pb-2">
-                <CardDescription>Ventas / Clientes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="font-heading text-3xl font-bold tracking-tight">—</p>
-                <p className="mt-1 text-xs text-muted-foreground">Próximamente</p>
-              </CardContent>
-            </Card>
+            <KpiCard
+              label="Pagados por preparar"
+              value={data.ordersPaid}
+              hint="Listos para preparar / enviar"
+              icon={ClipboardList}
+            />
             <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardDescription>Conversaciones</CardDescription>

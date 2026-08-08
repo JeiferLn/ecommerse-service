@@ -449,6 +449,17 @@ Incluye:
 - Confirmación automática del estado `paid`
 - País de la empresa en el registro (países con soporte MP); depto/municipio en configuración
 
+Estado MVP actual:
+
+- ✅ SDK + credenciales de plataforma (`MP_ACCESS_TOKEN` / `MP_PUBLIC_KEY`)
+- ✅ Preferencia de pago desde `/checkout/[token]` → redirección a Checkout Pro
+- ✅ Webhook → marcar `paid` + WhatsApp de confirmación
+- ✅ Checkout bloqueado si ya pagó o el link expiró
+- ⏳ OAuth “Conectar Mercado Pago” por empresa
+
+Webhook local: expón el API con ngrok y define `API_PUBLIC_URL` o `MP_WEBHOOK_URL`
+(`…/api/v1/payments/mercadopago/webhook`).
+
 ---
 
 # Fase 10 — Suscripciones

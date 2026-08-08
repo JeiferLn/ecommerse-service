@@ -19,5 +19,6 @@ import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
     WhatsAppWebhookService,
     WhatsAppInboxService,
   ],
+  exports: [WhatsAppInboxService, TwilioWhatsAppClient, WhatsAppConnectionService],
 })
 export class WhatsAppModule {}
