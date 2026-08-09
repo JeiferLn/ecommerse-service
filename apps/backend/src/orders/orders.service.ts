@@ -9,13 +9,20 @@ import type {
   CartView,
   CheckoutOrderView,
   CheckoutPaymentStart,
+  InStorePaymentMethod,
+  OrderChannel,
   OrderDetails,
   OrderSummary,
   OrderStatus,
   PaginatedResponse,
   ShippingScope,
 } from "@commerce-ai/types";
-import { Prisma, type OrderStatus as PrismaOrderStatus } from "@prisma/client";
+import {
+  Prisma,
+  type InStorePaymentMethod as PrismaInStorePaymentMethod,
+  type OrderChannel as PrismaOrderChannel,
+  type OrderStatus as PrismaOrderStatus,
+} from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { randomBytes } from "node:crypto";
 
@@ -24,6 +31,7 @@ import { MercadoPagoService } from "../payments/mercadopago.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
 import type { CheckoutCartDto } from "./dto/cart.dto";
+import type { CreateInStoreSaleDto } from "./dto/create-in-store-sale.dto";
 import type { CompletePublicCheckoutDto } from "./dto/public-checkout.dto";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import {
@@ -556,6 +564,7 @@ export class OrdersService {
           companyId: scopedCompanyId,
           conversationId,
           customerWaId: conversation.customerWaId,
+          channel: "whatsapp",
           status: "awaiting_payment",
           currency,
           subtotal,
@@ -592,6 +601,116 @@ export class OrdersService {
     return this.toOrderDetails(order);
   }
 
+  async createInStoreSale(
+    companyId: string | null,
+    dto: CreateInStoreSaleDto,
+  ): Promise<OrderDetails> {
+    const scopedCompanyId = this.requireCompany(companyId);
+    if (!dto.items?.length) {
+      throw new BadRequestException("Agrega al menos un producto");
+    }
+
+    const qtyByVariant = new Map<string, number>();
+    for (const item of dto.items) {
+      const qty = item.quantity;
+      if (!Number.isInteger(qty) || qty < 1) {
+        throw new BadRequestException("La cantidad debe ser un entero mayor a 0");
+      }
+      qtyByVariant.set(item.variantId, (qtyByVariant.get(item.variantId) ?? 0) + qty);
+    }
+
+    const variantIds = [...qtyByVariant.keys()];
+    const variants = await this.prisma.productVariant.findMany({
+      where: { id: { in: variantIds }, product: { companyId: scopedCompanyId } },
+      include: { product: true },
+    });
+    if (variants.length !== variantIds.length) {
+      throw new BadRequestException("Hay productos que no pertenecen a tu empresa");
+    }
+
+    for (const variant of variants) {
+      const quantity = qtyByVariant.get(variant.id) ?? 0;
+      if (variant.product.status !== "active") {
+        throw new BadRequestException(
+          `El producto "${variant.product.name}" ya no está activo`,
+        );
+      }
+      if (variant.stock < quantity) {
+        throw new BadRequestException(
+          `Stock insuficiente para ${variant.product.name} (${variant.name}). Disponible: ${variant.stock}`,
+        );
+      }
+    }
+
+    const company = await this.prisma.company.findUnique({
+      where: { id: scopedCompanyId },
+      select: { countryCode: true },
+    });
+    const currency = this.currencyForCountry(company?.countryCode);
+
+    let subtotal = new Decimal(0);
+    const lineData = variants.map((variant) => {
+      const quantity = qtyByVariant.get(variant.id)!;
+      const unitPrice = variant.price;
+      const lineTotal = unitPrice.mul(quantity);
+      subtotal = subtotal.add(lineTotal);
+      return {
+        variantId: variant.id,
+        productName: variant.product.name,
+        variantName: variant.name,
+        sku: variant.sku,
+        unitPrice,
+        quantity,
+        lineTotal,
+      };
+    });
+
+    const shippingCost = new Decimal(0);
+    const total = subtotal.add(shippingCost);
+    const number = await this.nextOrderNumber(scopedCompanyId);
+    const customerName = dto.customerName?.trim() || null;
+    const customerPhone = dto.customerPhone?.trim() || null;
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      for (const variant of variants) {
+        const quantity = qtyByVariant.get(variant.id)!;
+        const updated = await tx.productVariant.updateMany({
+          where: { id: variant.id, stock: { gte: quantity } },
+          data: { stock: { decrement: quantity } },
+        });
+        if (updated.count === 0) {
+          throw new BadRequestException(
+            `Stock insuficiente para ${variant.product.name} (${variant.name})`,
+          );
+        }
+      }
+
+      return tx.order.create({
+        data: {
+          number,
+          companyId: scopedCompanyId,
+          conversationId: null,
+          customerWaId: null,
+          channel: "in_store",
+          inStorePaymentMethod: dto.paymentMethod,
+          status: "delivered",
+          currency,
+          subtotal,
+          shippingCost,
+          total,
+          shippingName: customerName,
+          shippingPhone: customerPhone,
+          notes: dto.notes?.trim() || null,
+          stockDecremented: true,
+          items: { create: lineData },
+        },
+        include: { items: true },
+      });
+    });
+
+    return this.toOrderDetails(order);
+  }
+
   async listOrders(
     companyId: string | null,
     query: ListOrdersQueryDto,
@@ -602,6 +721,7 @@ export class OrdersService {
     const where: Prisma.OrderWhereInput = {
       companyId: scopedCompanyId,
       ...(query.status ? { status: query.status } : {}),
+      ...(query.channel ? { channel: query.channel } : {}),
       ...(query.conversationId ? { conversationId: query.conversationId } : {}),
       ...(query.q
         ? {
@@ -610,6 +730,7 @@ export class OrdersService {
               { customerWaId: { contains: query.q, mode: "insensitive" } },
               { shippingName: { contains: query.q, mode: "insensitive" } },
               { shippingCity: { contains: query.q, mode: "insensitive" } },
+              { shippingPhone: { contains: query.q, mode: "insensitive" } },
             ],
           }
         : {}),
@@ -652,6 +773,11 @@ export class OrdersService {
     if (status === "cancelled") {
       return this.cancelOrder(companyId, orderId);
     }
+    if (order.channel === "in_store") {
+      throw new BadRequestException(
+        "Las ventas de tienda solo se pueden cancelar; no cambian de estado de envío",
+      );
+    }
     const allowed = STATUS_TRANSITIONS[order.status];
     if (!allowed.includes(status as PrismaOrderStatus)) {
       throw new BadRequestException(
@@ -681,7 +807,7 @@ export class OrdersService {
     if (order.status === "cancelled") {
       return this.toOrderDetails(order);
     }
-    if (order.status === "delivered") {
+    if (order.status === "delivered" && order.channel !== "in_store") {
       throw new BadRequestException("No se puede cancelar un pedido entregado");
     }
 
@@ -1020,9 +1146,12 @@ export class OrdersService {
     number: string;
     companyId: string;
     conversationId: string | null;
-    customerWaId: string;
+    customerWaId: string | null;
     status: PrismaOrderStatus;
   }): Promise<void> {
+    if (!order.customerWaId && !order.conversationId) {
+      return;
+    }
     const textByStatus: Partial<Record<PrismaOrderStatus, string>> = {
       shipped: [
         `Tu pedido ${order.number} ya fue enviado.`,
@@ -1047,11 +1176,13 @@ export class OrdersService {
           where: { id: order.conversationId, companyId: order.companyId },
           include: { waConnection: true },
         })
-      : await this.prisma.conversation.findFirst({
-          where: { companyId: order.companyId, customerWaId: order.customerWaId },
-          include: { waConnection: true },
-          orderBy: { lastMessageAt: "desc" },
-        });
+      : order.customerWaId
+        ? await this.prisma.conversation.findFirst({
+            where: { companyId: order.companyId, customerWaId: order.customerWaId },
+            include: { waConnection: true },
+            orderBy: { lastMessageAt: "desc" },
+          })
+        : null;
 
     if (!conversation?.waConnection?.isActive) {
       this.logger.warn(
@@ -1144,7 +1275,9 @@ export class OrdersService {
     number: string;
     companyId: string;
     conversationId: string | null;
-    customerWaId: string;
+    customerWaId: string | null;
+    channel: PrismaOrderChannel;
+    inStorePaymentMethod: PrismaInStorePaymentMethod | null;
     status: PrismaOrderStatus;
     currency: string;
     subtotal: Decimal;
@@ -1161,6 +1294,8 @@ export class OrdersService {
       companyId: order.companyId,
       conversationId: order.conversationId,
       customerWaId: order.customerWaId,
+      channel: order.channel as OrderChannel,
+      inStorePaymentMethod: order.inStorePaymentMethod as InStorePaymentMethod | null,
       status: order.status as OrderStatus,
       currency: order.currency,
       subtotal: Number(order.subtotal),
@@ -1304,7 +1439,9 @@ export class OrdersService {
     number: string;
     companyId: string;
     conversationId: string | null;
-    customerWaId: string;
+    customerWaId: string | null;
+    channel: PrismaOrderChannel;
+    inStorePaymentMethod: PrismaInStorePaymentMethod | null;
     status: PrismaOrderStatus;
     currency: string;
     subtotal: Decimal;
@@ -1337,6 +1474,8 @@ export class OrdersService {
       companyId: order.companyId,
       conversationId: order.conversationId,
       customerWaId: order.customerWaId,
+      channel: order.channel as OrderChannel,
+      inStorePaymentMethod: order.inStorePaymentMethod as InStorePaymentMethod | null,
       status: order.status as OrderStatus,
       currency: order.currency,
       subtotal: Number(order.subtotal),

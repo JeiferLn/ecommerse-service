@@ -3,15 +3,19 @@
 import {
   canManageOrders,
   canOperateOrders,
+  IN_STORE_PAYMENT_METHOD_LABELS,
+  ORDER_CHANNEL_LABELS,
+  ORDER_CHANNELS,
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
+  type OrderChannel,
   type OrderDetails,
   type OrderStatus,
   type OrderSummary,
   type PaginatedResponse,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, MessageCircle, RefreshCw } from "lucide-react";
+import { ClipboardList, MessageCircle, RefreshCw, Store } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -27,6 +31,21 @@ function formatMoney(amount: number, currency: string): string {
   return `$${amount.toFixed(2)} ${currency}`;
 }
 
+function ChannelBadge({ channel }: { channel: OrderChannel }) {
+  const isStore = channel === "in_store";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+        isStore ? "bg-amber-500/15 text-amber-800 dark:text-amber-200" : "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200",
+      )}
+    >
+      {isStore ? <Store className="size-3" aria-hidden /> : <MessageCircle className="size-3" aria-hidden />}
+      {ORDER_CHANNEL_LABELS[channel]}
+    </span>
+  );
+}
+
 export function OrdersSection({
   initialConversationId,
 }: {
@@ -38,6 +57,7 @@ export function OrdersSection({
   const canManage = Boolean(user && canManageOrders(user.role));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
+  const [channelFilter, setChannelFilter] = useState<OrderChannel | "">("");
   const [q, setQ] = useState("");
   const [conversationFilter, setConversationFilter] = useState(initialConversationId ?? "");
 
@@ -46,6 +66,9 @@ export function OrdersSection({
     if (statusFilter) {
       params.set("status", statusFilter);
     }
+    if (channelFilter) {
+      params.set("channel", channelFilter);
+    }
     if (q.trim()) {
       params.set("q", q.trim());
     }
@@ -53,7 +76,7 @@ export function OrdersSection({
       params.set("conversationId", conversationFilter.trim());
     }
     return params.toString();
-  }, [statusFilter, q, conversationFilter]);
+  }, [statusFilter, channelFilter, q, conversationFilter]);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["orders", user?.companyId, queryString],
@@ -107,7 +130,9 @@ export function OrdersSection({
             <div>
               <CardTitle className="font-heading text-xl">Pedidos</CardTitle>
               <CardDescription>
-                {data ? `${data.total} en total` : "Historial de compras desde WhatsApp"}
+                {data
+                  ? `${data.total} en total`
+                  : "Historial de ventas WhatsApp y tienda física"}
               </CardDescription>
             </div>
             <Button
@@ -121,15 +146,31 @@ export function OrdersSection({
               Actualizar
             </Button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5 sm:col-span-1">
               <Label htmlFor="order-q">Buscar</Label>
               <Input
                 id="order-q"
                 value={q}
                 onChange={(event) => setQ(event.target.value)}
-                placeholder="Número, WhatsApp, ciudad…"
+                placeholder="Número, cliente, ciudad…"
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="order-channel">Canal</Label>
+              <select
+                id="order-channel"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={channelFilter}
+                onChange={(event) => setChannelFilter(event.target.value as OrderChannel | "")}
+              >
+                <option value="">Todos</option>
+                {ORDER_CHANNELS.map((channel) => (
+                  <option key={channel} value={channel}>
+                    {ORDER_CHANNEL_LABELS[channel]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="order-status">Estado</Label>
@@ -188,8 +229,15 @@ export function OrdersSection({
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="font-medium">{order.number}</p>
-                  <p className="text-xs text-muted-foreground">{order.customerWaId}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium">{order.number}</p>
+                    <ChannelBadge channel={order.channel} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {order.channel === "in_store"
+                      ? "Tienda física"
+                      : order.customerWaId || "—"}
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium">{formatMoney(order.total, order.currency)}</p>
@@ -222,9 +270,20 @@ export function OrdersSection({
           {selected && (
             <>
               <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <p className="sm:col-span-2">
+                  <span className="text-muted-foreground">Canal: </span>
+                  <ChannelBadge channel={selected.channel} />
+                  {selected.channel === "in_store" && selected.inStorePaymentMethod ? (
+                    <span className="ml-2 text-muted-foreground">
+                      · {IN_STORE_PAYMENT_METHOD_LABELS[selected.inStorePaymentMethod]}
+                    </span>
+                  ) : null}
+                </p>
                 <p>
                   <span className="text-muted-foreground">Cliente: </span>
-                  {selected.customerWaId}
+                  {selected.channel === "in_store"
+                    ? selected.shippingName || selected.shippingPhone || "Mostrador"
+                    : selected.customerWaId || "—"}
                 </p>
                 <p>
                   <span className="text-muted-foreground">Total: </span>
@@ -234,22 +293,31 @@ export function OrdersSection({
                   <span className="text-muted-foreground">Nombre: </span>
                   {selected.shippingName || "—"}
                 </p>
-                <p>
-                  <span className="text-muted-foreground">País: </span>
-                  {selected.shippingCountry || "—"}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Departamento: </span>
-                  {selected.shippingRegion || "—"}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Ciudad: </span>
-                  {selected.shippingCity || "—"}
-                </p>
-                <p className="sm:col-span-2">
-                  <span className="text-muted-foreground">Dirección: </span>
-                  {selected.shippingAddress || "—"}
-                </p>
+                {selected.channel === "whatsapp" ? (
+                  <>
+                    <p>
+                      <span className="text-muted-foreground">País: </span>
+                      {selected.shippingCountry || "—"}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Departamento: </span>
+                      {selected.shippingRegion || "—"}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Ciudad: </span>
+                      {selected.shippingCity || "—"}
+                    </p>
+                    <p className="sm:col-span-2">
+                      <span className="text-muted-foreground">Dirección: </span>
+                      {selected.shippingAddress || "—"}
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    <span className="text-muted-foreground">Teléfono: </span>
+                    {selected.shippingPhone || "—"}
+                  </p>
+                )}
               </div>
 
               <ul className="flex flex-col gap-2 rounded-xl border border-border/70 p-3 text-sm">
@@ -273,7 +341,9 @@ export function OrdersSection({
                     </Link>
                   </Button>
                 ) : null}
-                {canManage && selected.status !== "cancelled" && selected.status !== "delivered" ? (
+                {canManage &&
+                selected.status !== "cancelled" &&
+                (selected.channel === "in_store" || selected.status !== "delivered") ? (
                   <Button
                     type="button"
                     variant="destructive"
@@ -281,36 +351,46 @@ export function OrdersSection({
                     disabled={cancelMutation.isPending}
                     onClick={() => cancelMutation.mutate()}
                   >
-                    Cancelar pedido
+                    Cancelar {selected.channel === "in_store" ? "venta" : "pedido"}
                   </Button>
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="order-next-status">Cambiar estado</Label>
-                <select
-                  id="order-next-status"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={selected.status}
-                  disabled={statusMutation.isPending || selected.status === "cancelled"}
-                  onChange={(event) =>
-                    statusMutation.mutate(event.target.value as OrderStatus)
-                  }
-                >
-                  {ORDER_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {ORDER_STATUS_LABELS[status]}
-                    </option>
-                  ))}
-                </select>
-                {(statusMutation.isError || cancelMutation.isError) && (
+              {selected.channel === "whatsapp" ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-next-status">Cambiar estado</Label>
+                  <select
+                    id="order-next-status"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={selected.status}
+                    disabled={statusMutation.isPending || selected.status === "cancelled"}
+                    onChange={(event) =>
+                      statusMutation.mutate(event.target.value as OrderStatus)
+                    }
+                  >
+                    {ORDER_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {ORDER_STATUS_LABELS[status]}
+                      </option>
+                    ))}
+                  </select>
+                  {(statusMutation.isError || cancelMutation.isError) && (
+                    <p className="text-sm text-destructive">
+                      {(statusMutation.error || cancelMutation.error) instanceof ApiClientError
+                        ? (statusMutation.error || cancelMutation.error)?.message
+                        : "No se pudo actualizar el pedido"}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                cancelMutation.isError && (
                   <p className="text-sm text-destructive">
-                    {(statusMutation.error || cancelMutation.error) instanceof ApiClientError
-                      ? (statusMutation.error || cancelMutation.error)?.message
-                      : "No se pudo actualizar el pedido"}
+                    {cancelMutation.error instanceof ApiClientError
+                      ? cancelMutation.error.message
+                      : "No se pudo cancelar la venta"}
                   </p>
-                )}
-              </div>
+                )
+              )}
             </>
           )}
         </CardContent>

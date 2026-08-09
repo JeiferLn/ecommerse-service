@@ -6,7 +6,17 @@ import {
   type ProductStatus,
 } from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Boxes, ClipboardList, FolderTree, Package, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Boxes,
+  ClipboardList,
+  FolderTree,
+  MessageCircle,
+  Package,
+  Store,
+  Users,
+  Wallet,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -35,6 +45,10 @@ const CHART_COLORS = [
   "var(--chart-4)",
   "var(--chart-5)",
 ];
+
+function formatMoney(amount: number): string {
+  return `$${amount.toLocaleString("es-CO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
 
 function KpiCard({
   label,
@@ -133,9 +147,15 @@ export function CompanyDashboard() {
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
+              label="Ingresos cobrados"
+              value={formatMoney(data.revenueTotal)}
+              hint={`${formatMoney(data.revenueWhatsapp)} WA · ${formatMoney(data.revenueInStore)} tienda`}
+              icon={Wallet}
+            />
+            <KpiCard
               label="Pedidos"
               value={data.ordersTotal}
-              hint={`${data.ordersOpen} abiertos`}
+              hint={`${data.ordersWhatsapp} WhatsApp · ${data.ordersInStore} tienda`}
               icon={ClipboardList}
             />
             <KpiCard
@@ -150,6 +170,24 @@ export function CompanyDashboard() {
               hint="Listos para preparar / enviar"
               icon={ClipboardList}
             />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <KpiCard
+              label="Ventas WhatsApp"
+              value={data.ordersWhatsapp}
+              hint={formatMoney(data.revenueWhatsapp)}
+              icon={MessageCircle}
+            />
+            <KpiCard
+              label="Ventas tienda"
+              value={data.ordersInStore}
+              hint={`${formatMoney(data.revenueInStore)} · registrar en /dashboard/sales`}
+              icon={Store}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-1">
             <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardDescription>Conversaciones</CardDescription>

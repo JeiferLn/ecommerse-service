@@ -175,10 +175,11 @@ Reglas al añadir endpoints:
 - Env: `EMBEDDING_PROVIDER` (`openrouter` | `mock`), `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` (1536), `RAG_TOP_K`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`.
 - El `ragBlock` se inyecta en `buildSalesAssistantSystemPrompt` junto al catálogo.
 
-## Pedidos (Fase 8)
+## Pedidos (Fase 8 + 10)
 
 - Módulo `apps/backend/src/orders/`: carrito 1:1 por `Conversation`, pedido con snapshot de ítems, estados y stock al checkout.
-- Capabilities: `operateOrders` (listar/estado/carrito) para owner/manager/user; `manageOrders` (cancelar) para owner/manager.
+- Canal `Order.channel`: `whatsapp` (default) o `in_store`. Ventas físicas vía `POST /orders/in-store` (estado `delivered`, sin MP).
+- Capabilities: `operateOrders` (listar/estado/carrito/venta tienda) para owner/manager/user; `manageOrders` (cancelar) para owner/manager.
 - Bot: intenciones en `order-intent.ts` antes del modelo (`agregar`, `ver/vaciar carrito`, `confirmar pedido` + dirección).
 - Checkout deja `awaiting_payment` (pasarela = Fase 9). Admin: `/dashboard/orders`.
 - No inventar medios de pago en el bot; mensaje de confirmación remite a asesor/pasarela.

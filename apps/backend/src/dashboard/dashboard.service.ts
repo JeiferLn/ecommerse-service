@@ -25,6 +25,7 @@ export class DashboardService {
 
   async getCompanyStats(companyId: string | null): Promise<CompanyDashboardStats> {
     const scopedCompanyId = this.requireCompany(companyId);
+    const paidStatuses = ["paid", "preparing", "shipped", "delivered"] as const;
 
     const [
       products,
@@ -34,6 +35,11 @@ export class DashboardService {
       ordersAwaitingPayment,
       ordersPaid,
       ordersOpen,
+      ordersWhatsapp,
+      ordersInStore,
+      revenueTotalAgg,
+      revenueWhatsappAgg,
+      revenueInStoreAgg,
     ] = await Promise.all([
       this.prisma.product.findMany({
         where: { companyId: scopedCompanyId },
@@ -60,6 +66,32 @@ export class DashboardService {
             in: ["draft", "confirmed", "awaiting_payment", "paid", "preparing", "shipped"],
           },
         },
+      }),
+      this.prisma.order.count({
+        where: { companyId: scopedCompanyId, channel: "whatsapp" },
+      }),
+      this.prisma.order.count({
+        where: { companyId: scopedCompanyId, channel: "in_store" },
+      }),
+      this.prisma.order.aggregate({
+        where: { companyId: scopedCompanyId, status: { in: [...paidStatuses] } },
+        _sum: { total: true },
+      }),
+      this.prisma.order.aggregate({
+        where: {
+          companyId: scopedCompanyId,
+          channel: "whatsapp",
+          status: { in: [...paidStatuses] },
+        },
+        _sum: { total: true },
+      }),
+      this.prisma.order.aggregate({
+        where: {
+          companyId: scopedCompanyId,
+          channel: "in_store",
+          status: { in: [...paidStatuses] },
+        },
+        _sum: { total: true },
       }),
     ]);
 
@@ -112,6 +144,11 @@ export class DashboardService {
       ordersAwaitingPayment,
       ordersPaid,
       ordersOpen,
+      ordersWhatsapp,
+      ordersInStore,
+      revenueTotal: Number(revenueTotalAgg._sum.total ?? 0),
+      revenueWhatsapp: Number(revenueWhatsappAgg._sum.total ?? 0),
+      revenueInStore: Number(revenueInStoreAgg._sum.total ?? 0),
     };
   }
 

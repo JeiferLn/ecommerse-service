@@ -11,6 +11,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { AddCartItemDto, CheckoutCartDto, UpdateCartItemDto } from "./dto/cart.dto";
+import { CreateInStoreSaleDto } from "./dto/create-in-store-sale.dto";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import { OrdersService } from "./orders.service";
@@ -28,6 +29,19 @@ export class OrdersController {
     return {
       status: "success",
       data: await this.ordersService.listOrders(user.companyId, query),
+    };
+  }
+
+  @Roles("owner", "manager", "user")
+  @Post("in-store")
+  async createInStoreSale(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateInStoreSaleDto,
+  ): Promise<ApiResponse<OrderDetails>> {
+    return {
+      status: "success",
+      data: await this.ordersService.createInStoreSale(user.companyId, dto),
+      message: "Venta de tienda registrada",
     };
   }
 

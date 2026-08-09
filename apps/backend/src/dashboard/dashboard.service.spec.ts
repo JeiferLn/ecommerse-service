@@ -12,7 +12,7 @@ describe("DashboardService", () => {
     companyMembership: { count: jest.Mock };
     company: { count: jest.Mock; findMany: jest.Mock };
     user: { count: jest.Mock; findMany: jest.Mock };
-    order: { count: jest.Mock };
+    order: { count: jest.Mock; aggregate: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -36,7 +36,10 @@ describe("DashboardService", () => {
       },
       category: { count: jest.fn().mockResolvedValue(3) },
       companyMembership: { count: jest.fn().mockResolvedValue(4) },
-      order: { count: jest.fn().mockResolvedValue(7) },
+      order: {
+        count: jest.fn().mockResolvedValue(7),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { total: 1500 } }),
+      },
       company: {
         count: jest.fn().mockResolvedValue(5),
         findMany: jest.fn().mockResolvedValue([
@@ -78,6 +81,11 @@ describe("DashboardService", () => {
     expect(stats.ordersAwaitingPayment).toBe(7);
     expect(stats.ordersPaid).toBe(7);
     expect(stats.ordersOpen).toBe(7);
+    expect(stats.ordersWhatsapp).toBe(7);
+    expect(stats.ordersInStore).toBe(7);
+    expect(stats.revenueTotal).toBe(1500);
+    expect(stats.revenueWhatsapp).toBe(1500);
+    expect(stats.revenueInStore).toBe(1500);
   });
 
   it("exige empresa activa para stats de compañía", async () => {

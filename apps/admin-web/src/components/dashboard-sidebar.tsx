@@ -1,6 +1,11 @@
 "use client";
 
-import { canOperateOrders, canViewMembers, canViewWhatsapp, type UserRole } from "@commerce-ai/types";
+import {
+  canOperateOrders,
+  canViewMembers,
+  canViewWhatsapp,
+  type UserRole,
+} from "@commerce-ai/types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,6 +15,7 @@ import {
   MessageCircle,
   Package,
   Settings,
+  Store,
   Users,
 } from "lucide-react";
 
@@ -41,6 +47,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Categorías",
     icon: FolderTree,
     visible: (role) => role !== "admin",
+  },
+  {
+    href: "/dashboard/sales",
+    label: "Ventas tienda",
+    icon: Store,
+    visible: (role) => Boolean(role && role !== "admin" && canOperateOrders(role)),
   },
   {
     href: "/dashboard/orders",

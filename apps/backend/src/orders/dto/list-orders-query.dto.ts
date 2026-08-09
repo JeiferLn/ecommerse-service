@@ -1,11 +1,15 @@
 import { Type } from "class-transformer";
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
-import { OrderStatus } from "@prisma/client";
+import { OrderChannel, OrderStatus } from "@prisma/client";
 
 export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(OrderStatus, { message: "Estado de pedido inválido" })
   status?: OrderStatus;
+
+  @IsOptional()
+  @IsEnum(OrderChannel, { message: "Canal de pedido inválido" })
+  channel?: OrderChannel;
 
   @IsOptional()
   @IsString()

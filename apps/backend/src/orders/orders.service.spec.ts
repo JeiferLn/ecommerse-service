@@ -20,7 +20,7 @@ describe("OrdersService", () => {
       update: jest.Mock;
       deleteMany: jest.Mock;
     };
-    productVariant: { findFirst: jest.Mock; updateMany: jest.Mock };
+    productVariant: { findFirst: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock };
     product: { findMany: jest.Mock };
     company: { findUnique: jest.Mock };
     order: { findUnique: jest.Mock; create: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
@@ -39,7 +39,7 @@ describe("OrdersService", () => {
         update: jest.fn(),
         deleteMany: jest.fn(),
       },
-      productVariant: { findFirst: jest.fn(), updateMany: jest.fn() },
+      productVariant: { findFirst: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
       product: { findMany: jest.fn() },
       company: { findUnique: jest.fn() },
       order: { findUnique: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
@@ -152,6 +152,8 @@ describe("OrdersService", () => {
             companyId: "co-1",
             conversationId: "conv-1",
             customerWaId: "+573001112233",
+            channel: "whatsapp",
+            inStorePaymentMethod: null,
             status: "awaiting_payment",
             currency: "COP",
             subtotal: new Decimal(20),
@@ -190,5 +192,178 @@ describe("OrdersService", () => {
     expect(order.number).toBe("ORD-TEST");
     expect(order.status).toBe("awaiting_payment");
     expect(order.total).toBe(20);
+    expect(order.channel).toBe("whatsapp");
+  });
+
+  it("registra venta física descontando stock", async () => {
+    prisma.productVariant.findMany.mockResolvedValue([
+      {
+        id: "var-1",
+        name: "M",
+        sku: "CAM-M",
+        price: new Decimal(15),
+        stock: 4,
+        product: { id: "p-1", name: "Camisa", companyId: "co-1", status: "active" },
+      },
+    ]);
+    prisma.company.findUnique.mockResolvedValue({ countryCode: "CO" });
+    prisma.order.findUnique.mockResolvedValue(null);
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) => {
+      const tx = {
+        productVariant: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        order: {
+          create: jest.fn().mockResolvedValue({
+            id: "ord-store",
+            number: "ORD-STORE",
+            companyId: "co-1",
+            conversationId: null,
+            customerWaId: null,
+            channel: "in_store",
+            inStorePaymentMethod: "cash",
+            status: "delivered",
+            currency: "COP",
+            subtotal: new Decimal(30),
+            shippingCost: new Decimal(0),
+            total: new Decimal(30),
+            shippingName: "Cliente",
+            shippingPhone: null,
+            shippingAddress: null,
+            shippingCity: null,
+            notes: null,
+            checkoutToken: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            items: [
+              {
+                id: "oi-1",
+                variantId: "var-1",
+                productName: "Camisa",
+                variantName: "M",
+                sku: "CAM-M",
+                unitPrice: new Decimal(15),
+                quantity: 2,
+                lineTotal: new Decimal(30),
+              },
+            ],
+          }),
+        },
+      };
+      return fn(tx as unknown as typeof prisma);
+    });
+
+    const order = await service.createInStoreSale("co-1", {
+      items: [{ variantId: "var-1", quantity: 2 }],
+      paymentMethod: "cash",
+      customerName: "Cliente",
+    });
+    expect(order.channel).toBe("in_store");
+    expect(order.status).toBe("delivered");
+    expect(order.total).toBe(30);
+    expect(order.inStorePaymentMethod).toBe("cash");
+  });
+
+  it("rechaza venta física sin stock suficiente", async () => {
+    prisma.productVariant.findMany.mockResolvedValue([
+      {
+        id: "var-1",
+        name: "M",
+        sku: "CAM-M",
+        price: new Decimal(15),
+        stock: 1,
+        product: { id: "p-1", name: "Camisa", companyId: "co-1", status: "active" },
+      },
+    ]);
+
+    await expect(
+      service.createInStoreSale("co-1", {
+        items: [{ variantId: "var-1", quantity: 3 }],
+        paymentMethod: "card",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("cancela venta de tienda entregada y repone stock", async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: "ord-store",
+      number: "ORD-STORE",
+      companyId: "co-1",
+      conversationId: null,
+      customerWaId: null,
+      channel: "in_store",
+      inStorePaymentMethod: "cash",
+      status: "delivered",
+      currency: "COP",
+      subtotal: new Decimal(30),
+      shippingCost: new Decimal(0),
+      total: new Decimal(30),
+      shippingName: null,
+      shippingPhone: null,
+      shippingAddress: null,
+      shippingCity: null,
+      notes: null,
+      stockDecremented: true,
+      checkoutToken: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [
+        {
+          id: "oi-1",
+          variantId: "var-1",
+          productName: "Camisa",
+          variantName: "M",
+          sku: "CAM-M",
+          unitPrice: new Decimal(15),
+          quantity: 2,
+          lineTotal: new Decimal(30),
+        },
+      ],
+    });
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) => {
+      const tx = {
+        productVariant: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        order: {
+          update: jest.fn().mockResolvedValue({
+            id: "ord-store",
+            number: "ORD-STORE",
+            companyId: "co-1",
+            conversationId: null,
+            customerWaId: null,
+            channel: "in_store",
+            inStorePaymentMethod: "cash",
+            status: "cancelled",
+            currency: "COP",
+            subtotal: new Decimal(30),
+            shippingCost: new Decimal(0),
+            total: new Decimal(30),
+            shippingName: null,
+            shippingPhone: null,
+            shippingAddress: null,
+            shippingCity: null,
+            notes: null,
+            stockDecremented: false,
+            checkoutToken: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            items: [
+              {
+                id: "oi-1",
+                variantId: "var-1",
+                productName: "Camisa",
+                variantName: "M",
+                sku: "CAM-M",
+                unitPrice: new Decimal(15),
+                quantity: 2,
+                lineTotal: new Decimal(30),
+              },
+            ],
+          }),
+        },
+      };
+      return fn(tx as unknown as typeof prisma);
+    });
+
+    const cancelled = await service.cancelOrder("co-1", "ord-store");
+    expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.channel).toBe("in_store");
   });
 });

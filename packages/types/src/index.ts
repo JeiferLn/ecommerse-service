@@ -568,6 +568,12 @@ export interface CompanyDashboardStats {
   /** Pedidos pagados listos para preparar. */
   ordersPaid: number;
   ordersOpen: number;
+  ordersWhatsapp: number;
+  ordersInStore: number;
+  /** Suma de totales en estados cobrados (paid|preparing|shipped|delivered). */
+  revenueTotal: number;
+  revenueWhatsapp: number;
+  revenueInStore: number;
 }
 
 export interface DailyCount {
@@ -675,6 +681,44 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: "Cancelado",
 };
 
+export type OrderChannel = "whatsapp" | "in_store";
+
+export const ORDER_CHANNELS: OrderChannel[] = ["whatsapp", "in_store"];
+
+export const ORDER_CHANNEL_LABELS: Record<OrderChannel, string> = {
+  whatsapp: "WhatsApp",
+  in_store: "Tienda física",
+};
+
+export type InStorePaymentMethod = "cash" | "card" | "transfer" | "other";
+
+export const IN_STORE_PAYMENT_METHODS: InStorePaymentMethod[] = [
+  "cash",
+  "card",
+  "transfer",
+  "other",
+];
+
+export const IN_STORE_PAYMENT_METHOD_LABELS: Record<InStorePaymentMethod, string> = {
+  cash: "Efectivo",
+  card: "Tarjeta",
+  transfer: "Transferencia",
+  other: "Otro",
+};
+
+export interface CreateInStoreSaleItem {
+  variantId: string;
+  quantity: number;
+}
+
+export interface CreateInStoreSalePayload {
+  items: CreateInStoreSaleItem[];
+  paymentMethod: InStorePaymentMethod;
+  customerName?: string;
+  customerPhone?: string;
+  notes?: string;
+}
+
 export interface CartItemView {
   id: string;
   variantId: string;
@@ -719,7 +763,9 @@ export interface OrderSummary {
   number: string;
   companyId: string;
   conversationId: string | null;
-  customerWaId: string;
+  customerWaId: string | null;
+  channel: OrderChannel;
+  inStorePaymentMethod: InStorePaymentMethod | null;
   status: OrderStatus;
   currency: string;
   subtotal: number;

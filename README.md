@@ -470,7 +470,25 @@ Setup plataforma (app en [developers.mercadopago.com](https://www.mercadopago.co
 Cada dueño conecta **su** cuenta en Configuración → Pagos (botón OAuth o Access Token de prueba). El dinero del pedido llega a esa cuenta.
 ---
 
-# Fase 10 — Suscripciones
+# Fase 10 — Ventas físicas ✅
+
+**Estado:** MVP ligero (POS admin). Ventas de mostrador sobre la misma entidad `Order`, con impacto en stock e ingresos del dashboard.
+
+Objetivo:
+
+Que dueños y operadores registren lo vendido en tienda física para unificar inventario y finanzas con el canal WhatsApp.
+
+Incluye (implementado):
+
+- Canal `Order.channel`: `whatsapp` | `in_store` (+ método de pago en tienda: efectivo / tarjeta / transferencia / otro)
+- `POST /orders/in-store`: líneas desde catálogo, descuenta stock, estado `delivered` (sin checkout ni Mercado Pago)
+- Cancelación de ventas de tienda (owner/manager) repone stock
+- Admin: `/dashboard/sales` + filtro/badge por canal en Pedidos
+- Dashboard: ingresos cobrados y conteos por canal (WhatsApp vs tienda)
+
+---
+
+# Fase 11 — Suscripciones
 
 Objetivo:
 
@@ -486,7 +504,7 @@ Incluye:
 
 ---
 
-# Fase 11 — Escalabilidad
+# Fase 12 — Escalabilidad
 
 Objetivo:
 
@@ -516,7 +534,7 @@ Incluye:
 - Customers *(roadmap)*
 - Conversations / Messages (WhatsApp)
 - AI / Knowledge (RAG)
-- Orders (carrito + pedidos; Payments en Fase 9)
+- Orders (carrito + pedidos WhatsApp; ventas `in_store` en Fase 10; Payments en Fase 9)
 - Payments / Billing / Subscriptions *(roadmap)*
 
 ---
