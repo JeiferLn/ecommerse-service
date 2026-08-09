@@ -1,5 +1,6 @@
 import { Module, forwardRef } from "@nestjs/common";
 
+import { BillingModule } from "../billing/billing.module";
 import { OrdersModule } from "../orders/orders.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
@@ -8,7 +9,7 @@ import { MercadoPagoWebhookService } from "./mercadopago-webhook.service";
 import { PaymentsController } from "./payments.controller";
 
 @Module({
-  imports: [MercadoPagoModule, forwardRef(() => OrdersModule), PrismaModule],
+  imports: [MercadoPagoModule, forwardRef(() => OrdersModule), PrismaModule, BillingModule],
   controllers: [PaymentsController],
   providers: [MercadoPagoWebhookService, TwilioWhatsAppClient],
   exports: [MercadoPagoModule],

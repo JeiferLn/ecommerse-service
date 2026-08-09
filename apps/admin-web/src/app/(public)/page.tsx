@@ -12,10 +12,13 @@ export default function HomePage() {
         <BrandMark size="md" />
         <nav className="flex items-center gap-2">
           <Button variant="ghost" asChild>
+            <a href="/pricing">Planes</a>
+          </Button>
+          <Button variant="ghost" asChild>
             <a href="/login">Iniciar sesión</a>
           </Button>
           <Button asChild>
-            <a href="/register">Crear cuenta</a>
+            <a href="/register?plan=free">Crear cuenta</a>
           </Button>
         </nav>
       </header>
@@ -34,18 +37,18 @@ export default function HomePage() {
           </p>
           <div className="animate-rise-delay-2 flex flex-wrap items-center gap-3">
             <Button size="lg" className="h-11 px-5 text-base" asChild>
-              <a href="/register">
+              <a href="/register?plan=free">
                 Comenzar gratis
                 <ArrowRight className="size-4" aria-hidden />
               </a>
             </Button>
             <Button size="lg" variant="outline" className="h-11 px-5 text-base" asChild>
-              <a href="/login">Ya tengo cuenta</a>
+              <a href="/pricing">Ver planes</a>
             </Button>
           </div>
           <p className="animate-rise-delay-2 flex items-center gap-2 text-sm text-muted-foreground">
             <ShieldCheck className="size-4 text-primary" aria-hidden />
-            Sin tarjeta de crédito para empezar
+            15 días de prueba · sin tarjeta para empezar
           </p>
         </div>
 

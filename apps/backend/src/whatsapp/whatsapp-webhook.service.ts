@@ -9,6 +9,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 
 import type { Env } from "../config/env.validation";
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiReplyService } from "../ai/ai-reply.service";
 import { resolveOrderChatIntent, detectsAffirmativeCartConfirm, botOfferedAddToCart } from "../orders/order-intent";
@@ -39,6 +40,7 @@ export class WhatsAppWebhookService {
     private readonly aiReplyService: AiReplyService,
     private readonly connectionService: WhatsAppConnectionService,
     private readonly ordersService: OrdersService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -334,30 +336,44 @@ export class WhatsAppWebhookService {
           this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
         );
       } else {
-        const orderReply = await this.tryHandleOrderIntent(
-          connection.companyId,
-          conversationId,
-          customerText,
-        );
-        if (orderReply) {
-          outboundTexts.push(orderReply);
-        } else if (aiEnabled) {
-          const reply = await this.aiReplyService.generateReply({
-            companyId: connection.companyId,
+        const waQuota = await this.billing.recordWaInbound(connection.companyId);
+        if (!waQuota.allowed) {
+          outboundTexts.push(
+            "El negocio no puede atender por bot en este momento. Un asesor te contactará pronto.",
+          );
+        } else {
+          const orderReply = await this.tryHandleOrderIntent(
+            connection.companyId,
             conversationId,
             customerText,
-          });
-          if (reply.requestedHandoff) {
-            nextHandler = "human";
-            outboundTexts.push(
-              this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
-            );
+          );
+          if (orderReply) {
+            outboundTexts.push(orderReply);
+          } else if (aiEnabled) {
+            const aiQuota = await this.billing.recordAiReply(connection.companyId);
+            if (!aiQuota.allowed) {
+              outboundTexts.push(
+                this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true }),
+              );
+            } else {
+              const reply = await this.aiReplyService.generateReply({
+                companyId: connection.companyId,
+                conversationId,
+                customerText,
+              });
+              if (reply.requestedHandoff) {
+                nextHandler = "human";
+                outboundTexts.push(
+                  this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
+                );
+              } else {
+                outboundTexts.push(reply.text);
+                outboundImageUrls.push(...(reply.imageUrls ?? []));
+              }
+            }
           } else {
-            outboundTexts.push(reply.text);
-            outboundImageUrls.push(...(reply.imageUrls ?? []));
+            outboundTexts.push(this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true }));
           }
-        } else {
-          outboundTexts.push(this.config.get("WHATSAPP_AUTO_REPLY_TEXT", { infer: true }));
         }
       }
     }

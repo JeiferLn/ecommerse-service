@@ -17,8 +17,8 @@ function SessionRefreshInner() {
     }
     started.current = true;
 
-    const next = searchParams.get("next") || "/dashboard";
-    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+    const next = searchParams.get("next") || "/";
+    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
 
     void fetch(`${API_URL}/api/v1/auth/refresh`, {
       method: "POST",

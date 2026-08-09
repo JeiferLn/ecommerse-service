@@ -158,7 +158,7 @@ export function WhatsAppConnectionSection() {
         </CardHeader>
         <CardContent>
           <Button asChild>
-            <Link href="/dashboard/whatsapp/inbox">Ir al inbox</Link>
+            <Link href="/whatsapp/inbox">Ir al inbox</Link>
           </Button>
         </CardContent>
       </Card>
@@ -195,7 +195,7 @@ export function WhatsAppConnectionSection() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-3">
         <Button asChild variant="outline">
-          <Link href="/dashboard/whatsapp/inbox">
+          <Link href="/whatsapp/inbox">
             <MessageSquareText className="size-4" aria-hidden />
             Abrir inbox
           </Link>
@@ -347,7 +347,7 @@ export function WhatsAppConnectionSection() {
             {simulateMutation.isSuccess && (
               <p className="text-sm text-muted-foreground">
                 Mensaje simulado. Revisa el{" "}
-                <Link href="/dashboard/whatsapp/inbox" className="underline underline-offset-4">
+                <Link href="/whatsapp/inbox" className="underline underline-offset-4">
                   inbox
                 </Link>
                 .

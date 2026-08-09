@@ -21,6 +21,7 @@ import { randomBytes } from "node:crypto";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { MailService } from "../mail/mail.service";
 import { MercadoPagoConnectionService } from "../payments/mercadopago-connection.service";
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
@@ -56,6 +57,7 @@ export class CompaniesService {
     private readonly configService: ConfigService,
     private readonly knowledgeService: KnowledgeService,
     private readonly mercadoPagoConnection: MercadoPagoConnectionService,
+    private readonly billing: BillingService,
   ) {}
 
   async listMembers(companyId: string | null): Promise<CompanyMember[]> {
@@ -345,6 +347,8 @@ export class CompaniesService {
         data: { userId, companyId: company.id, role: "owner" },
       });
 
+      await this.billing.startTrialForCompany(tx, company.id, null);
+
       return company;
     });
   }
@@ -433,6 +437,8 @@ export class CompaniesService {
     if (!companyId) {
       throw new BadRequestException("No perteneces a una empresa");
     }
+
+    await this.billing.assertCan(companyId, "invite_member");
 
     const normalizedEmail = email.toLowerCase();
     const existing = await this.usersService.findByEmail(normalizedEmail);

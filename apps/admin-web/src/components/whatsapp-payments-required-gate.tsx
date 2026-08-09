@@ -28,7 +28,7 @@ export function WhatsAppPaymentsRequiredGate() {
       <CardContent>
         {isOwner ? (
           <Button asChild>
-            <Link href="/dashboard/settings#pagos-mercadopago">Ir a Pagos</Link>
+            <Link href="/settings#pagos-mercadopago">Ir a Pagos</Link>
           </Button>
         ) : (
           <p className="text-sm text-muted-foreground">

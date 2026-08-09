@@ -4,7 +4,21 @@ import { homePathForRole } from "@/lib/home-path";
 import { SESSION_COOKIE } from "@/lib/session";
 import { verifyAccessToken } from "@/lib/verify-access-token";
 
-const PRIVATE_ROUTES = ["/dashboard", "/admin"];
+/** Rutas de la app de empresa (sin `/admin`). */
+const COMPANY_ROUTES = [
+  "/overview",
+  "/products",
+  "/categories",
+  "/sales",
+  "/orders",
+  "/whatsapp",
+  "/members",
+  "/billing",
+  "/settings",
+  "/knowledge",
+];
+
+const PRIVATE_ROUTES = [...COMPANY_ROUTES, "/admin"];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
 
 function matches(pathname: string, routes: string[]): boolean {
@@ -17,8 +31,35 @@ export async function middleware(request: NextRequest) {
   const claims = token ? await verifyAccessToken(token) : null;
   const hasValidSession = Boolean(claims);
 
-  // Access expirado/ausente: intentar refresh (cookie path `/api/v1/auth`) en el
-  // cliente antes de echar a login. No borrar cookies aquí — el refresh las rota.
+  // URLs antiguas `/dashboard` → sin prefijo.
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    const stripped =
+      pathname === "/dashboard" ? "/" : pathname.replace(/^\/dashboard/, "") || "/";
+    const url = request.nextUrl.clone();
+    url.pathname = stripped;
+    return NextResponse.redirect(url);
+  }
+
+  // `/` = landing pública o overview (rewrite) según sesión.
+  if (pathname === "/") {
+    if (hasValidSession && claims) {
+      if (claims.role === "admin") {
+        return NextResponse.redirect(new URL("/admin", request.url));
+      }
+      return NextResponse.rewrite(new URL("/overview", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Overview canónico es `/`; `/overview` exacto con sesión redirige ahí.
+  if (pathname === "/overview" && hasValidSession) {
+    if (claims?.role === "admin") {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    }
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  // Access expirado/ausente: intentar refresh en el cliente antes de echar a login.
   if (matches(pathname, PRIVATE_ROUTES) && !hasValidSession) {
     const url = new URL("/session-refresh", request.url);
     const next = `${pathname}${request.nextUrl.search}`;
@@ -37,9 +78,9 @@ export async function middleware(request: NextRequest) {
 
   if (hasValidSession && claims) {
     if (matches(pathname, ["/admin"]) && claims.role !== "admin") {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      return NextResponse.redirect(new URL("/", request.url));
     }
-    if (matches(pathname, ["/dashboard"]) && claims.role === "admin") {
+    if (matches(pathname, COMPANY_ROUTES) && claims.role === "admin") {
       return NextResponse.redirect(new URL("/admin", request.url));
     }
   }
@@ -49,6 +90,27 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
+    "/overview",
+    "/overview/:path*",
+    "/products",
+    "/products/:path*",
+    "/categories",
+    "/categories/:path*",
+    "/sales",
+    "/sales/:path*",
+    "/orders",
+    "/orders/:path*",
+    "/whatsapp",
+    "/whatsapp/:path*",
+    "/members",
+    "/members/:path*",
+    "/billing",
+    "/billing/:path*",
+    "/settings",
+    "/settings/:path*",
+    "/knowledge",
+    "/knowledge/:path*",
     "/dashboard",
     "/dashboard/:path*",
     "/admin",

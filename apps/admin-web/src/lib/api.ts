@@ -11,7 +11,31 @@ const NO_REFRESH_PATHS = [
   "/auth/logout",
 ];
 
+/** Rutas de UI donde un 401 no debe echar al login (visitante anónimo). */
+const PUBLIC_PAGE_PATHS = [
+  "/",
+  "/pricing",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/checkout",
+  "/session-refresh",
+];
+
 let refreshPromise: Promise<boolean> | null = null;
+
+function isPublicPagePath(pathname: string): boolean {
+  return PUBLIC_PAGE_PATHS.some((publicPath) =>
+    publicPath === "/"
+      ? pathname === "/"
+      : pathname === publicPath || pathname.startsWith(`${publicPath}/`),
+  );
+}
+
+function isOnPublicPage(): boolean {
+  return typeof window !== "undefined" && isPublicPagePath(window.location.pathname);
+}
 
 function refreshSession(): Promise<boolean> {
   if (!refreshPromise) {
@@ -24,7 +48,7 @@ function refreshSession(): Promise<boolean> {
           window.dispatchEvent(new Event("auth:refreshed"));
           return true;
         }
-        if (res.status === 401) {
+        if (res.status === 401 && !isOnPublicPage()) {
           redirectToLogin();
         }
         return false;
@@ -39,6 +63,9 @@ function refreshSession(): Promise<boolean> {
 
 function redirectToLogin(): void {
   if (typeof window === "undefined" || window.location.pathname === "/login") {
+    return;
+  }
+  if (isOnPublicPage()) {
     return;
   }
   const next = `${window.location.pathname}${window.location.search}`;
@@ -56,10 +83,11 @@ export class ApiClientError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  // Solo se omite el refresh en endpoints de auth que ya gestionan la sesión.
-  // Antes se usaba una lista de páginas públicas con `startsWith("/")`, que
-  // marcaba TODAS las rutas como públicas y desactivaba el refresh por completo.
-  const shouldRefresh = !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
+  const onPublicPage = isOnPublicPage();
+  // En páginas públicas no forzamos refresh (p. ej. /auth/me anónimo); evita redirect a login.
+  const shouldRefresh =
+    !onPublicPage &&
+    !NO_REFRESH_PATHS.some((noRefreshPath) => path.startsWith(noRefreshPath));
 
   const doFetch = async (): Promise<Response> => {
     const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;

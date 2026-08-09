@@ -4,6 +4,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
+import { BillingService } from "../billing/billing.service";
 import { ProductsService } from "./products.service";
 
 describe("ProductsService", () => {
@@ -109,6 +110,7 @@ describe("ProductsService", () => {
         ProductsService,
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
+        { provide: BillingService, useValue: { assertCan: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

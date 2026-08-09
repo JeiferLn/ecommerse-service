@@ -32,7 +32,7 @@ export function CompanySwitcher() {
       }),
     onSuccess: async () => {
       await refresh();
-      router.push("/dashboard");
+      router.push("/");
       router.refresh();
     },
   });

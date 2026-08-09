@@ -85,7 +85,7 @@ export function CreateCompanyDialog({ open, onOpenChange }: CreateCompanyDialogP
       onOpenChange(false);
       reset();
       await refresh();
-      router.push("/dashboard");
+      router.push("/");
       router.refresh();
     },
   });

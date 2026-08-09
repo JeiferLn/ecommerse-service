@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { AuthUser } from "@commerce-ai/types";
 import { type Prisma, type User } from "@prisma/client";
 
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 type UserWithMemberships = Prisma.UserGetPayload<{
@@ -10,7 +11,10 @@ type UserWithMemberships = Prisma.UserGetPayload<{
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly billing: BillingService,
+  ) {}
 
   async findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { email } });
@@ -37,7 +41,10 @@ export class UsersService {
     });
   }
 
-  private mapToAuthUser(user: UserWithMemberships, companyId: string | null): AuthUser {
+  private async mapToAuthUser(
+    user: UserWithMemberships,
+    companyId: string | null,
+  ): Promise<AuthUser> {
     const companies = user.memberships.map((membership) => ({
       id: membership.companyId,
       name: membership.company.name,
@@ -49,6 +56,10 @@ export class UsersService {
       (membership) => membership.companyId === companyId,
     );
 
+    const subscription = activeMembership
+      ? await this.billing.getSubscriptionSummary(companyId)
+      : null;
+
     return {
       id: user.id,
       name: user.name,
@@ -56,6 +67,7 @@ export class UsersService {
       role: activeMembership?.role ?? user.role,
       companyId: activeMembership ? companyId : null,
       companies,
+      subscription,
     };
   }
 }

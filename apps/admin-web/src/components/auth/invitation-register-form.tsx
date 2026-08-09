@@ -62,7 +62,7 @@ export function InvitationRegisterForm() {
       }),
     onSuccess: async () => {
       await refresh();
-      router.push("/dashboard");
+      router.push("/");
       router.refresh();
     },
   });
@@ -75,7 +75,7 @@ export function InvitationRegisterForm() {
       }),
     onSuccess: async () => {
       await refresh();
-      router.push("/dashboard");
+      router.push("/");
       router.refresh();
     },
   });

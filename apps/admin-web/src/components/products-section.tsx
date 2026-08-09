@@ -129,7 +129,7 @@ export function ProductsSection() {
         </div>
         {canManage && (
           <Button asChild>
-            <Link href="/dashboard/products/new">
+            <Link href="/products/new">
               <Plus aria-hidden />
               Nuevo producto
             </Link>
@@ -150,7 +150,7 @@ export function ProductsSection() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {data?.items.map((product) => (
-          <Link key={product.id} href={`/dashboard/products/${product.id}`} className="block">
+          <Link key={product.id} href={`/products/${product.id}`} className="block">
             <Card className="h-full border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm transition-colors hover:border-primary/40">
               <CardHeader className="gap-3">
                 {product.coverImageUrl ? (

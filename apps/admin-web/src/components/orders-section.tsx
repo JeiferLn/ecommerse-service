@@ -335,7 +335,7 @@ export function OrdersSection({
               <div className="flex flex-wrap gap-2">
                 {selected.conversationId ? (
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/dashboard/whatsapp/inbox`}>
+                    <Link href={`/whatsapp/inbox`}>
                       <MessageCircle className="size-4" aria-hidden />
                       Inbox WhatsApp
                     </Link>

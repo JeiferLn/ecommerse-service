@@ -53,7 +53,7 @@ export function PlatformDashboard() {
 
   useEffect(() => {
     if (!sessionLoading && user && user.role !== "admin") {
-      router.replace("/dashboard");
+      router.replace("/");
     }
   }, [user, sessionLoading, router]);
 

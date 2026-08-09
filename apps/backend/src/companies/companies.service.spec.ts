@@ -10,6 +10,7 @@ import { Prisma, type User } from "@prisma/client";
 
 import { MailService } from "../mail/mail.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
+import { BillingService } from "../billing/billing.service";
 import { MercadoPagoConnectionService } from "../payments/mercadopago-connection.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
@@ -199,6 +200,13 @@ describe("CompaniesService", () => {
         { provide: ConfigService, useValue: configService },
         { provide: KnowledgeService, useValue: knowledgeService },
         { provide: MercadoPagoConnectionService, useValue: mercadoPagoConnection },
+        {
+          provide: BillingService,
+          useValue: {
+            assertCan: jest.fn().mockResolvedValue(undefined),
+            startTrialForCompany: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

@@ -15,6 +15,7 @@ import {
   type KnowledgeSlot,
 } from "@commerce-ai/types";
 
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { KnowledgeIndexerService } from "./knowledge-indexer.service";
@@ -26,6 +27,7 @@ export class KnowledgeService {
     private readonly prisma: PrismaService,
     private readonly indexer: KnowledgeIndexerService,
     private readonly storage: StorageService,
+    private readonly billing: BillingService,
   ) {}
 
   async listSlots(companyId: string | null): Promise<KnowledgeSlot[]> {
@@ -91,6 +93,15 @@ export class KnowledgeService {
       throw new BadRequestException("Adjunta un archivo PDF");
     }
 
+    const existing = await this.prisma.knowledgeDocument.findUnique({
+      where: {
+        companyId_type: { companyId: scopedCompanyId, type },
+      },
+    });
+    if (!existing?.fileKey) {
+      await this.billing.assertCan(scopedCompanyId, "upload_knowledge");
+    }
+
     const body = await extractTextFromPdf(file.buffer);
     const title = KNOWLEDGE_DOCUMENT_TYPE_LABELS[type];
     const uploaded = await this.storage.uploadKnowledgePdf({
@@ -98,12 +109,6 @@ export class KnowledgeService {
       type,
       fileName: file.originalname || `${type}.pdf`,
       body: file.buffer,
-    });
-
-    const existing = await this.prisma.knowledgeDocument.findUnique({
-      where: {
-        companyId_type: { companyId: scopedCompanyId, type },
-      },
     });
 
     if (existing?.fileKey && existing.fileKey !== uploaded.key) {

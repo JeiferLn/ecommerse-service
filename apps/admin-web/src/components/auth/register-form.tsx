@@ -4,11 +4,16 @@ import {
   COMPANY_COUNTRIES,
   COMPANY_TYPES,
   COMPANY_TYPE_LABELS,
+  PLAN_CODE_LABELS,
+  PLAN_CODES,
   type CompanyType,
+  type PlanCode,
+  type RegisterResult,
 } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -23,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch, ApiClientError } from "@/lib/api";
-import type { SessionUser } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
 const countryCodes = COMPANY_COUNTRIES.map((country) => country.code) as [
@@ -44,6 +49,7 @@ const registerSchema = z
     countryCode: z.enum(countryCodes, {
       message: "Selecciona el país de la empresa",
     }),
+    planCode: z.enum(PLAN_CODES as [PlanCode, ...PlanCode[]]),
   })
   .refine((values) => values.password === values.confirmPassword, {
     path: ["confirmPassword"],
@@ -52,14 +58,22 @@ const registerSchema = z
 
 type RegisterValues = z.infer<typeof registerSchema>;
 
-export function RegisterForm() {
+function RegisterFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { refresh } = useSession();
+  const planFromQuery = searchParams.get("plan");
+  const initialPlan: PlanCode =
+    planFromQuery === "pro" || planFromQuery === "business" || planFromQuery === "free"
+      ? planFromQuery
+      : "free";
 
   const {
     register,
     handleSubmit,
     control,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
@@ -71,12 +85,19 @@ export function RegisterForm() {
       companyName: "",
       companyType: undefined,
       countryCode: undefined,
+      planCode: initialPlan,
     },
   });
 
+  useEffect(() => {
+    setValue("planCode", initialPlan);
+  }, [initialPlan, setValue]);
+
+  const selectedPlan = watch("planCode");
+
   const mutation = useMutation({
     mutationFn: (values: RegisterValues) =>
-      apiFetch<SessionUser>("/auth/register", {
+      apiFetch<RegisterResult>("/auth/register", {
         method: "POST",
         body: JSON.stringify({
           name: values.name,
@@ -85,11 +106,16 @@ export function RegisterForm() {
           companyName: values.companyName,
           companyType: values.companyType,
           countryCode: values.countryCode,
+          planCode: values.planCode,
         }),
       }),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await refresh();
-      router.push("/dashboard");
+      if (result.checkoutRequired) {
+        router.push("/billing");
+      } else {
+        router.push("/");
+      }
       router.refresh();
     },
   });
@@ -99,6 +125,34 @@ export function RegisterForm() {
       onSubmit={handleSubmit((values) => mutation.mutate(values))}
       className="flex flex-col gap-4"
     >
+      <div className="flex flex-col gap-2">
+        <Label>Plan</Label>
+        <p className="text-xs text-muted-foreground">
+          Empiezas con 15 días gratis. Si eliges Pro o Business, te llevamos a pagar al terminar el
+          registro.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {PLAN_CODES.map((code) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => setValue("planCode", code)}
+              className={cn(
+                "rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
+                selectedPlan === code
+                  ? "border-primary bg-primary/5"
+                  : "border-border/70 hover:bg-accent/40",
+              )}
+            >
+              <span className="font-medium">{PLAN_CODE_LABELS[code]}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {code === "free" ? "Trial 15 días" : code === "pro" ? "$39 USD/mes" : "$99 USD/mes"}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Tu nombre</Label>
         <Input id="name" placeholder="Tu nombre" autoComplete="name" {...register("name")} />
@@ -118,13 +172,32 @@ export function RegisterForm() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="companyName">Nombre de la empresa</Label>
+        <Label htmlFor="password">Contraseña</Label>
         <Input
-          id="companyName"
-          placeholder="Ej. Moda Bella"
-          autoComplete="organization"
-          {...register("companyName")}
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          {...register("password")}
         />
+        {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
+        <Input
+          id="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          {...register("confirmPassword")}
+        />
+        {errors.confirmPassword && (
+          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="companyName">Nombre de la empresa</Label>
+        <Input id="companyName" placeholder="Mi tienda" {...register("companyName")} />
         {errors.companyName && (
           <p className="text-sm text-destructive">{errors.companyName.message}</p>
         )}
@@ -133,17 +206,14 @@ export function RegisterForm() {
       <div className="flex flex-col gap-2">
         <Label>Tipo de empresa</Label>
         <Controller
-          name="companyType"
           control={control}
+          name="companyType"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger
-                aria-label="Tipo de empresa"
-                aria-invalid={Boolean(errors.companyType)}
-              >
-                <SelectValue placeholder="Selecciona el tipo" />
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona un tipo" />
               </SelectTrigger>
-              <SelectContent className="max-h-72">
+              <SelectContent>
                 {COMPANY_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
                     {COMPANY_TYPE_LABELS[type]}
@@ -159,19 +229,16 @@ export function RegisterForm() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>País de la empresa</Label>
+        <Label>País</Label>
         <Controller
-          name="countryCode"
           control={control}
+          name="countryCode"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger
-                aria-label="País de la empresa"
-                aria-invalid={Boolean(errors.countryCode)}
-              >
-                <SelectValue placeholder="Selecciona el país" />
+              <SelectTrigger>
+                <SelectValue placeholder="País de la empresa" />
               </SelectTrigger>
-              <SelectContent className="max-h-72">
+              <SelectContent>
                 {COMPANY_COUNTRIES.map((country) => (
                   <SelectItem key={country.code} value={country.code}>
                     {country.name}
@@ -181,37 +248,8 @@ export function RegisterForm() {
             </Select>
           )}
         />
-        <p className="text-xs text-muted-foreground">
-          Solo países con soporte de Mercado Pago. Después configurarás departamento y municipio.
-        </p>
         {errors.countryCode && (
           <p className="text-sm text-destructive">{errors.countryCode.message}</p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="password">Contraseña</Label>
-        <Input
-          id="password"
-          type="password"
-          placeholder="Mínimo 8 caracteres"
-          autoComplete="new-password"
-          {...register("password")}
-        />
-        {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-        <Input
-          id="confirmPassword"
-          type="password"
-          placeholder="Repite la contraseña"
-          autoComplete="new-password"
-          {...register("confirmPassword")}
-        />
-        {errors.confirmPassword && (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
         )}
       </div>
 
@@ -219,13 +257,21 @@ export function RegisterForm() {
         <p className="text-sm text-destructive">
           {mutation.error instanceof ApiClientError
             ? mutation.error.message
-            : "No se pudo conectar con el servidor"}
+            : "No se pudo crear la cuenta"}
         </p>
       )}
 
-      <Button type="submit" className="mt-1 w-full" disabled={mutation.isPending}>
-        {mutation.isPending ? "Creando cuenta…" : "Crear cuenta e ingresar"}
+      <Button type="submit" disabled={mutation.isPending} className="w-full">
+        {mutation.isPending ? "Creando cuenta…" : "Crear cuenta"}
       </Button>
     </form>
+  );
+}
+
+export function RegisterForm() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando…</p>}>
+      <RegisterFormInner />
+    </Suspense>
   );
 }

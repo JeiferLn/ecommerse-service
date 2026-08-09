@@ -28,7 +28,7 @@ export function WhatsAppCommerceRequiredGate() {
       <CardContent>
         {isOwner ? (
           <Button asChild>
-            <Link href="/dashboard/settings#envios-y-pagos">Ir a Configuración</Link>
+            <Link href="/settings#envios-y-pagos">Ir a Configuración</Link>
           </Button>
         ) : (
           <p className="text-sm text-muted-foreground">

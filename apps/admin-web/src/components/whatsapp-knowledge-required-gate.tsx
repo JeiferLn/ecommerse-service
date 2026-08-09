@@ -32,7 +32,7 @@ export function WhatsAppKnowledgeRequiredGate({
       <CardContent>
         {canManage ? (
           <Button asChild>
-            <Link href="/dashboard/settings#conocimiento">Ir a Configuración</Link>
+            <Link href="/settings#conocimiento">Ir a Configuración</Link>
           </Button>
         ) : (
           <p className="text-sm text-muted-foreground">

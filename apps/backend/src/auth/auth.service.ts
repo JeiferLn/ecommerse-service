@@ -9,11 +9,12 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import type { AuthUser, InvitationInfo, UserRole } from "@commerce-ai/types";
+import type { AuthUser, InvitationInfo, PlanCode, UserRole } from "@commerce-ai/types";
 import { Prisma, type Invitation, type User } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
 import { UsersService } from "../users/users.service";
@@ -27,6 +28,8 @@ export interface AuthSession {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
+  checkoutRequired?: boolean;
+  desiredPlanCode?: PlanCode | null;
 }
 
 @Injectable()
@@ -37,6 +40,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
+    private readonly billingService: BillingService,
   ) {}
 
   private get accessTokenTtlSeconds(): number {
@@ -91,7 +95,10 @@ export class AuthService {
       }
     }
 
+    const desiredPlanCode = (dto.planCode ?? "free") as PlanCode;
+
     try {
+      await this.billingService.ensurePlansSeeded();
       const { user, companyId } = await this.prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
@@ -115,10 +122,22 @@ export class AuthService {
           data: { userId: created.id, companyId: company.id, role: "owner" },
         });
 
+        await this.billingService.startTrialForCompany(
+          tx,
+          company.id,
+          desiredPlanCode === "free" ? null : desiredPlanCode,
+        );
+
         return { user: created, companyId: company.id };
       });
 
-      return this.createSession(user, companyId, "owner");
+      const session = await this.createSession(user, companyId, "owner");
+      const checkoutRequired = desiredPlanCode === "pro" || desiredPlanCode === "business";
+      return {
+        ...session,
+        checkoutRequired,
+        desiredPlanCode: checkoutRequired ? desiredPlanCode : null,
+      };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("Ya existe una cuenta con ese email");

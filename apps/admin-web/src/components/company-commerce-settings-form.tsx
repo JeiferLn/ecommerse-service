@@ -280,7 +280,7 @@ export function CompanyCommerceSettingsForm() {
 
         <p className="text-xs text-muted-foreground">
           También puedes volver desde WhatsApp:{" "}
-          <Link href="/dashboard/whatsapp" className="underline underline-offset-4">
+          <Link href="/whatsapp" className="underline underline-offset-4">
             conexión WhatsApp
           </Link>
           .

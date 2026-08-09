@@ -488,19 +488,22 @@ Incluye (implementado):
 
 ---
 
-# Fase 11 — Suscripciones
+# Fase 11 — Suscripciones ✅
+
+**Estado:** MVP. Trial Free 15 días, planes Pro/Business, límites enforced, pricing + registro con plan, checkout MP de plataforma (o activación dev).
 
 Objetivo:
 
-Modelo SaaS.
+Modelo SaaS con prueba acotada y upgrade de pago.
 
-Incluye:
+Incluye (implementado):
 
-- Planes
-- Suscripciones
-- Renovaciones
-- Facturación
-- Límites
+- Planes `free` / `pro` / `business` (seed) + `Subscription` 1:1 por empresa + `UsageCounter` mensual
+- Registro siempre en trial Free 15 días; `planCode` deseado redirige a `/dashboard/billing` si es Pro/Business
+- `GET /billing/plans` (público), `GET /billing/subscription`, `POST /billing/checkout`
+- Enforcement: productos, variantes, miembros, knowledge, conectar WhatsApp, cupos WA/IA
+- Tras trial: `trial_expired` (admin usable, features gated + banner)
+- UI: `/pricing`, selector en registro, Facturación, banner en dashboard
 
 ---
 
@@ -535,7 +538,7 @@ Incluye:
 - Conversations / Messages (WhatsApp)
 - AI / Knowledge (RAG)
 - Orders (carrito + pedidos WhatsApp; ventas `in_store` en Fase 10; Payments en Fase 9)
-- Payments / Billing / Subscriptions *(roadmap)*
+- Payments / Billing / Subscriptions (planes Free trial 15d, Pro, Business; checkout MP plataforma)
 
 ---
 

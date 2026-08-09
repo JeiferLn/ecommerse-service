@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { AiModule } from "../ai/ai.module";
+import { BillingModule } from "../billing/billing.module";
 import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { OrdersModule } from "../orders/orders.module";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
@@ -11,7 +12,7 @@ import { WhatsAppController } from "./whatsapp.controller";
 import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
 
 @Module({
-  imports: [AiModule, KnowledgeModule, OrdersModule],
+  imports: [AiModule, KnowledgeModule, OrdersModule, BillingModule],
   controllers: [WhatsAppController, WhatsAppInboxController],
   providers: [
     TwilioWhatsAppClient,

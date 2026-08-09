@@ -15,7 +15,7 @@ export function AdminCompaniesSection() {
 
   useEffect(() => {
     if (!sessionLoading && user && user.role !== "admin") {
-      router.replace("/dashboard");
+      router.replace("/");
     }
   }, [user, sessionLoading, router]);
 

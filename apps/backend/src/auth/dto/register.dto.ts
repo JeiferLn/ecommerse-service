@@ -1,6 +1,6 @@
-import { COMPANY_COUNTRY_CODES } from "@commerce-ai/types";
+import { COMPANY_COUNTRY_CODES, PLAN_CODES } from "@commerce-ai/types";
 import { CompanyType } from "@prisma/client";
-import { IsEmail, IsEnum, IsIn, IsString, MaxLength, MinLength } from "class-validator";
+import { IsEmail, IsEnum, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class RegisterDto {
   @IsString()
@@ -29,4 +29,9 @@ export class RegisterDto {
     message: "Selecciona un país con soporte de Mercado Pago",
   })
   countryCode!: string;
+
+  /** Plan deseado tras el trial (free | pro | business). Siempre empieza en trial Free. */
+  @IsOptional()
+  @IsIn([...PLAN_CODES], { message: "Plan inválido" })
+  planCode?: (typeof PLAN_CODES)[number];
 }

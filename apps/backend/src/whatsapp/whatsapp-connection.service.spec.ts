@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 
 import { KnowledgeService } from "../knowledge/knowledge.service";
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 
@@ -39,6 +40,7 @@ describe("WhatsAppConnectionService prerequisites", () => {
         WhatsAppConnectionService,
         { provide: PrismaService, useValue: prisma },
         { provide: KnowledgeService, useValue: knowledgeService },
+        { provide: BillingService, useValue: { assertCan: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

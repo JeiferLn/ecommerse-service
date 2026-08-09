@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 import { AiModule } from "./ai/ai.module";
 import { AuthModule } from "./auth/auth.module";
+import { BillingModule } from "./billing/billing.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { validateEnv } from "./config/env.validation";
@@ -37,6 +38,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
     HealthModule,
     AuthModule,
     MailModule,
+    BillingModule,
     CompaniesModule,
     CategoriesModule,
     ProductsModule,

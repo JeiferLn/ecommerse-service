@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
+import { BillingService } from "../billing/billing.service";
 import { KnowledgeIndexerService } from "./knowledge-indexer.service";
 import { KnowledgeService } from "./knowledge.service";
 import * as pdfText from "./pdf-text";
@@ -52,6 +53,7 @@ describe("KnowledgeService", () => {
         { provide: PrismaService, useValue: prisma },
         { provide: KnowledgeIndexerService, useValue: indexer },
         { provide: StorageService, useValue: storage },
+        { provide: BillingService, useValue: { assertCan: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

@@ -15,6 +15,7 @@ import type {
 import { Prisma, type ProductStatus } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { detectImageMime } from "../common/detect-image-mime";
 import { StorageService } from "../storage/storage.service";
@@ -37,6 +38,7 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
+    private readonly billing: BillingService,
   ) {}
 
   async list(
@@ -92,6 +94,7 @@ export class ProductsService {
 
   async create(companyId: string | null, dto: CreateProductDto): Promise<ProductDetails> {
     const scopedCompanyId = this.requireCompany(companyId);
+    await this.billing.assertCan(scopedCompanyId, "create_product");
     await this.assertCategory(scopedCompanyId, dto.categoryId);
 
     const variants = dto.variants?.length
@@ -104,6 +107,13 @@ export class ProductsService {
             stock: 0,
           } satisfies CreateVariantDto,
         ];
+
+    // La primera variante del producto nuevo cuenta como create_product; extras como variantes.
+    if (variants.length > 1) {
+      for (let i = 1; i < variants.length; i += 1) {
+        await this.billing.assertCan(scopedCompanyId, "create_variant");
+      }
+    }
 
     this.assertUniqueSkus(variants.map((variant) => variant.sku));
 
@@ -184,6 +194,8 @@ export class ProductsService {
     productId: string,
     dto: CreateVariantDto,
   ): Promise<ProductVariantDto> {
+    const scopedCompanyId = this.requireCompany(companyId);
+    await this.billing.assertCan(scopedCompanyId, "create_variant");
     await this.findOwnedProduct(companyId, productId);
 
     try {

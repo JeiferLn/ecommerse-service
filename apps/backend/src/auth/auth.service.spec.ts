@@ -16,6 +16,7 @@ import bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
 import { UsersService } from "../users/users.service";
+import { BillingService } from "../billing/billing.service";
 import { AuthService } from "./auth.service";
 
 const mockUser: User = {
@@ -175,6 +176,13 @@ describe("AuthService", () => {
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
         { provide: MailService, useValue: mailService },
+        {
+          provide: BillingService,
+          useValue: {
+            ensurePlansSeeded: jest.fn().mockResolvedValue(undefined),
+            startTrialForCompany: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

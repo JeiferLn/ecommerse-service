@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Throttle } from "@nestjs/throttler";
-import type { ApiResponse, AuthUser, InvitationInfo } from "@commerce-ai/types";
+import type { ApiResponse, AuthUser, InvitationInfo, RegisterResult } from "@commerce-ai/types";
 import type { Request, Response } from "express";
 
 import { clearSessionCookies, setSessionCookies } from "../common/session-cookies";
@@ -33,10 +33,17 @@ export class AuthController {
   async register(
     @Body() dto: RegisterDto,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<ApiResponse<AuthUser>> {
+  ): Promise<ApiResponse<RegisterResult>> {
     const session = await this.authService.register(dto);
     this.setSessionCookies(res, session.accessToken, session.refreshToken);
-    return { status: "success", data: session.user };
+    return {
+      status: "success",
+      data: {
+        user: session.user,
+        checkoutRequired: Boolean(session.checkoutRequired),
+        desiredPlanCode: session.desiredPlanCode ?? null,
+      },
+    };
   }
 
   @Public()

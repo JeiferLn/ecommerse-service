@@ -113,6 +113,7 @@ export class PaymentsController {
     @Query("type") type?: string,
     @Query("data.id") dataIdQuery?: string,
     @Query("companyId") companyId?: string,
+    @Query("purpose") purpose?: string,
     @Body() body?: MercadoPagoWebhookBody,
   ): Promise<{ ok: true }> {
     const paymentId = this.resolvePaymentId({
@@ -122,7 +123,11 @@ export class PaymentsController {
       dataIdQuery,
       body,
     });
-    await this.webhookService.handlePaymentNotification(paymentId, companyId);
+    if (purpose === "subscription") {
+      await this.webhookService.handleSubscriptionNotification(paymentId, companyId);
+    } else {
+      await this.webhookService.handlePaymentNotification(paymentId, companyId);
+    }
     return { ok: true };
   }
 
@@ -136,6 +141,7 @@ export class PaymentsController {
     @Query("type") type?: string,
     @Query("data.id") dataIdQuery?: string,
     @Query("companyId") companyId?: string,
+    @Query("purpose") purpose?: string,
   ): Promise<{ ok: true }> {
     const paymentId = this.resolvePaymentId({
       topic,
@@ -143,7 +149,11 @@ export class PaymentsController {
       type,
       dataIdQuery,
     });
-    await this.webhookService.handlePaymentNotification(paymentId, companyId);
+    if (purpose === "subscription") {
+      await this.webhookService.handleSubscriptionNotification(paymentId, companyId);
+    } else {
+      await this.webhookService.handlePaymentNotification(paymentId, companyId);
+    }
     return { ok: true };
   }
 

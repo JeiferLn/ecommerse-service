@@ -182,7 +182,7 @@ export function CompanyDashboard() {
             <KpiCard
               label="Ventas tienda"
               value={data.ordersInStore}
-              hint={`${formatMoney(data.revenueInStore)} · registrar en /dashboard/sales`}
+              hint={`${formatMoney(data.revenueInStore)} · registrar en /sales`}
               icon={Store}
             />
           </div>
@@ -196,8 +196,8 @@ export function CompanyDashboard() {
                 <p className="font-heading text-3xl font-bold tracking-tight">WhatsApp</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Inbox y simulación en{" "}
-                  <Link href="/dashboard/whatsapp" className="underline underline-offset-4">
-                    /dashboard/whatsapp
+                  <Link href="/whatsapp" className="underline underline-offset-4">
+                    /whatsapp
                   </Link>
                 </p>
               </CardContent>
@@ -279,7 +279,7 @@ export function CompanyDashboard() {
                       className="flex items-center justify-between gap-3 py-3 text-sm first:pt-0 last:pb-0"
                     >
                       <Link
-                        href={`/dashboard/products/${product.id}`}
+                        href={`/products/${product.id}`}
                         className="font-medium hover:underline"
                       >
                         {product.name}

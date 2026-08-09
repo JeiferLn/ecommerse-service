@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { SubscriptionBanner } from "@/components/subscription-banner";
 import { useSession } from "@/providers/session-provider";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -24,7 +25,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 gap-4 lg:gap-8">
       <DashboardSidebar />
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        <SubscriptionBanner />
+        {children}
+      </div>
     </div>
   );
 }

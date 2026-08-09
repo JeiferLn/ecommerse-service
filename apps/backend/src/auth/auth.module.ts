@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { JwtModule } from "@nestjs/jwt";
 
+import { BillingModule } from "../billing/billing.module";
 import { MailModule } from "../mail/mail.module";
 import { UsersModule } from "../users/users.module";
 import { AuthController } from "./auth.controller";
@@ -14,6 +15,7 @@ import { RolesGuard } from "./guards/roles.guard";
   imports: [
     UsersModule,
     MailModule,
+    BillingModule,
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],

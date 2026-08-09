@@ -116,7 +116,7 @@ export function WhatsAppInboxSection() {
     return (
       <div className="flex flex-col gap-4">
         <Button asChild variant="ghost" className="w-fit px-0">
-          <Link href="/dashboard/whatsapp">
+          <Link href="/whatsapp">
             <ArrowLeft className="size-4" aria-hidden />
             Conexión WhatsApp
           </Link>
@@ -130,7 +130,7 @@ export function WhatsAppInboxSection() {
     return (
       <div className="flex flex-col gap-4">
         <Button asChild variant="ghost" className="w-fit px-0">
-          <Link href="/dashboard/whatsapp">
+          <Link href="/whatsapp">
             <ArrowLeft className="size-4" aria-hidden />
             Conexión WhatsApp
           </Link>
@@ -144,7 +144,7 @@ export function WhatsAppInboxSection() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button asChild variant="ghost" className="w-fit px-0">
-          <Link href="/dashboard/whatsapp">
+          <Link href="/whatsapp">
             <ArrowLeft className="size-4" aria-hidden />
             Conexión WhatsApp
           </Link>
@@ -236,7 +236,7 @@ export function WhatsAppInboxSection() {
               {selectedId && canManage && (
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/dashboard/orders?conversationId=${selectedId}`}>
+                    <Link href={`/orders?conversationId=${selectedId}`}>
                       <ClipboardList className="size-4" aria-hidden />
                       Pedidos
                     </Link>

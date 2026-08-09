@@ -299,7 +299,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["product", saved.id] });
       if (isNew) {
-        router.replace("/dashboard/products");
+        router.replace("/products");
         router.refresh();
         return;
       }
@@ -330,7 +330,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["products"] });
-      router.push("/dashboard/products");
+      router.push("/products");
     },
     onError: (error: unknown) => {
       setMessage(error instanceof ApiClientError ? error.message : "No se pudo eliminar");
@@ -767,7 +767,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
               Eliminar producto
             </Button>
           )}
-          <Button type="button" variant="outline" onClick={() => router.push("/dashboard/products")}>
+          <Button type="button" variant="outline" onClick={() => router.push("/products")}>
             Volver
           </Button>
         </div>

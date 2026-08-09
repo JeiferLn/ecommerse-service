@@ -9,6 +9,7 @@ import { isCompanyCommerceConfigured, isCompanyPaymentsConfigured } from "@comme
 import { Prisma } from "@prisma/client";
 
 import { KnowledgeService } from "../knowledge/knowledge.service";
+import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UpsertWhatsAppConnectionDto } from "./dto/upsert-connection.dto";
 import { normalizeWhatsAppE164 } from "./phone.util";
@@ -18,12 +19,14 @@ export class WhatsAppConnectionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly knowledgeService: KnowledgeService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
    * WhatsApp requiere envíos + 4 PDFs de conocimiento + Mercado Pago conectado.
    */
   async assertWhatsAppPrerequisites(companyId: string | null): Promise<void> {
+    await this.billing.assertCan(companyId, "connect_whatsapp");
     const scopedCompanyId = this.requireCompany(companyId);
     const company = await this.prisma.company.findUnique({
       where: { id: scopedCompanyId },

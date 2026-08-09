@@ -1,5 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { PlanCode } from "@commerce-ai/types";
 
+import type { Env } from "../config/env.validation";
+import { BillingService } from "../billing/billing.service";
 import { OrdersService } from "../orders/orders.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
@@ -16,7 +20,68 @@ export class MercadoPagoWebhookService {
     private readonly ordersService: OrdersService,
     private readonly prisma: PrismaService,
     private readonly twilioClient: TwilioWhatsAppClient,
+    private readonly billing: BillingService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
+
+  /** Activa plan SaaS tras pago aprobado a la cuenta de plataforma. */
+  async handleSubscriptionNotification(
+    paymentIdRaw: string | number | null | undefined,
+    companyIdHint?: string | null,
+  ): Promise<void> {
+    if (paymentIdRaw == null || paymentIdRaw === "") {
+      this.logger.warn("Webhook MP suscripción sin payment id");
+      return;
+    }
+    const paymentId = String(paymentIdRaw);
+    const platformToken = this.config.get("MP_ACCESS_TOKEN", { infer: true })?.trim();
+    if (!platformToken) {
+      this.logger.warn("MP_ACCESS_TOKEN de plataforma no configurado; no se puede validar suscripción");
+      return;
+    }
+
+    let payment;
+    try {
+      payment = await this.mercadoPago.paymentApi(platformToken).get({ id: paymentId });
+    } catch (error) {
+      this.logger.error(
+        `No se pudo consultar pago de suscripción ${paymentId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return;
+    }
+
+    if (payment.status !== "approved") {
+      this.logger.log(`Suscripción pago ${paymentId} status=${payment.status}`);
+      return;
+    }
+
+    const external =
+      (typeof payment.external_reference === "string" && payment.external_reference.trim()) || "";
+    const metaCompany =
+      (typeof payment.metadata?.companyId === "string" && payment.metadata.companyId) ||
+      companyIdHint?.trim() ||
+      null;
+    const metaPlan =
+      (typeof payment.metadata?.planCode === "string" && payment.metadata.planCode) || null;
+
+    let companyId = metaCompany;
+    let planCode = metaPlan as PlanCode | null;
+
+    const match = /^sub:([^:]+):(pro|business)$/.exec(external);
+    if (match) {
+      companyId = match[1];
+      planCode = match[2] as PlanCode;
+    }
+
+    if (!companyId || !planCode || (planCode !== "pro" && planCode !== "business")) {
+      this.logger.warn(`Pago suscripción ${paymentId} sin company/plan válidos`);
+      return;
+    }
+
+    await this.billing.handleSubscriptionPaymentApproved(companyId, planCode, paymentId);
+    this.logger.log(`Suscripción activada company=${companyId} plan=${planCode}`);
+  }
 
   /**
    * Procesa una notificación de pago de Mercado Pago (webhook o IPN).

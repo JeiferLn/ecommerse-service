@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  canManageBilling,
   canOperateOrders,
   canViewMembers,
   canViewWhatsapp,
@@ -17,6 +18,7 @@ import {
   Settings,
   Store,
   Users,
+  Wallet,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -31,49 +33,55 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    href: "/dashboard",
+    href: "/",
     label: "Overview",
     icon: LayoutDashboard,
     visible: (role) => role !== "admin",
   },
   {
-    href: "/dashboard/products",
+    href: "/products",
     label: "Productos",
     icon: Package,
     visible: (role) => role !== "admin",
   },
   {
-    href: "/dashboard/categories",
+    href: "/categories",
     label: "Categorías",
     icon: FolderTree,
     visible: (role) => role !== "admin",
   },
   {
-    href: "/dashboard/sales",
+    href: "/sales",
     label: "Ventas tienda",
     icon: Store,
     visible: (role) => Boolean(role && role !== "admin" && canOperateOrders(role)),
   },
   {
-    href: "/dashboard/orders",
+    href: "/orders",
     label: "Pedidos",
     icon: ClipboardList,
     visible: (role) => Boolean(role && role !== "admin" && canOperateOrders(role)),
   },
   {
-    href: "/dashboard/whatsapp",
+    href: "/whatsapp",
     label: "WhatsApp",
     icon: MessageCircle,
     visible: (role) => Boolean(role && role !== "admin" && canViewWhatsapp(role)),
   },
   {
-    href: "/dashboard/members",
+    href: "/members",
     label: "Miembros",
     icon: Users,
     visible: (role) => Boolean(role && role !== "admin" && canViewMembers(role)),
   },
   {
-    href: "/dashboard/settings",
+    href: "/billing",
+    label: "Facturación",
+    icon: Wallet,
+    visible: (role) => Boolean(role && role !== "admin" && canManageBilling(role)),
+  },
+  {
+    href: "/settings",
     label: "Configuración",
     icon: Settings,
     visible: (role) => role !== "admin",
@@ -91,8 +99,9 @@ export function DashboardSidebar() {
       <nav className="sticky top-6 flex flex-col gap-1 rounded-2xl border border-border/70 bg-card/70 p-2 shadow-brand-sm backdrop-blur-sm">
         {items.map((item) => {
           const isActive =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
+            item.href === "/"
+              ? pathname === "/"
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
 
           return (

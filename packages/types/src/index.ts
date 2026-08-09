@@ -134,6 +134,10 @@ export function canOperateOrders(role: UserRole): boolean {
   return hasCapability(role, "operateOrders");
 }
 
+export function canManageBilling(role: UserRole): boolean {
+  return hasCapability(role, "manageBilling");
+}
+
 export type CompanyType =
   | "retail"
   | "clothing"
@@ -351,6 +355,98 @@ export interface AuthUser {
   role: UserRole;
   companyId: string | null;
   companies: CompanySummary[];
+  /** Resumen de suscripción de la empresa activa (null si admin sin empresa). */
+  subscription?: SubscriptionSummary | null;
+}
+
+export type PlanCode = "free" | "pro" | "business";
+
+export const PLAN_CODES: PlanCode[] = ["free", "pro", "business"];
+
+export const PLAN_CODE_LABELS: Record<PlanCode, string> = {
+  free: "Free",
+  pro: "Pro",
+  business: "Business",
+};
+
+export type SubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "trial_expired"
+  | "canceled";
+
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  trialing: "Prueba",
+  active: "Activa",
+  past_due: "Pago pendiente",
+  trial_expired: "Prueba terminada",
+  canceled: "Cancelada",
+};
+
+export interface PlanView {
+  code: PlanCode;
+  name: string;
+  priceUsdCents: number;
+  maxMembers: number;
+  maxProducts: number;
+  maxVariants: number;
+  maxWaMessagesMonth: number;
+  maxAiRepliesMonth: number;
+  maxKnowledgeDocs: number;
+  sortOrder: number;
+  /** Destacado en pricing (Pro). */
+  highlighted?: boolean;
+}
+
+export interface SubscriptionSummary {
+  planCode: PlanCode;
+  planName: string;
+  status: SubscriptionStatus;
+  trialEndsAt: string | null;
+  trialDaysLeft: number | null;
+  desiredPlanCode: PlanCode | null;
+  checkoutRequired: boolean;
+  /** Features gated (WA/IA/altas) bloqueadas. */
+  featuresLocked: boolean;
+}
+
+export interface SubscriptionUsage {
+  members: number;
+  products: number;
+  variants: number;
+  knowledgeDocs: number;
+  waInbound: number;
+  aiReplies: number;
+  periodKey: string;
+}
+
+export interface SubscriptionDetails extends SubscriptionSummary {
+  priceUsdCents: number;
+  limits: {
+    maxMembers: number;
+    maxProducts: number;
+    maxVariants: number;
+    maxWaMessagesMonth: number;
+    maxAiRepliesMonth: number;
+    maxKnowledgeDocs: number;
+  };
+  usage: SubscriptionUsage;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+}
+
+export interface BillingCheckoutResult {
+  initPoint: string | null;
+  /** true si se activó en modo desarrollo sin MP. */
+  activatedWithoutPayment: boolean;
+  planCode: PlanCode;
+}
+
+export interface RegisterResult {
+  user: AuthUser;
+  checkoutRequired: boolean;
+  desiredPlanCode: PlanCode | null;
 }
 
 export interface PaginationParams {

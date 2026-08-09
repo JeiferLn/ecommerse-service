@@ -14,7 +14,7 @@ export function NewProductGate({ children }: { children?: ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && user && !allowed) {
-      router.replace("/dashboard/products");
+      router.replace("/products");
     }
   }, [allowed, isLoading, router, user]);
 

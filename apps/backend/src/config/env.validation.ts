@@ -122,6 +122,11 @@ const envSchema = z
     MP_PUBLIC_KEY: z.string().optional(),
     /** URL pública del webhook MP (ngrok en local). Si vacío, se usa API_PUBLIC_URL + path. */
     MP_WEBHOOK_URL: z.string().optional(),
+    /** En development permite activar plan sin checkout MP si falla la preferencia. */
+    BILLING_ALLOW_DEV_UPGRADE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
   })
   .superRefine((env, ctx) => {
     if (

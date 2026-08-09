@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 
 import { AiReplyService } from "../ai/ai-reply.service";
+import { BillingService } from "../billing/billing.service";
 import { OrdersService } from "../orders/orders.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
@@ -88,6 +89,13 @@ describe("WhatsAppWebhookService", () => {
           useValue: { assertCommerceConfigured: jest.fn().mockResolvedValue(undefined) },
         },
         { provide: OrdersService, useValue: ordersService },
+        {
+          provide: BillingService,
+          useValue: {
+            recordWaInbound: jest.fn().mockResolvedValue({ allowed: true }),
+            recordAiReply: jest.fn().mockResolvedValue({ allowed: true }),
+          },
+        },
       ],
     }).compile();
 
