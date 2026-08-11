@@ -168,6 +168,26 @@ model PasswordResetToken {
   @@index([userId])
 }
 
+/// Registro con plan de pago: la cuenta User/Company se crea solo tras cobro MP.
+model PendingRegistration {
+  id               String          @id @default(cuid())
+  email            String          @unique
+  name             String
+  passwordHash     String
+  companyName      String
+  companyType      CompanyType
+  countryCode      String
+  planCode         PlanCode
+  billingInterval  BillingInterval
+  mpPreapprovalId  String?
+  expiresAt        DateTime
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@index([mpPreapprovalId])
+  @@index([expiresAt])
+}
+
 enum ProductStatus {
   draft
   active
@@ -492,6 +512,11 @@ enum SubscriptionStatus {
   canceled
 }
 
+enum BillingInterval {
+  month
+  year
+}
+
 model Plan {
   id                   String   @id @default(cuid())
   code                 PlanCode @unique
@@ -513,25 +538,32 @@ model Plan {
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  companyId          String             @unique
-  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  planId             String
-  plan               Plan               @relation("SubscriptionPlan", fields: [planId], references: [id])
-  status             SubscriptionStatus @default(trialing)
-  trialEndsAt        DateTime?
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
+  id                      String             @id @default(cuid())
+  companyId               String             @unique
+  company                 Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planId                  String
+  plan                    Plan               @relation("SubscriptionPlan", fields: [planId], references: [id])
+  status                  SubscriptionStatus @default(trialing)
+  trialEndsAt             DateTime?
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  /// Ciclo de facturación activo (null en trial sin plan de pago).
+  billingInterval         BillingInterval?
+  /// Canceló renovación; acceso hasta currentPeriodEnd.
+  cancelAtPeriodEnd       Boolean            @default(false)
   /// Plan de pago elegido en registro/upgrade (pendiente de cobro).
-  desiredPlanId      String?
-  desiredPlan        Plan?              @relation("DesiredPlan", fields: [desiredPlanId], references: [id])
-  mpPreferenceId     String?
-  mpPaymentId        String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  desiredPlanId           String?
+  desiredPlan             Plan?              @relation("DesiredPlan", fields: [desiredPlanId], references: [id])
+  desiredBillingInterval  BillingInterval?
+  mpPreferenceId          String?
+  mpPreapprovalId         String?
+  mpPaymentId             String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   @@index([status])
   @@index([planId])
+  @@index([mpPreapprovalId])
 }
 
 model UsageCounter {

@@ -120,6 +120,11 @@ const envSchema = z
     MP_REDIRECT_URI: z.string().optional(),
     MP_ACCESS_TOKEN: z.string().optional(),
     MP_PUBLIC_KEY: z.string().optional(),
+    /**
+     * Email del comprador de prueba MP (`test_user_…@testuser.com`).
+     * Con credenciales de prueba, Preapproval exige un payer de prueba.
+     */
+    MP_TEST_PAYER_EMAIL: z.string().optional(),
     /** URL pública del webhook MP (ngrok en local). Si vacío, se usa API_PUBLIC_URL + path. */
     MP_WEBHOOK_URL: z.string().optional(),
     /** En development permite activar plan sin checkout MP si falla la preferencia. */

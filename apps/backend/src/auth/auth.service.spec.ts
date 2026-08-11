@@ -77,6 +77,12 @@ describe("AuthService", () => {
     user: {
       update: jest.Mock<Promise<unknown>, [args: Prisma.UserUpdateArgs]>;
     };
+    pendingRegistration: {
+      upsert: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+      findUnique: jest.Mock;
+    };
   };
   let jwtService: { signAsync: jest.Mock<Promise<string>, [payload: object]> };
   let mailService: {
@@ -139,6 +145,12 @@ describe("AuthService", () => {
       user: {
         update: jest.fn<Promise<unknown>, [Prisma.UserUpdateArgs]>().mockResolvedValue(mockUser),
       },
+      pendingRegistration: {
+        upsert: jest.fn().mockResolvedValue({ id: "pending-1", email: "paid@test.com" }),
+        update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn(),
+      },
     };
 
     jwtService = {
@@ -181,6 +193,13 @@ describe("AuthService", () => {
           useValue: {
             ensurePlansSeeded: jest.fn().mockResolvedValue(undefined),
             startTrialForCompany: jest.fn().mockResolvedValue(undefined),
+            createPendingRegistrationCheckout: jest.fn().mockResolvedValue({
+              initPoint: "https://mp.example/pay",
+              mpPreapprovalId: "pre-1",
+            }),
+            createActivePaidSubscription: jest.fn().mockResolvedValue(undefined),
+            resolvePendingFromPreapproval: jest.fn().mockResolvedValue(null),
+            parsePendingRegistrationExternalRef: jest.fn().mockReturnValue(null),
           },
         },
       ],
@@ -210,7 +229,7 @@ describe("AuthService", () => {
         } as unknown as Prisma.TransactionClient),
       );
 
-      const session = await service.register({
+      const outcome = await service.register({
         name: "Test User",
         email: "test@test.com",
         password: "password123",
@@ -246,10 +265,12 @@ describe("AuthService", () => {
       };
       expect(membershipData).toEqual({ userId: "user-1", companyId: "company-1", role: "owner" });
 
-      expect(session.accessToken).toBe("access-token");
-      expect(session.refreshToken).toHaveLength(64);
+      expect(outcome.session?.accessToken).toBe("access-token");
+      expect(outcome.session?.refreshToken).toHaveLength(64);
       expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
-      expect(session.user.companyId).toBe("company-1");
+      expect(outcome.session?.user.companyId).toBe("company-1");
+      expect(outcome.checkoutRequired).toBe(false);
+      expect(outcome.initPoint).toBeNull();
     });
 
     it("vincula a un invitado pendiente como usuario de la empresa", async () => {
@@ -285,7 +306,7 @@ describe("AuthService", () => {
         role: "user",
       });
 
-      const session = await service.register({
+      const outcome = await service.register({
         name: "Invitado",
         email: "INVITED@test.com",
         password: "password123",
@@ -306,7 +327,7 @@ describe("AuthService", () => {
 
       expect(txInvitationDelete).toHaveBeenCalled();
       expect(usersService.toAuthUser).toHaveBeenCalledWith("user-1", "company-1");
-      expect(session.user.role).toBe("user");
+      expect(outcome.session?.user.role).toBe("user");
     });
 
     it("ignora una invitación expirada y crea su propia empresa", async () => {
@@ -338,7 +359,7 @@ describe("AuthService", () => {
         } as unknown as Prisma.TransactionClient),
       );
 
-      const session = await service.register({
+      const outcome = await service.register({
         name: "Expirado",
         email: "expirado@test.com",
         password: "password123",
@@ -350,7 +371,7 @@ describe("AuthService", () => {
       expect(prisma.invitation.delete).toHaveBeenCalledWith({ where: { id: "inv-1" } });
       const userData = txUserCreate.mock.calls[0]?.[0].data as { role: string };
       expect(userData.role).toBe("owner");
-      expect(session.user.role).toBe("owner");
+      expect(outcome.session?.user.role).toBe("owner");
     });
 
     it("lanza ConflictException si el email ya existe", async () => {
@@ -371,6 +392,32 @@ describe("AuthService", () => {
           countryCode: "CO",
         }),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it("plan de pago: no crea cuenta y devuelve initPoint de MP", async () => {
+      usersService.findByEmail.mockResolvedValue(null);
+      const billing = (service as unknown as { billingService: {
+        createPendingRegistrationCheckout: jest.Mock;
+      } }).billingService;
+
+      const outcome = await service.register({
+        name: "Pago User",
+        email: "paid@test.com",
+        password: "password123",
+        companyName: "Tienda Pro",
+        companyType: "retail",
+        countryCode: "CO",
+        planCode: "pro",
+        billingInterval: "month",
+      });
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.pendingRegistration.upsert).toHaveBeenCalled();
+      expect(billing.createPendingRegistrationCheckout).toHaveBeenCalled();
+      expect(outcome.session).toBeNull();
+      expect(outcome.checkoutRequired).toBe(true);
+      expect(outcome.desiredPlanCode).toBe("pro");
+      expect(outcome.initPoint).toBe("https://mp.example/pay");
     });
   });
 

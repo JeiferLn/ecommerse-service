@@ -1,7 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { PlanCode } from "@commerce-ai/types";
 
+import { AuthService } from "../auth/auth.service";
 import type { Env } from "../config/env.validation";
 import { BillingService } from "../billing/billing.service";
 import { OrdersService } from "../orders/orders.service";
@@ -21,6 +22,8 @@ export class MercadoPagoWebhookService {
     private readonly prisma: PrismaService,
     private readonly twilioClient: TwilioWhatsAppClient,
     private readonly billing: BillingService,
+    @Inject(forwardRef(() => AuthService))
+    private readonly authService: AuthService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -28,9 +31,21 @@ export class MercadoPagoWebhookService {
   async handleSubscriptionNotification(
     paymentIdRaw: string | number | null | undefined,
     companyIdHint?: string | null,
+    pendingIdHint?: string | null,
   ): Promise<void> {
+    if (pendingIdHint?.trim()) {
+      const ok = await this.authService.tryCompletePendingFromReturn({
+        pendingId: pendingIdHint.trim(),
+      });
+      if (ok) {
+        this.logger.log(`Registro pendiente completado por pendingId=${pendingIdHint}`);
+      }
+    }
+
     if (paymentIdRaw == null || paymentIdRaw === "") {
-      this.logger.warn("Webhook MP suscripción sin payment id");
+      if (!pendingIdHint?.trim()) {
+        this.logger.warn("Webhook MP suscripción sin payment id");
+      }
       return;
     }
     const paymentId = String(paymentIdRaw);
@@ -58,20 +73,36 @@ export class MercadoPagoWebhookService {
 
     const external =
       (typeof payment.external_reference === "string" && payment.external_reference.trim()) || "";
+
+    if (external.startsWith("preg:")) {
+      const ok = await this.authService.tryCompletePendingFromExternalRef(external, paymentId);
+      this.logger.log(
+        ok
+          ? `Registro pendiente completado por pago ${paymentId}`
+          : `Pago ${paymentId} preg sin pending aplicable`,
+      );
+      return;
+    }
+
     const metaCompany =
       (typeof payment.metadata?.companyId === "string" && payment.metadata.companyId) ||
       companyIdHint?.trim() ||
       null;
     const metaPlan =
       (typeof payment.metadata?.planCode === "string" && payment.metadata.planCode) || null;
+    const metaInterval =
+      (typeof payment.metadata?.interval === "string" && payment.metadata.interval) || null;
 
     let companyId = metaCompany;
     let planCode = metaPlan as PlanCode | null;
+    let interval =
+      metaInterval === "year" || metaInterval === "month" ? metaInterval : null;
 
-    const match = /^sub:([^:]+):(pro|business)$/.exec(external);
-    if (match) {
-      companyId = match[1];
-      planCode = match[2] as PlanCode;
+    const parsed = this.billing.parseSubscriptionExternalRef(external);
+    if (parsed) {
+      companyId = parsed.companyId;
+      planCode = parsed.planCode;
+      interval = parsed.interval;
     }
 
     if (!companyId || !planCode || (planCode !== "pro" && planCode !== "business")) {
@@ -79,8 +110,38 @@ export class MercadoPagoWebhookService {
       return;
     }
 
-    await this.billing.handleSubscriptionPaymentApproved(companyId, planCode, paymentId);
-    this.logger.log(`Suscripción activada company=${companyId} plan=${planCode}`);
+    await this.billing.handleSubscriptionPaymentApproved(
+      companyId,
+      planCode,
+      paymentId,
+      interval,
+    );
+    this.logger.log(`Suscripción cobro aplicado company=${companyId} plan=${planCode}`);
+  }
+
+  /** Alta / autorización de preapproval (suscripción recurrente). */
+  async handleSubscriptionPreapprovalNotification(
+    preapprovalIdRaw: string | number | null | undefined,
+  ): Promise<void> {
+    if (preapprovalIdRaw == null || preapprovalIdRaw === "") {
+      this.logger.warn("Webhook MP preapproval sin id");
+      return;
+    }
+    const preapprovalId = String(preapprovalIdRaw);
+    try {
+      const completed = await this.authService.tryCompletePendingFromPreapproval(preapprovalId);
+      if (completed) {
+        this.logger.log(`Registro pendiente completado por preapproval id=${preapprovalId}`);
+        return;
+      }
+      await this.billing.handlePreapprovalAuthorized(preapprovalId);
+      this.logger.log(`Preapproval procesado id=${preapprovalId}`);
+    } catch (error) {
+      this.logger.error(
+        `Error procesando preapproval ${preapprovalId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   /**

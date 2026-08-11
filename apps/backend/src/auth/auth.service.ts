@@ -32,6 +32,16 @@ export interface AuthSession {
   desiredPlanCode?: PlanCode | null;
 }
 
+/** Resultado de registro: sesión (Free) o redirect a MP sin cuenta aún (pago). */
+export interface RegisterOutcome {
+  session: AuthSession | null;
+  checkoutRequired: boolean;
+  desiredPlanCode: PlanCode | null;
+  initPoint: string | null;
+}
+
+const PENDING_REGISTRATION_TTL_MS = 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -80,30 +90,43 @@ export class AuthService {
     });
   }
 
-  async register(dto: RegisterDto): Promise<AuthSession> {
+  async register(dto: RegisterDto): Promise<RegisterOutcome> {
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const email = dto.email.trim().toLowerCase();
 
     const invitation = await this.prisma.invitation.findFirst({
-      where: { email: dto.email.toLowerCase() },
+      where: { email },
     });
 
     if (invitation) {
       if (invitation.expiresAt <= new Date()) {
         await this.prisma.invitation.delete({ where: { id: invitation.id } });
       } else {
-        return this.registerInvitedMember(dto, passwordHash, invitation);
+        const session = await this.registerInvitedMember(dto, passwordHash, invitation);
+        return {
+          session,
+          checkoutRequired: false,
+          desiredPlanCode: null,
+          initPoint: null,
+        };
       }
     }
 
     const desiredPlanCode = (dto.planCode ?? "free") as PlanCode;
+    const paidPlan = desiredPlanCode === "pro" || desiredPlanCode === "business";
+
+    if (paidPlan) {
+      return this.registerPaidPending(dto, email, passwordHash, desiredPlanCode);
+    }
 
     try {
       await this.billingService.ensurePlansSeeded();
+      await this.prisma.pendingRegistration.deleteMany({ where: { email } });
       const { user, companyId } = await this.prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
             name: dto.name,
-            email: dto.email,
+            email,
             passwordHash,
             role: "owner",
           },
@@ -122,21 +145,17 @@ export class AuthService {
           data: { userId: created.id, companyId: company.id, role: "owner" },
         });
 
-        await this.billingService.startTrialForCompany(
-          tx,
-          company.id,
-          desiredPlanCode === "free" ? null : desiredPlanCode,
-        );
+        await this.billingService.startTrialForCompany(tx, company.id, null, null);
 
         return { user: created, companyId: company.id };
       });
 
       const session = await this.createSession(user, companyId, "owner");
-      const checkoutRequired = desiredPlanCode === "pro" || desiredPlanCode === "business";
       return {
-        ...session,
-        checkoutRequired,
-        desiredPlanCode: checkoutRequired ? desiredPlanCode : null,
+        session,
+        checkoutRequired: false,
+        desiredPlanCode: null,
+        initPoint: null,
       };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -144,6 +163,260 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Plan de pago: no crea User/Company hasta que MP autorice el preapproval.
+   * Guarda PendingRegistration y devuelve initPoint.
+   */
+  private async registerPaidPending(
+    dto: RegisterDto,
+    email: string,
+    passwordHash: string,
+    planCode: PlanCode,
+  ): Promise<RegisterOutcome> {
+    const existingUser = await this.usersService.findByEmail(email);
+    if (existingUser) {
+      throw new ConflictException("Ya existe una cuenta con ese email");
+    }
+
+    const interval = (dto.billingInterval ?? "month") as "month" | "year";
+    if (interval !== "month" && interval !== "year") {
+      throw new BadRequestException("Intervalo de facturación inválido");
+    }
+
+    await this.billingService.ensurePlansSeeded();
+
+    const expiresAt = new Date(Date.now() + PENDING_REGISTRATION_TTL_MS);
+    let pending;
+    try {
+      pending = await this.prisma.pendingRegistration.upsert({
+        where: { email },
+        create: {
+          email,
+          name: dto.name,
+          passwordHash,
+          companyName: dto.companyName,
+          companyType: dto.companyType,
+          countryCode: dto.countryCode.trim().toUpperCase(),
+          planCode,
+          billingInterval: interval,
+          expiresAt,
+        },
+        update: {
+          name: dto.name,
+          passwordHash,
+          companyName: dto.companyName,
+          companyType: dto.companyType,
+          countryCode: dto.countryCode.trim().toUpperCase(),
+          planCode,
+          billingInterval: interval,
+          expiresAt,
+          completedAt: null,
+          mpPreapprovalId: null,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Ya existe una cuenta con ese email");
+      }
+      throw error;
+    }
+
+    try {
+      const { initPoint, mpPreapprovalId } =
+        await this.billingService.createPendingRegistrationCheckout({
+          pendingId: pending.id,
+          payerEmail: email,
+          planCode: planCode as "pro" | "business",
+          interval,
+        });
+
+      if (mpPreapprovalId) {
+        await this.prisma.pendingRegistration.update({
+          where: { id: pending.id },
+          data: { mpPreapprovalId },
+        });
+      }
+
+      return {
+        session: null,
+        checkoutRequired: true,
+        desiredPlanCode: planCode,
+        initPoint,
+      };
+    } catch (error) {
+      await this.prisma.pendingRegistration.delete({ where: { id: pending.id } }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /**
+   * Completa un registro pendiente tras autorización/cobro de MP.
+   * Idempotente si ya se creó la cuenta.
+   */
+  async completePendingRegistration(
+    pendingId: string,
+    opts?: { mpPreapprovalId?: string | null; mpPaymentId?: string | null },
+  ): Promise<boolean> {
+    const pending = await this.prisma.pendingRegistration.findUnique({
+      where: { id: pendingId },
+    });
+    if (!pending) {
+      return false;
+    }
+    if (pending.completedAt) {
+      return true;
+    }
+    if (pending.expiresAt <= new Date()) {
+      await this.prisma.pendingRegistration.delete({ where: { id: pending.id } }).catch(() => undefined);
+      return false;
+    }
+
+    const existing = await this.usersService.findByEmail(pending.email);
+    if (existing) {
+      await this.prisma.pendingRegistration.update({
+        where: { id: pending.id },
+        data: {
+          completedAt: new Date(),
+          mpPreapprovalId: opts?.mpPreapprovalId ?? pending.mpPreapprovalId,
+        },
+      });
+      return true;
+    }
+
+    await this.billingService.ensurePlansSeeded();
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            name: pending.name,
+            email: pending.email,
+            passwordHash: pending.passwordHash,
+            role: "owner",
+          },
+        });
+
+        const company = await tx.company.create({
+          data: {
+            name: pending.companyName,
+            type: pending.companyType,
+            countryCode: pending.countryCode,
+            ownerId: created.id,
+          },
+        });
+
+        await tx.companyMembership.create({
+          data: { userId: created.id, companyId: company.id, role: "owner" },
+        });
+
+        await this.billingService.createActivePaidSubscription(
+          tx,
+          company.id,
+          pending.planCode as PlanCode,
+          pending.billingInterval as "month" | "year",
+          opts?.mpPreapprovalId ?? pending.mpPreapprovalId,
+          opts?.mpPaymentId ?? null,
+        );
+
+        await tx.pendingRegistration.update({
+          where: { id: pending.id },
+          data: {
+            completedAt: new Date(),
+            mpPreapprovalId: opts?.mpPreapprovalId ?? pending.mpPreapprovalId,
+          },
+        });
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        await this.prisma.pendingRegistration.update({
+          where: { id: pending.id },
+          data: { completedAt: new Date() },
+        });
+        return true;
+      }
+      throw error;
+    }
+  }
+
+  /** Webhook/mp-return: intenta completar registro pendiente desde preapproval MP. */
+  async tryCompletePendingFromPreapproval(preapprovalId: string): Promise<boolean> {
+    const parsed = await this.billingService.resolvePendingFromPreapproval(preapprovalId);
+    if (parsed) {
+      return this.completePendingRegistration(parsed.pendingId, {
+        mpPreapprovalId: preapprovalId,
+      });
+    }
+
+    // Fallback: pending guardado por mpPreapprovalId aunque falle el parse del external_reference.
+    const byMp = await this.prisma.pendingRegistration.findFirst({
+      where: { mpPreapprovalId: preapprovalId, completedAt: null },
+    });
+    if (!byMp) {
+      return false;
+    }
+    const authorized = await this.billingService.isPreapprovalAuthorized(preapprovalId);
+    if (!authorized) {
+      return false;
+    }
+    return this.completePendingRegistration(byMp.id, { mpPreapprovalId: preapprovalId });
+  }
+
+  /**
+   * Retorno desde MP: completa por pendingId (en back_url) y/o preapproval_id.
+   */
+  async tryCompletePendingFromReturn(opts: {
+    pendingId?: string | null;
+    preapprovalId?: string | null;
+  }): Promise<boolean> {
+    const preapprovalId = opts.preapprovalId?.trim() || null;
+    if (preapprovalId) {
+      const ok = await this.tryCompletePendingFromPreapproval(preapprovalId);
+      if (ok) {
+        return true;
+      }
+    }
+
+    const pendingId = opts.pendingId?.trim() || null;
+    if (!pendingId) {
+      return false;
+    }
+
+    const pending = await this.prisma.pendingRegistration.findUnique({
+      where: { id: pendingId },
+    });
+    if (!pending) {
+      return false;
+    }
+    if (pending.completedAt) {
+      return true;
+    }
+    if (!pending.mpPreapprovalId) {
+      return false;
+    }
+
+    const authorized = await this.billingService.isPreapprovalAuthorized(pending.mpPreapprovalId);
+    if (!authorized) {
+      return false;
+    }
+    return this.completePendingRegistration(pending.id, {
+      mpPreapprovalId: pending.mpPreapprovalId,
+    });
+  }
+
+  async tryCompletePendingFromExternalRef(
+    external: string,
+    paymentId?: string | null,
+  ): Promise<boolean> {
+    const parsed = this.billingService.parsePendingRegistrationExternalRef(external);
+    if (!parsed) {
+      return false;
+    }
+    return this.completePendingRegistration(parsed.pendingId, {
+      mpPaymentId: paymentId ?? null,
+    });
   }
 
   private async registerInvitedMember(

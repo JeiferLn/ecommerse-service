@@ -1,9 +1,10 @@
 "use client";
 
-import type { PlanView } from "@commerce-ai/types";
+import type { BillingInterval, PlanView } from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -11,11 +12,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-function formatUsd(cents: number): string {
+function formatUsd(cents: number, interval: BillingInterval): string {
   if (cents <= 0) {
     return "Gratis";
   }
-  return `$${(cents / 100).toFixed(0)} USD/mes`;
+  const amount = (cents / 100).toFixed(0);
+  return interval === "year" ? `$${amount} USD/año` : `$${amount} USD/mes`;
 }
 
 function planBullets(plan: PlanView): string[] {
@@ -30,6 +32,7 @@ function planBullets(plan: PlanView): string[] {
 }
 
 export default function PricingPage() {
+  const [interval, setInterval] = useState<BillingInterval>("month");
   const { data: plans, isLoading, isError } = useQuery({
     queryKey: ["billing-plans"],
     queryFn: () => apiFetch<PlanView[]>("/billing/plans"),
@@ -60,9 +63,33 @@ export default function PricingPage() {
             Empieza con 15 días de prueba
           </h1>
           <p className="mt-3 text-muted-foreground">
-            Sin tarjeta para el trial. Precios en USD (o equivalente local al pagar). Después eliges
-            Pro o Business para seguir vendiendo.
+            Sin tarjeta para el trial. Facturación recurrente; cancela cuando quieras y mantienes
+            acceso hasta el fin del periodo. Anual = 2 meses gratis.
           </p>
+        </div>
+
+        <div className="mx-auto flex rounded-xl border border-border/70 bg-card/60 p-1">
+          <button
+            type="button"
+            onClick={() => setInterval("month")}
+            className={cn(
+              "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              interval === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+            )}
+          >
+            Mensual
+          </button>
+          <button
+            type="button"
+            onClick={() => setInterval("year")}
+            className={cn(
+              "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              interval === "year" ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+            )}
+          >
+            Anual
+            <span className="ml-1 text-xs opacity-80">−2 meses</span>
+          </button>
         </div>
 
         {isLoading && <p className="text-center text-sm text-muted-foreground">Cargando planes…</p>}
@@ -73,6 +100,8 @@ export default function PricingPage() {
         <div className="grid gap-6 md:grid-cols-3">
           {(plans ?? []).map((plan) => {
             const isFree = plan.code === "free";
+            const priceCents =
+              interval === "year" ? plan.priceYearUsdCents : plan.priceUsdCents;
             return (
               <Card
                 key={plan.code}
@@ -92,12 +121,16 @@ export default function PricingPage() {
                     ) : null}
                   </div>
                   <CardDescription className="text-2xl font-bold text-foreground">
-                    {isFree ? "15 días gratis" : formatUsd(plan.priceUsdCents)}
+                    {isFree ? "15 días gratis" : formatUsd(priceCents, interval)}
                   </CardDescription>
                   {isFree ? (
                     <p className="text-xs text-muted-foreground">Luego debes pasar a un plan de pago</p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Facturación mensual</p>
+                    <p className="text-xs text-muted-foreground">
+                      {interval === "year"
+                        ? `Equivale a $${(plan.priceUsdCents / 100).toFixed(0)}/mes · cobro anual`
+                        : "Facturación recurrente mensual"}
+                    </p>
                   )}
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
@@ -110,7 +143,13 @@ export default function PricingPage() {
                     ))}
                   </ul>
                   <Button asChild className="w-full" variant={plan.highlighted ? "default" : "outline"}>
-                    <Link href={`/register?plan=${plan.code}`}>
+                    <Link
+                      href={
+                        isFree
+                          ? `/register?plan=${plan.code}`
+                          : `/register?plan=${plan.code}&interval=${interval}`
+                      }
+                    >
                       {isFree ? "Empezar prueba" : `Elegir ${plan.name}`}
                     </Link>
                   </Button>

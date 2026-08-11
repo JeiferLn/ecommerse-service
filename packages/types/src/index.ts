@@ -369,6 +369,23 @@ export const PLAN_CODE_LABELS: Record<PlanCode, string> = {
   business: "Business",
 };
 
+export type BillingInterval = "month" | "year";
+
+export const BILLING_INTERVALS: BillingInterval[] = ["month", "year"];
+
+export const BILLING_INTERVAL_LABELS: Record<BillingInterval, string> = {
+  month: "Mensual",
+  year: "Anual",
+};
+
+/** Precio anual en centavos USD = 10 × mensual (2 meses gratis). */
+export function priceYearUsdCents(monthlyUsdCents: number): number {
+  if (monthlyUsdCents <= 0) {
+    return 0;
+  }
+  return monthlyUsdCents * 10;
+}
+
 export type SubscriptionStatus =
   | "trialing"
   | "active"
@@ -388,6 +405,8 @@ export interface PlanView {
   code: PlanCode;
   name: string;
   priceUsdCents: number;
+  /** 10 × mensual (2 meses gratis). */
+  priceYearUsdCents: number;
   maxMembers: number;
   maxProducts: number;
   maxVariants: number;
@@ -409,6 +428,9 @@ export interface SubscriptionSummary {
   checkoutRequired: boolean;
   /** Features gated (WA/IA/altas) bloqueadas. */
   featuresLocked: boolean;
+  billingInterval: BillingInterval | null;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
 }
 
 export interface SubscriptionUsage {
@@ -423,6 +445,7 @@ export interface SubscriptionUsage {
 
 export interface SubscriptionDetails extends SubscriptionSummary {
   priceUsdCents: number;
+  priceYearUsdCents: number;
   limits: {
     maxMembers: number;
     maxProducts: number;
@@ -433,7 +456,7 @@ export interface SubscriptionDetails extends SubscriptionSummary {
   };
   usage: SubscriptionUsage;
   currentPeriodStart: string | null;
-  currentPeriodEnd: string | null;
+  desiredBillingInterval: BillingInterval | null;
 }
 
 export interface BillingCheckoutResult {
@@ -441,12 +464,21 @@ export interface BillingCheckoutResult {
   /** true si se activó en modo desarrollo sin MP. */
   activatedWithoutPayment: boolean;
   planCode: PlanCode;
+  interval: BillingInterval;
+}
+
+export interface BillingCancelResult {
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
 }
 
 export interface RegisterResult {
-  user: AuthUser;
+  /** null si el registro de pago aún no se completó (redirige a MP). */
+  user: AuthUser | null;
   checkoutRequired: boolean;
   desiredPlanCode: PlanCode | null;
+  /** URL de Mercado Pago para suscripción (solo planes de pago). */
+  initPoint: string | null;
 }
 
 export interface PaginationParams {

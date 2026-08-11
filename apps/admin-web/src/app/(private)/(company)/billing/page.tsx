@@ -1,19 +1,26 @@
 "use client";
 
 import type {
+  BillingCancelResult,
   BillingCheckoutResult,
+  BillingInterval,
   PlanCode,
   SubscriptionDetails,
 } from "@commerce-ai/types";
-import { canManageBilling, SUBSCRIPTION_STATUS_LABELS } from "@commerce-ai/types";
+import {
+  BILLING_INTERVAL_LABELS,
+  canManageBilling,
+  SUBSCRIPTION_STATUS_LABELS,
+} from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Wallet } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
 function UsageBar({ label, used, max }: { label: string; used: number; max: number }) {
@@ -38,12 +45,22 @@ function BillingPageInner() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const canManage = Boolean(user && canManageBilling(user.role));
+  const [interval, setInterval] = useState<BillingInterval>("month");
+  const autoCheckoutStarted = useRef(false);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["billing-subscription", user?.companyId],
     queryFn: () => apiFetch<SubscriptionDetails>("/billing/subscription"),
     enabled: Boolean(user?.companyId),
   });
+
+  useEffect(() => {
+    if (data?.desiredBillingInterval) {
+      setInterval(data.desiredBillingInterval);
+    } else if (data?.billingInterval) {
+      setInterval(data.billingInterval);
+    }
+  }, [data?.desiredBillingInterval, data?.billingInterval]);
 
   useEffect(() => {
     const status = searchParams.get("status");
@@ -54,10 +71,16 @@ function BillingPageInner() {
   }, [searchParams, refetch, refresh]);
 
   const checkoutMutation = useMutation({
-    mutationFn: (planCode: Exclude<PlanCode, "free">) =>
+    mutationFn: ({
+      planCode,
+      billingInterval,
+    }: {
+      planCode: Exclude<PlanCode, "free">;
+      billingInterval: BillingInterval;
+    }) =>
       apiFetch<BillingCheckoutResult>("/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ planCode }),
+        body: JSON.stringify({ planCode, interval: billingInterval }),
       }),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["billing-subscription"] });
@@ -72,6 +95,38 @@ function BillingPageInner() {
     },
   });
 
+  // Plan pendiente del registro: abrir pasarela sin esperar otro clic.
+  useEffect(() => {
+    if (!canManage || !data || autoCheckoutStarted.current) {
+      return;
+    }
+    if (
+      data.checkoutRequired &&
+      (data.desiredPlanCode === "pro" || data.desiredPlanCode === "business")
+    ) {
+      autoCheckoutStarted.current = true;
+      const billingInterval = data.desiredBillingInterval ?? "month";
+      checkoutMutation.mutate({
+        planCode: data.desiredPlanCode,
+        billingInterval,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cargar suscripción pendiente
+  }, [canManage, data?.checkoutRequired, data?.desiredPlanCode, data?.desiredBillingInterval]);
+
+  const cancelMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<BillingCancelResult>("/billing/cancel", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["billing-subscription"] });
+      await refresh();
+      await refetch();
+    },
+  });
+
   if (!canManage) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -80,12 +135,16 @@ function BillingPageInner() {
     );
   }
 
+  const periodEndLabel = data?.currentPeriodEnd
+    ? new Date(data.currentPeriodEnd).toLocaleDateString("es-CO")
+    : null;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Facturación</h1>
         <p className="text-muted-foreground">
-          Plan actual, uso del periodo y upgrade a Pro o Business.
+          Plan actual, uso del periodo y suscripción recurrente Pro o Business.
         </p>
       </div>
 
@@ -108,6 +167,9 @@ function BillingPageInner() {
                 <CardDescription>
                   {SUBSCRIPTION_STATUS_LABELS[data.status]}
                   {data.trialDaysLeft != null ? ` · ${data.trialDaysLeft} días de prueba` : ""}
+                  {data.billingInterval
+                    ? ` · ${BILLING_INTERVAL_LABELS[data.billingInterval]}`
+                    : ""}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3 text-sm">
@@ -117,18 +179,53 @@ function BillingPageInner() {
                   </p>
                 ) : (
                   <p className="text-muted-foreground">
-                    Periodo: {data.usage.periodKey}
-                    {data.currentPeriodEnd
-                      ? ` · renueva ~${new Date(data.currentPeriodEnd).toLocaleDateString("es-CO")}`
+                    Periodo de uso: {data.usage.periodKey}
+                    {periodEndLabel
+                      ? data.cancelAtPeriodEnd
+                        ? ` · acceso hasta ${periodEndLabel}`
+                        : ` · próxima renovación ~${periodEndLabel}`
                       : ""}
                   </p>
                 )}
-                {data.desiredPlanCode && data.status === "trialing" ? (
-                  <p className="text-sm">
-                    Plan elegido al registrarte: <strong>{data.desiredPlanCode}</strong> (pendiente
-                    de pago)
+                {data.cancelAtPeriodEnd && periodEndLabel && !data.featuresLocked ? (
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    Renovación cancelada. Sigues con el plan hasta el {periodEndLabel}.
                   </p>
                 ) : null}
+                {data.desiredPlanCode && data.status === "trialing" ? (
+                  <p className="text-sm">
+                    Plan elegido al registrarte: <strong>{data.desiredPlanCode}</strong>
+                    {data.desiredBillingInterval
+                      ? ` (${BILLING_INTERVAL_LABELS[data.desiredBillingInterval]})`
+                      : ""}{" "}
+                    (pendiente de pago)
+                  </p>
+                ) : null}
+                {data.status === "active" && !data.cancelAtPeriodEnd ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={cancelMutation.isPending}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "¿Cancelar la renovación automática? Mantendrás el acceso hasta el fin del periodo actual.",
+                        )
+                      ) {
+                        cancelMutation.mutate();
+                      }
+                    }}
+                  >
+                    {cancelMutation.isPending ? "Cancelando…" : "Cancelar renovación"}
+                  </Button>
+                ) : null}
+                {cancelMutation.isError && (
+                  <p className="text-sm text-destructive">
+                    {cancelMutation.error instanceof ApiClientError
+                      ? cancelMutation.error.message
+                      : "No se pudo cancelar"}
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -138,24 +235,69 @@ function BillingPageInner() {
                   <CreditCard className="size-5" aria-hidden />
                   Mejorar plan
                 </CardTitle>
-                <CardDescription>Pro $39 USD · Business $99 USD (aprox. local al pagar)</CardDescription>
+                <CardDescription>
+                  Pro $39/mes o $390/año · Business $99/mes o $990/año (aprox. local al pagar)
+                </CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  disabled={checkoutMutation.isPending || data.planCode === "pro"}
-                  onClick={() => checkoutMutation.mutate("pro")}
-                >
-                  Activar Pro
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={checkoutMutation.isPending || data.planCode === "business"}
-                  onClick={() => checkoutMutation.mutate("business")}
-                >
-                  Activar Business
-                </Button>
+              <CardContent className="flex flex-col gap-3">
+                <div className="flex rounded-lg border border-border/70 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setInterval("month")}
+                    className={cn(
+                      "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
+                      interval === "month"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    Mensual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInterval("year")}
+                    className={cn(
+                      "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
+                      interval === "year"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    Anual (−2 meses)
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={
+                      checkoutMutation.isPending ||
+                      (data.planCode === "pro" && data.status === "active" && !data.featuresLocked)
+                    }
+                    onClick={() =>
+                      checkoutMutation.mutate({ planCode: "pro", billingInterval: interval })
+                    }
+                  >
+                    Activar Pro
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      checkoutMutation.isPending ||
+                      (data.planCode === "business" &&
+                        data.status === "active" &&
+                        !data.featuresLocked)
+                    }
+                    onClick={() =>
+                      checkoutMutation.mutate({
+                        planCode: "business",
+                        billingInterval: interval,
+                      })
+                    }
+                  >
+                    Activar Business
+                  </Button>
+                </div>
                 {checkoutMutation.isError && (
                   <p className="w-full text-sm text-destructive">
                     {checkoutMutation.error instanceof ApiClientError

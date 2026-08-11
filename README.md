@@ -281,7 +281,7 @@ Mostrar información del negocio (empresa) y de la plataforma (staff).
 
 Incluye:
 
-- Dashboard empresa (`/dashboard`): KPIs de catálogo, stock, miembros y gráficas
+- Dashboard empresa (`/`): KPIs de catálogo, stock, miembros y gráficas
 - Dashboard plataforma (`/admin`): KPIs globales, altas y empresas recientes
 - Placeholders de ventas/clientes/conversaciones hasta Fases 5 / 8
 
@@ -304,7 +304,7 @@ Incluye (implementado):
 - Inbox: listar conversaciones, hilo y envío manual de texto
 - `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin llamadas reales (sin gastar mensajes)
 - Auto-reply configurable; con `AI_ENABLED=true` responde la IA (Fase 6)
-- Admin: `/dashboard/whatsapp` (conexión + simular) e `/dashboard/whatsapp/inbox`
+- Admin: `/whatsapp` (conexión + simular) e `/whatsapp/inbox`
 - **Validación punta a punta en celular** con sender aprobado + ngrok → backend `:4000`
 
 Pendiente solo para endurecer producción (fuera del cierre MVP):
@@ -344,7 +344,7 @@ Incluye (implementado):
 - Enganche en auto-reply de WhatsApp cuando `AI_ENABLED=true`
 - Fallback fijo (`AI_FALLBACK_TEXT`) si la IA falla, basura/CoT, o pide humano (`[HANDOFF]`)
 - Routing bot / asesor (`pending` → `bot` | `human`) + reactivación desde inbox
-- Envíos configurables en `/dashboard/settings` (país, alcance, transportadoras, ubicación) inyectados al prompt
+- Envíos configurables en `/settings` (país, alcance, transportadoras, ubicación) inyectados al prompt
 - Tests unitarios de provider, catálogo y reply
 
 Configuración (development / demo):
@@ -352,7 +352,7 @@ Configuración (development / demo):
 1. Key en [openrouter.ai](https://openrouter.ai) → `OPENROUTER_API_KEY` en `apps/backend/.env`
 2. Modelo típico de demo: `AI_MODEL=openrouter/free` (variable; calidad no garantizada)
 3. Productos **activos** + envíos/conocimiento en Configuración
-4. Simular en `/dashboard/whatsapp` o escribir desde el celular
+4. Simular en `/whatsapp` o escribir desde el celular
 
 Sin key: `AI_PROVIDER=mock` o `AI_ENABLED=false` (vuelve al texto fijo de Fase 5).
 
@@ -386,7 +386,7 @@ Incluye (implementado):
 - Subida PDF → extracción de texto → chunk → embedding (OpenRouter o mock) → DB
 - Retrieval top-k por similitud coseno (fallback léxico) inyectado en `AiReplyService`
 - API `GET /api/v1/knowledge`, `PUT /api/v1/knowledge/:type/file`, `DELETE /api/v1/knowledge/:type` (`owner`/`manager`, capability `manageKnowledge`)
-- Admin: sección **Conocimiento** en `/dashboard/settings#conocimiento` (sin nav lateral)
+- Admin: sección **Conocimiento** en `/settings#conocimiento` (sin nav lateral)
 - **Prerequisito WhatsApp:** envíos configurados **y** los 4 PDFs activos con `fileKey`
 
 Cómo probar:
@@ -421,14 +421,14 @@ Incluye (implementado):
 - Página pública `/checkout/[token]`: resumen + país/depto/municipio (selects) + dirección + **Pagar** (Mercado Pago Checkout Pro)
 - Validación de cobertura (local vs nacional vs internacional) contra ubicación base de la tienda
 - API pública: `GET/POST /api/v1/checkout/:token` (sin JWT)
-- Admin: `/dashboard/orders` + enlace desde inbox; KPIs de pedidos en dashboard
+- Admin: `/orders` + enlace desde inbox; KPIs de pedidos en dashboard
 
 Cómo probar:
 
 1. Producto activo con stock; envíos con país + depto + municipio base
 2. Bot (simulate o móvil): agregar producto → `ver carrito` → `confirmar pedido`
 3. Abrir el link `/checkout/...` → llenar envío → **Pagar** (requiere Mercado Pago conectado en la empresa)
-4. Ver pedido en `/dashboard/orders` (estado `paid`, con dirección)
+4. Ver pedido en `/orders` (estado `paid`, con dirección)
 
 Fuera de este MVP (roadmap): flete calculado, entidad Customer.
 
@@ -483,27 +483,29 @@ Incluye (implementado):
 - Canal `Order.channel`: `whatsapp` | `in_store` (+ método de pago en tienda: efectivo / tarjeta / transferencia / otro)
 - `POST /orders/in-store`: líneas desde catálogo, descuenta stock, estado `delivered` (sin checkout ni Mercado Pago)
 - Cancelación de ventas de tienda (owner/manager) repone stock
-- Admin: `/dashboard/sales` + filtro/badge por canal en Pedidos
+- Admin: `/sales` + filtro/badge por canal en Pedidos
 - Dashboard: ingresos cobrados y conteos por canal (WhatsApp vs tienda)
 
 ---
 
 # Fase 11 — Suscripciones ✅
 
-**Estado:** MVP. Trial Free 15 días, planes Pro/Business, límites enforced, pricing + registro con plan, checkout MP de plataforma (o activación dev).
+**Estado:** MVP. Trial Free 15 días, planes Pro/Business con suscripción recurrente Mercado Pago (mensual/anual), límites enforced, cancelación al fin de periodo.
 
 Objetivo:
 
-Modelo SaaS con prueba acotada y upgrade de pago.
+Modelo SaaS con prueba acotada y upgrade de pago recurrente.
 
 Incluye (implementado):
 
 - Planes `free` / `pro` / `business` (seed) + `Subscription` 1:1 por empresa + `UsageCounter` mensual
-- Registro siempre en trial Free 15 días; `planCode` deseado redirige a `/dashboard/billing` si es Pro/Business
-- `GET /billing/plans` (público), `GET /billing/subscription`, `POST /billing/checkout`
+- Registro siempre en trial Free 15 días; `planCode` + `billingInterval` deseados redirigen a `/billing` si es Pro/Business
+- Suscripción MP Preapproval (plataforma): mensual o anual (anual = 10× mensual, 2 meses gratis)
+- `GET /billing/plans`, `GET /billing/subscription`, `POST /billing/checkout`, `POST /billing/cancel`
+- Cancelar renovación en cualquier momento; acceso hasta `currentPeriodEnd`, luego `canceled`
 - Enforcement: productos, variantes, miembros, knowledge, conectar WhatsApp, cupos WA/IA
-- Tras trial: `trial_expired` (admin usable, features gated + banner)
-- UI: `/pricing`, selector en registro, Facturación, banner en dashboard
+- Tras trial: `trial_expired`; periodo vencido sin renovación: `past_due` (features gated + banner)
+- UI: `/pricing` (toggle mensual/anual), registro, Facturación, banner
 
 ---
 
@@ -538,7 +540,7 @@ Incluye:
 - Conversations / Messages (WhatsApp)
 - AI / Knowledge (RAG)
 - Orders (carrito + pedidos WhatsApp; ventas `in_store` en Fase 10; Payments en Fase 9)
-- Payments / Billing / Subscriptions (planes Free trial 15d, Pro, Business; checkout MP plataforma)
+- Payments / Billing / Subscriptions (trial 15d; Pro/Business recurrente MP mensual/anual; cancel al fin de periodo)
 
 ---
 

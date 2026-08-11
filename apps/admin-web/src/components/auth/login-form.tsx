@@ -54,6 +54,14 @@ export function LoginForm() {
       onSubmit={handleSubmit((values) => mutation.mutate(values))}
       className="flex flex-col gap-4"
     >
+      {searchParams.get("registered") === "1" ? (
+        <p className="rounded-lg border border-border/70 bg-accent/30 px-3 py-2 text-sm text-foreground">
+          {searchParams.get("status") === "failure"
+            ? "El pago no se completó. Si ya pagaste, espera un momento e inicia sesión; si no, vuelve a registrarte con el plan de pago."
+            : "Si el pago se autorizó, tu cuenta ya está lista. Inicia sesión con el email y la contraseña que elegiste."}
+        </p>
+      ) : null}
+
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input

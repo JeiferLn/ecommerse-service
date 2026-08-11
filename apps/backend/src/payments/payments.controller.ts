@@ -113,21 +113,20 @@ export class PaymentsController {
     @Query("type") type?: string,
     @Query("data.id") dataIdQuery?: string,
     @Query("companyId") companyId?: string,
+    @Query("pendingId") pendingId?: string,
     @Query("purpose") purpose?: string,
     @Body() body?: MercadoPagoWebhookBody,
   ): Promise<{ ok: true }> {
-    const paymentId = this.resolvePaymentId({
+    await this.dispatchWebhook({
       topic,
       id,
       type,
       dataIdQuery,
+      companyId,
+      pendingId,
+      purpose,
       body,
     });
-    if (purpose === "subscription") {
-      await this.webhookService.handleSubscriptionNotification(paymentId, companyId);
-    } else {
-      await this.webhookService.handlePaymentNotification(paymentId, companyId);
-    }
     return { ok: true };
   }
 
@@ -141,23 +140,76 @@ export class PaymentsController {
     @Query("type") type?: string,
     @Query("data.id") dataIdQuery?: string,
     @Query("companyId") companyId?: string,
+    @Query("pendingId") pendingId?: string,
     @Query("purpose") purpose?: string,
   ): Promise<{ ok: true }> {
-    const paymentId = this.resolvePaymentId({
+    await this.dispatchWebhook({
       topic,
       id,
       type,
       dataIdQuery,
+      companyId,
+      pendingId,
+      purpose,
     });
-    if (purpose === "subscription") {
-      await this.webhookService.handleSubscriptionNotification(paymentId, companyId);
-    } else {
-      await this.webhookService.handlePaymentNotification(paymentId, companyId);
-    }
     return { ok: true };
   }
 
-  private resolvePaymentId(params: {
+  private async dispatchWebhook(params: {
+    topic?: string;
+    id?: string;
+    type?: string;
+    dataIdQuery?: string;
+    companyId?: string;
+    pendingId?: string;
+    purpose?: string;
+    body?: MercadoPagoWebhookBody;
+  }): Promise<void> {
+    const body = params.body;
+    const eventType = (
+      body?.type ||
+      body?.topic ||
+      params.type ||
+      params.topic ||
+      ""
+    ).toLowerCase();
+    const resourceId = this.resolveResourceId(params);
+
+    const isSubscriptionPurpose = params.purpose === "subscription";
+    const isPreapproval =
+      eventType === "subscription_preapproval" || eventType.includes("preapproval");
+    const isAuthorizedPayment =
+      eventType === "subscription_authorized_payment" ||
+      eventType.includes("authorized_payment");
+    const isPayment = eventType === "payment" || params.topic === "payment" || !eventType;
+
+    if (isPreapproval && resourceId) {
+      await this.webhookService.handleSubscriptionPreapprovalNotification(resourceId);
+      return;
+    }
+
+    if ((isAuthorizedPayment || isSubscriptionPurpose || isPayment) && isSubscriptionPurpose) {
+      if (params.pendingId?.trim()) {
+        await this.webhookService.handleSubscriptionNotification(
+          resourceId,
+          params.companyId,
+          params.pendingId.trim(),
+        );
+        return;
+      }
+      await this.webhookService.handleSubscriptionNotification(resourceId, params.companyId);
+      return;
+    }
+
+    if (isAuthorizedPayment && resourceId) {
+      await this.webhookService.handleSubscriptionNotification(resourceId, params.companyId);
+      return;
+    }
+
+    await this.webhookService.handlePaymentNotification(resourceId, params.companyId);
+  }
+
+  private resolveResourceId(params: {
     topic?: string;
     id?: string;
     type?: string;
@@ -165,18 +217,11 @@ export class PaymentsController {
     body?: MercadoPagoWebhookBody;
   }): string | null {
     const body = params.body;
-    const bodyType = body?.type || body?.topic || params.type || params.topic;
     const fromBody =
       body?.data?.id ??
       body?.id ??
       (typeof body?.resource === "string" ? body.resource.split("/").pop() : undefined);
     const candidate = params.dataIdQuery || params.id || fromBody;
-
-    if (bodyType && bodyType !== "payment" && params.topic && params.topic !== "payment") {
-      if (candidate == null) {
-        return null;
-      }
-    }
 
     if (candidate == null || candidate === "") {
       return null;

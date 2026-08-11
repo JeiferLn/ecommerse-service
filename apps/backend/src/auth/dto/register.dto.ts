@@ -1,4 +1,4 @@
-import { COMPANY_COUNTRY_CODES, PLAN_CODES } from "@commerce-ai/types";
+import { BILLING_INTERVALS, COMPANY_COUNTRY_CODES, PLAN_CODES } from "@commerce-ai/types";
 import { CompanyType } from "@prisma/client";
 import { IsEmail, IsEnum, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
@@ -34,4 +34,9 @@ export class RegisterDto {
   @IsOptional()
   @IsIn([...PLAN_CODES], { message: "Plan inválido" })
   planCode?: (typeof PLAN_CODES)[number];
+
+  /** Ciclo deseado al upgrade (month | year). */
+  @IsOptional()
+  @IsIn([...BILLING_INTERVALS], { message: "Intervalo inválido" })
+  billingInterval?: (typeof BILLING_INTERVALS)[number];
 }

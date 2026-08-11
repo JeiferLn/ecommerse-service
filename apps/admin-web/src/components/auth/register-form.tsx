@@ -1,14 +1,15 @@
 "use client";
 
+import type { BillingInterval, PlanCode, RegisterResult } from "@commerce-ai/types";
 import {
+  BILLING_INTERVALS,
+  BILLING_INTERVAL_LABELS,
   COMPANY_COUNTRIES,
   COMPANY_TYPES,
   COMPANY_TYPE_LABELS,
   PLAN_CODE_LABELS,
   PLAN_CODES,
   type CompanyType,
-  type PlanCode,
-  type RegisterResult,
 } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -50,6 +51,7 @@ const registerSchema = z
       message: "Selecciona el país de la empresa",
     }),
     planCode: z.enum(PLAN_CODES as [PlanCode, ...PlanCode[]]),
+    billingInterval: z.enum(BILLING_INTERVALS as [BillingInterval, ...BillingInterval[]]),
   })
   .refine((values) => values.password === values.confirmPassword, {
     path: ["confirmPassword"],
@@ -63,10 +65,13 @@ function RegisterFormInner() {
   const searchParams = useSearchParams();
   const { refresh } = useSession();
   const planFromQuery = searchParams.get("plan");
+  const intervalFromQuery = searchParams.get("interval");
   const initialPlan: PlanCode =
     planFromQuery === "pro" || planFromQuery === "business" || planFromQuery === "free"
       ? planFromQuery
       : "free";
+  const initialInterval: BillingInterval =
+    intervalFromQuery === "year" ? "year" : "month";
 
   const {
     register,
@@ -86,18 +91,21 @@ function RegisterFormInner() {
       companyType: undefined,
       countryCode: undefined,
       planCode: initialPlan,
+      billingInterval: initialInterval,
     },
   });
 
   useEffect(() => {
     setValue("planCode", initialPlan);
-  }, [initialPlan, setValue]);
+    setValue("billingInterval", initialInterval);
+  }, [initialPlan, initialInterval, setValue]);
 
   const selectedPlan = watch("planCode");
+  const selectedInterval = watch("billingInterval");
 
   const mutation = useMutation({
-    mutationFn: (values: RegisterValues) =>
-      apiFetch<RegisterResult>("/auth/register", {
+    mutationFn: async (values: RegisterValues) => {
+      const result = await apiFetch<RegisterResult>("/auth/register", {
         method: "POST",
         body: JSON.stringify({
           name: values.name,
@@ -107,15 +115,27 @@ function RegisterFormInner() {
           companyType: values.companyType,
           countryCode: values.countryCode,
           planCode: values.planCode,
+          billingInterval: values.planCode === "free" ? undefined : values.billingInterval,
         }),
-      }),
+      });
+      return result;
+    },
     onSuccess: async (result) => {
-      await refresh();
-      if (result.checkoutRequired) {
-        router.push("/billing");
-      } else {
-        router.push("/");
+      // Plan de pago: la cuenta aún no existe; ir directo a Mercado Pago.
+      if (result.checkoutRequired && result.initPoint) {
+        window.location.assign(result.initPoint);
+        return;
       }
+
+      if (result.checkoutRequired && !result.initPoint) {
+        throw new Error(
+          "No se pudo abrir el pago de Mercado Pago. Revisa la configuración o inténtalo de nuevo.",
+        );
+      }
+
+      // Free (u otro caso con sesión): entra al panel.
+      await refresh();
+      router.push("/");
       router.refresh();
     },
   });
@@ -128,8 +148,8 @@ function RegisterFormInner() {
       <div className="flex flex-col gap-2">
         <Label>Plan</Label>
         <p className="text-xs text-muted-foreground">
-          Empiezas con 15 días gratis. Si eliges Pro o Business, te llevamos a pagar al terminar el
-          registro.
+          Con Free empiezas 15 días sin pagar. Si eliges Pro o Business, primero completas el pago en
+          Mercado Pago y recién entonces se crea tu cuenta.
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
           {PLAN_CODES.map((code) => (
@@ -152,6 +172,32 @@ function RegisterFormInner() {
           ))}
         </div>
       </div>
+
+      {selectedPlan !== "free" ? (
+        <div className="flex flex-col gap-2">
+          <Label>Ciclo de facturación</Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {BILLING_INTERVALS.map((interval) => (
+              <button
+                key={interval}
+                type="button"
+                onClick={() => setValue("billingInterval", interval)}
+                className={cn(
+                  "rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
+                  selectedInterval === interval
+                    ? "border-primary bg-primary/5"
+                    : "border-border/70 hover:bg-accent/40",
+                )}
+              >
+                <span className="font-medium">{BILLING_INTERVAL_LABELS[interval]}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {interval === "year" ? "2 meses gratis" : "Renovación cada mes"}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Tu nombre</Label>
@@ -262,7 +308,13 @@ function RegisterFormInner() {
       )}
 
       <Button type="submit" disabled={mutation.isPending} className="w-full">
-        {mutation.isPending ? "Creando cuenta…" : "Crear cuenta"}
+        {mutation.isPending
+          ? selectedPlan === "free"
+            ? "Creando cuenta…"
+            : "Abriendo pago…"
+          : selectedPlan === "free"
+            ? "Crear cuenta"
+            : "Continuar al pago"}
       </Button>
     </form>
   );

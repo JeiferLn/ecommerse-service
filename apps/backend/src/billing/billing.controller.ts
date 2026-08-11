@@ -1,11 +1,25 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Query,
+  Res,
+} from "@nestjs/common";
 import type {
   ApiResponse,
+  BillingCancelResult,
   BillingCheckoutResult,
+  BillingInterval,
   PlanView,
   SubscriptionDetails,
 } from "@commerce-ai/types";
+import { BILLING_INTERVALS } from "@commerce-ai/types";
 import { IsIn } from "class-validator";
+import type { Response } from "express";
 
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -16,6 +30,9 @@ import { BillingService } from "./billing.service";
 class CheckoutDto {
   @IsIn(["pro", "business"], { message: "Plan inválido" })
   planCode!: "pro" | "business";
+
+  @IsIn([...BILLING_INTERVALS], { message: "Intervalo inválido" })
+  interval!: BillingInterval;
 }
 
 @Controller("billing")
@@ -26,6 +43,22 @@ export class BillingController {
   @Get("plans")
   async plans(): Promise<ApiResponse<PlanView[]>> {
     return { status: "success", data: await this.billing.listPublicPlans() };
+  }
+
+  /**
+   * Retorno HTTPS para MP Preapproval en local (API_PUBLIC_URL/ngrok → frontend).
+   */
+  @Public()
+  @Get("mp-return")
+  mpReturn(
+    @Query("status") status: string | undefined,
+    @Query("flow") flow: string | undefined,
+    @Res() res: Response,
+  ): void {
+    res.redirect(
+      302,
+      this.billing.getFrontendBillingReturnUrl(status ?? "success", flow),
+    );
   }
 
   @Roles("owner", "manager", "user")
@@ -51,8 +84,26 @@ export class BillingController {
   ): Promise<ApiResponse<BillingCheckoutResult>> {
     return {
       status: "success",
-      data: await this.billing.checkout(user.companyId, dto.planCode),
+      data: await this.billing.checkout(
+        user.companyId,
+        dto.planCode,
+        dto.interval,
+        user.id,
+      ),
       message: "Checkout iniciado",
+    };
+  }
+
+  @Roles("owner")
+  @HttpCode(HttpStatus.OK)
+  @Post("cancel")
+  async cancel(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponse<BillingCancelResult>> {
+    return {
+      status: "success",
+      data: await this.billing.cancelAtPeriodEnd(user.companyId),
+      message: "Renovación cancelada; mantienes acceso hasta el fin del periodo",
     };
   }
 }

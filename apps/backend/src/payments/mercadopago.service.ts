@@ -1,9 +1,23 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
+import { MercadoPagoConfig, Payment, PreApproval, Preference } from "mercadopago";
+import type { PreApprovalResponse } from "mercadopago/dist/clients/preApproval/commonTypes";
 
 import type { Env } from "../config/env.validation";
 import { MercadoPagoConnectionService } from "./mercadopago-connection.service";
+
+export type CreatePreapprovalParams = {
+  reason: string;
+  payerEmail: string;
+  externalReference: string;
+  backUrl: string;
+  transactionAmount: number;
+  currencyId: string;
+  /** Cobros cada N unidades de frequencyType. */
+  frequency: number;
+  frequencyType: "months" | "days";
+  notificationUrl?: string | null;
+};
 
 @Injectable()
 export class MercadoPagoService implements OnModuleInit {
@@ -58,6 +72,46 @@ export class MercadoPagoService implements OnModuleInit {
 
   paymentApi(accessToken: string): Payment {
     return new Payment(this.getClient(accessToken));
+  }
+
+  preApprovalApi(accessToken: string): PreApproval {
+    return new PreApproval(this.getClient(accessToken));
+  }
+
+  async createPreapproval(
+    accessToken: string,
+    params: CreatePreapprovalParams,
+  ): Promise<PreApprovalResponse> {
+    const body: Record<string, unknown> = {
+      reason: params.reason,
+      payer_email: params.payerEmail,
+      external_reference: params.externalReference,
+      back_url: params.backUrl,
+      auto_recurring: {
+        frequency: params.frequency,
+        frequency_type: params.frequencyType,
+        transaction_amount: params.transactionAmount,
+        currency_id: params.currencyId,
+      },
+      status: "pending",
+    };
+    if (params.notificationUrl) {
+      body.notification_url = params.notificationUrl;
+    }
+    return this.preApprovalApi(accessToken).create({
+      body: body as Parameters<PreApproval["create"]>[0]["body"],
+    });
+  }
+
+  async getPreapproval(accessToken: string, id: string): Promise<PreApprovalResponse> {
+    return this.preApprovalApi(accessToken).get({ id });
+  }
+
+  async cancelPreapproval(accessToken: string, id: string): Promise<void> {
+    await this.preApprovalApi(accessToken).update({
+      id,
+      body: { status: "cancelled" },
+    });
   }
 
   async getAccessTokenForCompany(companyId: string): Promise<string> {
