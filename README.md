@@ -499,13 +499,15 @@ Modelo SaaS con prueba acotada y upgrade de pago recurrente.
 Incluye (implementado):
 
 - Planes `free` / `pro` / `business` (seed) + `Subscription` 1:1 por empresa + `UsageCounter` mensual
-- Registro siempre en trial Free 15 días; `planCode` + `billingInterval` deseados redirigen a `/billing` si es Pro/Business
+- Registro **Free**: crea la cuenta al instante (trial 15 días)
+- Registro **Pro/Business**: no crea User/Company hasta que Mercado Pago autorice el Preapproval (`PendingRegistration`); al volver del pago se crea la cuenta y se inicia sesión en `/login`
 - Suscripción MP Preapproval (plataforma): mensual o anual (anual = 10× mensual, 2 meses gratis)
 - `GET /billing/plans`, `GET /billing/subscription`, `POST /billing/checkout`, `POST /billing/cancel`
 - Cancelar renovación en cualquier momento; acceso hasta `currentPeriodEnd`, luego `canceled`
 - Enforcement: productos, variantes, miembros, knowledge, conectar WhatsApp, cupos WA/IA
 - Tras trial: `trial_expired`; periodo vencido sin renovación: `past_due` (features gated + banner)
 - UI: `/pricing` (toggle mensual/anual), registro, Facturación, banner
+- Local: `API_PUBLIC_URL` (ngrok HTTPS) + `MP_TEST_PAYER_EMAIL` (comprador de prueba) para sandbox
 
 ---
 
