@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
 import { CompanySwitcher } from "@/components/company-switcher";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { homePathForRole } from "@/lib/home-path";
 import { useSession } from "@/providers/session-provider";
@@ -23,6 +24,7 @@ export function PrivateHeader() {
           <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
             <Link href={home}>{isAdmin ? "Admin" : "Dashboard"}</Link>
           </Button>
+          <ThemeToggle />
           <LogoutButton />
         </nav>
       </div>

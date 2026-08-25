@@ -72,7 +72,7 @@ Cada empresa paga una suscripción mensual para utilizar el servicio.
 
 ## WhatsApp
 
-- WhatsApp Cloud API
+- Twilio WhatsApp (Messages API; no Cloud API / Graph)
 
 ---
 
@@ -511,21 +511,91 @@ Incluye (implementado):
 
 ---
 
-# Fase 12 — Escalabilidad
+# Fase 12 — Diseño y organización del admin
+
+**Estado:** pendiente. El producto ya es útil; el admin se ve básico y poco organizado.
+
+Hoy: tokens cobalt + shadcn (9 primitivas) y landing pulida; el backoffice es CRUD de Cards, sidebars ad-hoc, loading “Cargando…”, `window.confirm`, y un árbol muerto `/dashboard` que el middleware redirige. Pedidos, inbox y settings son las pantallas más débiles.
 
 Objetivo:
 
-Preparar el sistema para producción.
+Elevar el admin de “funciona” a una UI clara, consistente y fácil de operar (dueño / manager), sin cambiar el modelo de negocio.
 
 Incluye:
 
-- Redis
-- BullMQ
-- Cache
-- Rate Limiting
-- Logs
-- Monitoreo
-- Optimización
+- Unificar **app shell** (header + sidebar empresa/admin, anchos, PageHeader compartido)
+- Quitar duplicado `/dashboard/**`; inbox y anclas de configuración más visibles
+- Completar primitivas: Table, Tabs, Skeleton, Toast, Sheet/Dropdown; dejar de mezclar `<select>` nativo con shadcn
+- Pedidos (master-detail real), inbox tipo chat (altura viewport), settings con Tabs/anchors
+- Empty/error/loading coherentes; badges y `formatMoney` alineados a la paleta
+- Microcopy: títulos, ayudas y CTAs más claros
+
+Fuera de alcance: rebranding de marketing/landing, dark mode obligatorio, app móvil, rediseño profundo del checkout público (solo consistencia mínima).
+
+Resultado esperado:
+
+Admin profesional y ordenado, listo para mostrar a clientes piloto.
+
+---
+
+# Fase 13 — Entrenamiento del bot y visión (imágenes)
+
+**Estado:** pendiente. El bot vende, pero a veces se salta intenciones o malinterpreta mensajes.
+
+Hoy: inbound **solo texto** (foto sin `Body` se descarta). El bot **sí envía** fotos del catálogo (Twilio `MediaUrl`). Matching de producto es léxico (tokens/sinónimos), no visión. Heurísticas frágiles: carrito vs “quiero ver”, handoff “humano/asesor”, catálogo sesgado a ropa, `maxTokens: 220`.
+
+Objetivo:
+
+Hacer el asistente más fiable en ventas y que **entienda imágenes** que el cliente mande por WhatsApp (foto de producto, talla, captura) — siempre dentro de la tienda.
+
+Incluye:
+
+- Golden cases / tests de las fallas conocidas (carrito, confirmación, handoff, fuera de tema, catálogo vs RAG)
+- Ajuste de prompts, routing e intenciones (sin alucinar políticas ni precios)
+- Webhook: leer `NumMedia` / `MediaUrl0`; persistir `type: "image"` + caption; no dropear foto sin texto
+- Descargar media Twilio (auth) y modelo vision vía OpenRouter (`image_url` en el chat)
+- Mapear la foto al catálogo o pedir el nombre si no identifica; no ser un GPT genérico de imágenes
+- Simulate + inbox: poder probar inbound con imagen
+- Límites: jpg/png/webp, tamaño, fallback si la visión falla
+
+Fuera de alcance: fine-tuning propio, CLIP/embeddings de `ProductImage` (nice-to-have), OCR legal, generación de imágenes, stickers/audio como canal principal.
+
+Resultado esperado:
+
+Menos saltos en texto; el cliente puede mandar una foto y el bot intenta relacionarla con la tienda.
+
+---
+
+# Fase 14 — Primer prototipo a producción (ex Fase 12)
+
+**Estado:** pendiente. Depende de Fases 12 (diseño) y 13 (bot + imágenes).
+
+Hoy: Redis corre en Docker **pero la app no lo usa**. No hay BullMQ, Helmet, Sentry, Dockerfiles, CI ni `admin-web/.env.example`. Sí hay CORS, throttler in-memory (120/min), cookies seguras, validación de env en production, health de Postgres (siempre `ok` aunque la DB esté down) y R2 obligatorio en prod.
+
+Objetivo:
+
+Primer **despliegue piloto** usable (dominio + WhatsApp real + pagos), no un rewrite.
+
+Incluye (bloquea el piloto):
+
+- Dockerfiles + arranque prod (`admin-web` + `backend` + Postgres pgvector + Redis)
+- CI: lint / typecheck / test / build + `prisma migrate deploy`
+- `apps/admin-web/.env.example`; health que falle si la DB está down
+- Helmet, `trust proxy`, `SkipThrottle` en `/health` y webhooks (Twilio/MP)
+- Checklist env: Twilio firma + URL fija (sin ngrok), R2, SMTP, MP, JWT, `FRONTEND_URL` / CORS
+- Runbook: cómo subir, rollback, backup mínimo de DB
+
+Incluye (después del primer up, o si hay réplicas):
+
+- Redis real: cache + throttler compartido
+- BullMQ: webhooks / IA / indexación fuera del request HTTP
+- Logs JSON + Sentry (API + Next)
+
+Fuera de alcance del piloto: multi-región, autoscaling agresivo, PostHog, SLA enterprise.
+
+Resultado esperado:
+
+Piloto desplegable con observabilidad básica y sin ngrok.
 
 ---
 

@@ -3,6 +3,7 @@ import { Figtree, Outfit } from "next/font/google";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { SessionProvider } from "@/providers/session-provider";
+import { ThemeProvider } from "@/providers/theme-provider";
 
 import "./globals.css";
 
@@ -35,11 +36,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body className={`${figtree.variable} ${outfit.variable} antialiased`}>
-        <QueryProvider>
-          <SessionProvider>{children}</SessionProvider>
-        </QueryProvider>
+    <html lang="es" className="scroll-smooth" suppressHydrationWarning>
+      <body className={`${figtree.variable} ${outfit.variable} antialiased`} suppressHydrationWarning>
+        <ThemeProvider>
+          <QueryProvider>
+            <SessionProvider>{children}</SessionProvider>
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

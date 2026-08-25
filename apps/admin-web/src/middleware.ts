@@ -20,6 +20,7 @@ const COMPANY_ROUTES = [
 
 const PRIVATE_ROUTES = [...COMPANY_ROUTES, "/admin"];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
+const PUBLIC_ROUTES = ["/", "/pricing", "/checkout", "/session-refresh"];
 
 function matches(pathname: string, routes: string[]): boolean {
   return routes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
@@ -85,40 +86,22 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  const isKnown =
+    matches(pathname, PUBLIC_ROUTES) ||
+    matches(pathname, PRIVATE_ROUTES) ||
+    matches(pathname, AUTH_ROUTES) ||
+    pathname === "/overview" ||
+    pathname.startsWith("/overview/");
+
+  if (!isKnown) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    "/",
-    "/overview",
-    "/overview/:path*",
-    "/products",
-    "/products/:path*",
-    "/categories",
-    "/categories/:path*",
-    "/sales",
-    "/sales/:path*",
-    "/orders",
-    "/orders/:path*",
-    "/whatsapp",
-    "/whatsapp/:path*",
-    "/members",
-    "/members/:path*",
-    "/billing",
-    "/billing/:path*",
-    "/settings",
-    "/settings/:path*",
-    "/knowledge",
-    "/knowledge/:path*",
-    "/dashboard",
-    "/dashboard/:path*",
-    "/admin",
-    "/admin/:path*",
-    "/login",
-    "/register",
-    "/register/:path*",
-    "/forgot-password",
-    "/reset-password",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
