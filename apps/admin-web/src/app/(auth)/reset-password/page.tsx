@@ -3,7 +3,7 @@ import { Suspense } from "react";
 
 import { AuthCentered } from "@/components/auth/auth-centered";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { accentWords } from "@/components/site/words";
 
 export const metadata: Metadata = {
   title: "Restablecer contraseña",
@@ -11,18 +11,17 @@ export const metadata: Metadata = {
 
 export default function ResetPasswordPage() {
   return (
-    <AuthCentered>
-      <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl font-bold">Restablecer contraseña</CardTitle>
-          <CardDescription>Ingresa tu nueva contraseña para acceder a tu cuenta.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Suspense fallback={null}>
-            <ResetPasswordForm />
-          </Suspense>
-        </CardContent>
-      </Card>
+    <AuthCentered
+      title={
+        <>
+          Crea una <span className={accentWords}>nueva contraseña.</span>
+        </>
+      }
+      description="Usa al menos 8 caracteres. Después podrás entrar con ella."
+    >
+      <Suspense fallback={null}>
+        <ResetPasswordForm />
+      </Suspense>
     </AuthCentered>
   );
 }

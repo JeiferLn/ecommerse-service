@@ -1,0 +1,5 @@
+# Local: el puerto 5432 del host ya lo usa otro contenedor (sentix-db).
+services:
+  postgres:
+    ports: !override
+      - "5433:5432"

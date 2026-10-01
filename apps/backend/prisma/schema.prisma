@@ -292,11 +292,14 @@ model Conversation {
   id             String               @id @default(cuid())
   companyId      String
   company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  waConnectionId String
-  waConnection   WhatsAppConnection   @relation(fields: [waConnectionId], references: [id], onDelete: Cascade)
+  /// Null en la conversación de prueba del asistente (no pasa por WhatsApp).
+  waConnectionId String?
+  waConnection   WhatsAppConnection?  @relation(fields: [waConnectionId], references: [id], onDelete: Cascade)
   customerWaId   String
   customerName  String?
   handler        ConversationHandler  @default(pending)
+  /// Conversación de "Prueba tu asistente": fuera del inbox, sin envío por Twilio.
+  isPlayground   Boolean              @default(false)
   lastMessageAt  DateTime             @default(now())
   messages       Message[]
   cart           Cart?
@@ -308,6 +311,7 @@ model Conversation {
   @@index([companyId])
   @@index([companyId, lastMessageAt])
   @@index([companyId, handler])
+  @@index([companyId, isPlayground])
 }
 
 model Message {

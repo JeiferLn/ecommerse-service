@@ -12,14 +12,34 @@ import {
   type ProductSummary,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Minus, Plus, Store, Trash2 } from "lucide-react";
+import { CheckCircle2, Minus, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Segmented } from "@/components/ui/segmented";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { formatMoney } from "@/lib/orders";
+import { useCountUp } from "@/lib/use-count-up";
 import { useSession } from "@/providers/session-provider";
 
 interface SaleLine {
@@ -31,10 +51,6 @@ interface SaleLine {
   unitPrice: number;
   stock: number;
   quantity: number;
-}
-
-function formatMoney(amount: number): string {
-  return `$${amount.toLocaleString("es-CO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 export function InStoreSaleForm() {
@@ -81,6 +97,7 @@ export function InStoreSaleForm() {
   );
 
   const subtotal = lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const animatedTotal = useCountUp(subtotal, { duration: 400 });
 
   const addLine = () => {
     const product = productDetailsQuery.data;
@@ -97,7 +114,9 @@ export function InStoreSaleForm() {
       if (existing) {
         const nextQty = Math.min(existing.quantity + qty, variant.stock);
         return prev.map((line) =>
-          line.variantId === variant.id ? { ...line, quantity: nextQty, stock: variant.stock } : line,
+          line.variantId === variant.id
+            ? { ...line, quantity: nextQty, stock: variant.stock }
+            : line,
         );
       }
       return [
@@ -137,6 +156,10 @@ export function InStoreSaleForm() {
     },
   });
 
+  if (!user) {
+    return <SkeletonRows rows={3} columns={4} />;
+  }
+
   if (!canOperate) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -145,66 +168,125 @@ export function InStoreSaleForm() {
     );
   }
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]">
-      <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl">Agregar productos</CardTitle>
-          <CardDescription>
-            Busca en el catálogo activo y agrega variantes con stock disponible.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sale-product-q">Buscar producto</Label>
-            <Input
-              id="sale-product-q"
-              value={productQuery}
-              onChange={(event) => setProductQuery(event.target.value)}
-              placeholder="Nombre del producto…"
-            />
-          </div>
+  const products = productsQuery.data?.items ?? [];
+  const variants = productDetailsQuery.data?.variants ?? [];
+  const itemsCount = lines.reduce((sum, line) => sum + line.quantity, 0);
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
+  const changeQuantity = (variantId: string, delta: number) =>
+    setLines((prev) =>
+      prev.map((item) =>
+        item.variantId === variantId
+          ? { ...item, quantity: Math.min(item.stock, Math.max(1, item.quantity + delta)) }
+          : item,
+      ),
+    );
+
+  return (
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex min-w-0 flex-col gap-6">
+        {successOrder ? (
+          <div
+            role="status"
+            className="slide-up-in flex flex-wrap items-center gap-3 rounded-md bg-accent px-4 py-3 text-sm text-accent-foreground"
+          >
+            <CheckCircle2 className="size-4 shrink-0" aria-hidden />
+            <span className="flex-1">
+              Venta <span className="font-data">{successOrder.number}</span> registrada por{" "}
+              {formatMoney(successOrder.total, successOrder.currency)}.
+            </span>
+            <Link href="/orders" className="font-medium underline-offset-4 hover:underline">
+              Ver pedidos
+            </Link>
+            <button
+              type="button"
+              className="rounded-sm p-0.5 opacity-70 transition-opacity hover:opacity-100"
+              aria-label="Cerrar aviso"
+              onClick={() => setSuccessOrder(null)}
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+        ) : null}
+
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-medium">Agregar productos</h2>
+            <div className="relative w-full sm:w-64">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={productQuery}
+                onChange={(event) => setProductQuery(event.target.value)}
+                placeholder="Filtrar catálogo"
+                aria-label="Filtrar productos"
+                className="h-9 pl-9"
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem_auto] sm:items-end">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <Label htmlFor="sale-product">Producto</Label>
-              <select
-                id="sale-product"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={selectedProductId}
-                onChange={(event) => {
-                  setSelectedProductId(event.target.value);
+              <Select
+                value={selectedProductId || undefined}
+                onValueChange={(value) => {
+                  setSelectedProductId(value);
                   setSelectedVariantId("");
                 }}
               >
-                <option value="">Selecciona…</option>
-                {(productsQuery.data?.items ?? []).map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} ({product.totalStock} uds.)
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="sale-product" className="w-full">
+                  <SelectValue placeholder="Selecciona…">
+                    <span className="truncate">
+                      {productDetailsQuery.data?.name ??
+                        products.find((product) => product.id === selectedProductId)?.name}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {products.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-muted-foreground">
+                      {productsQuery.isLoading ? "Cargando…" : "Sin productos activos"}
+                    </p>
+                  ) : (
+                    products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name}
+                        <span className="text-muted-foreground"> · {product.totalStock} uds.</span>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <Label htmlFor="sale-variant">Variante</Label>
-              <select
-                id="sale-variant"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={selectedVariantId}
+              <Select
+                value={selectedVariantId || undefined}
+                onValueChange={setSelectedVariantId}
                 disabled={!selectedProductId || productDetailsQuery.isLoading}
-                onChange={(event) => setSelectedVariantId(event.target.value)}
               >
-                <option value="">Selecciona…</option>
-                {(productDetailsQuery.data?.variants ?? []).map((variant) => (
-                  <option key={variant.id} value={variant.id} disabled={variant.stock < 1}>
-                    {variant.name} · {formatMoney(variant.price)} · stock {variant.stock}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="sale-variant" className="w-full">
+                  <SelectValue
+                    placeholder={productDetailsQuery.isLoading ? "Cargando…" : "Selecciona…"}
+                  >
+                    <span className="truncate">{selectedVariant?.name}</span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {variants.map((variant) => (
+                    <SelectItem key={variant.id} value={variant.id} disabled={variant.stock < 1}>
+                      {variant.name}
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {formatMoney(variant.price)} · {variant.stock} uds.
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sale-qty">Cantidad</Label>
               <Input
@@ -214,7 +296,7 @@ export function InStoreSaleForm() {
                 max={selectedVariant?.stock ?? 1}
                 value={quantity}
                 onChange={(event) => setQuantity(Number(event.target.value) || 1)}
-                className="w-28"
+                className="text-right"
               />
             </div>
             <Button
@@ -226,131 +308,135 @@ export function InStoreSaleForm() {
               Agregar
             </Button>
           </div>
+        </section>
 
-          <ul className="flex flex-col gap-2">
-            {lines.length === 0 ? (
-              <li className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
-                Aún no hay líneas en la venta.
-              </li>
-            ) : (
-              lines.map((line) => (
-                <li
-                  key={line.variantId}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 px-3 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      {line.productName}{" "}
-                      <span className="text-muted-foreground">({line.variantName})</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {line.sku} · {formatMoney(line.unitPrice)} c/u · máx. {line.stock}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
+        {lines.length === 0 ? (
+          <EmptyState
+            icon={ShoppingBag}
+            title="La venta está vacía"
+            description="Elige un producto y su variante para agregarlo."
+            className="rounded-lg border border-dashed border-border"
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Precio</TableHead>
+                <TableHead className="text-center">Cantidad</TableHead>
+                <TableHead className="text-right">Subtotal</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines.map((line) => (
+                <TableRow key={line.variantId} className="slide-up-in">
+                  <TableCell>
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium">{line.productName}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {line.variantName} · <span className="font-data">{line.sku}</span>
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden text-right whitespace-nowrap sm:table-cell">
+                    {formatMoney(line.unitPrice)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-center gap-1">
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`Quitar una unidad de ${line.productName}`}
+                        disabled={line.quantity <= 1}
+                        onClick={() => changeQuantity(line.variantId, -1)}
+                      >
+                        <Minus aria-hidden />
+                      </Button>
+                      <span className="w-6 text-center tabular-nums">{line.quantity}</span>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`Agregar una unidad de ${line.productName}`}
+                        disabled={line.quantity >= line.stock}
+                        onClick={() => changeQuantity(line.variantId, 1)}
+                      >
+                        <Plus aria-hidden />
+                      </Button>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap tabular-nums">
+                    {formatMoney(line.unitPrice * line.quantity)}
+                  </TableCell>
+                  <TableCell className="text-right">
                     <Button
                       type="button"
-                      size="icon"
-                      variant="outline"
-                      onClick={() =>
-                        setLines((prev) =>
-                          prev.map((item) =>
-                            item.variantId === line.variantId
-                              ? { ...item, quantity: Math.max(1, item.quantity - 1) }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      <Minus className="size-4" aria-hidden />
-                    </Button>
-                    <span className="w-8 text-center text-sm font-medium">{line.quantity}</span>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      disabled={line.quantity >= line.stock}
-                      onClick={() =>
-                        setLines((prev) =>
-                          prev.map((item) =>
-                            item.variantId === line.variantId
-                              ? {
-                                  ...item,
-                                  quantity: Math.min(item.stock, item.quantity + 1),
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      <Plus className="size-4" aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon"
+                      size="icon-sm"
                       variant="ghost"
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`Quitar ${line.productName}`}
                       onClick={() =>
                         setLines((prev) => prev.filter((item) => item.variantId !== line.variantId))
                       }
                     >
-                      <Trash2 className="size-4" aria-hidden />
+                      <Trash2 aria-hidden />
                     </Button>
-                  </div>
-                </li>
-              ))
-            )}
-          </ul>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="font-heading flex items-center gap-2 text-xl">
-            <Store className="size-5" aria-hidden />
-            Cobrar venta
-          </CardTitle>
-          <CardDescription>
-            Se registra como entregada, descuenta stock y suma al dashboard.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sale-payment">Método de pago</Label>
-            <select
-              id="sale-payment"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value as InStorePaymentMethod)}
-            >
-              {IN_STORE_PAYMENT_METHODS.map((method) => (
-                <option key={method} value={method}>
-                  {IN_STORE_PAYMENT_METHOD_LABELS[method]}
-                </option>
+                  </TableCell>
+                </TableRow>
               ))}
-            </select>
-          </div>
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sale-customer-name">Cliente (opcional)</Label>
-              <Input
-                id="sale-customer-name"
-                value={customerName}
-                onChange={(event) => setCustomerName(event.target.value)}
-                placeholder="Nombre"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sale-customer-phone">Teléfono (opcional)</Label>
-              <Input
-                id="sale-customer-phone"
-                value={customerPhone}
-                onChange={(event) => setCustomerPhone(event.target.value)}
-                placeholder="Celular"
-              />
-            </div>
-          </div>
+      <aside className="flex flex-col gap-5 border-t border-border pt-6 lg:sticky lg:top-20 lg:self-start lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">Total</span>
+          <span className="text-3xl font-semibold tracking-tight tabular-nums">
+            {formatMoney(animatedTotal === subtotal ? subtotal : Math.round(animatedTotal))}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {itemsCount === 1 ? "1 unidad" : `${itemsCount} unidades`}
+          </span>
+        </div>
 
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Método de pago</span>
+          <Segmented
+            label="Método de pago"
+            size="sm"
+            className="w-full"
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+            options={IN_STORE_PAYMENT_METHODS.map((method) => ({
+              value: method,
+              label: IN_STORE_PAYMENT_METHOD_LABELS[method],
+            }))}
+          />
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sale-customer-name">Cliente</Label>
+            <Input
+              id="sale-customer-name"
+              value={customerName}
+              onChange={(event) => setCustomerName(event.target.value)}
+              placeholder="Nombre (opcional)"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sale-customer-phone">Teléfono</Label>
+            <Input
+              id="sale-customer-phone"
+              type="tel"
+              value={customerPhone}
+              onChange={(event) => setCustomerPhone(event.target.value)}
+              placeholder="Celular (opcional)"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="sale-notes">Notas</Label>
             <Input
@@ -360,48 +446,39 @@ export function InStoreSaleForm() {
               placeholder="Opcional"
             />
           </div>
+        </div>
 
-          <div className="rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
-            <p className="text-sm text-muted-foreground">Total</p>
-            <p className="font-heading text-3xl font-bold tracking-tight">{formatMoney(subtotal)}</p>
-            <p className="text-xs text-muted-foreground">{lines.length} línea(s)</p>
-          </div>
+        <Button
+          type="button"
+          size="lg"
+          disabled={lines.length === 0 || saleMutation.isPending}
+          onClick={() =>
+            saleMutation.mutate({
+              items: lines.map((line) => ({
+                variantId: line.variantId,
+                quantity: line.quantity,
+              })),
+              paymentMethod,
+              customerName: customerName.trim() || undefined,
+              customerPhone: customerPhone.trim() || undefined,
+              notes: notes.trim() || undefined,
+            })
+          }
+        >
+          {saleMutation.isPending ? "Registrando…" : "Confirmar venta"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Se registra como entregada, descuenta stock y suma al resumen.
+        </p>
 
-          <Button
-            type="button"
-            disabled={lines.length === 0 || saleMutation.isPending}
-            onClick={() =>
-              saleMutation.mutate({
-                items: lines.map((line) => ({
-                  variantId: line.variantId,
-                  quantity: line.quantity,
-                })),
-                paymentMethod,
-                customerName: customerName.trim() || undefined,
-                customerPhone: customerPhone.trim() || undefined,
-                notes: notes.trim() || undefined,
-              })
-            }
-          >
-            {saleMutation.isPending ? "Registrando…" : "Confirmar venta"}
-          </Button>
-
-          {saleMutation.isError && (
-            <p className="text-sm text-destructive">
-              {saleMutation.error instanceof ApiClientError
-                ? saleMutation.error.message
-                : "No se pudo registrar la venta"}
-            </p>
-          )}
-
-          {successOrder && (
-            <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-              Venta {successOrder.number} registrada · {formatMoney(successOrder.total)}{" "}
-              {successOrder.currency}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+        {saleMutation.isError && (
+          <p className="text-sm text-destructive">
+            {saleMutation.error instanceof ApiClientError
+              ? saleMutation.error.message
+              : "No se pudo registrar la venta"}
+          </p>
+        )}
+      </aside>
     </div>
   );
 }

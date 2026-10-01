@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { CompanySidebar } from "@/components/company-sidebar";
 import { SubscriptionBanner } from "@/components/subscription-banner";
 import { useSession } from "@/providers/session-provider";
 
@@ -19,15 +19,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }, [isLoading, user?.role, router]);
 
   if (user?.role === "admin") {
-    return <p className="text-sm text-muted-foreground">Redirigiendo al panel de plataforma…</p>;
+    return <p className="p-6 text-sm text-muted-foreground">Redirigiendo al panel de plataforma…</p>;
   }
 
   return (
-    <div className="flex flex-1 gap-4 lg:gap-8">
-      <DashboardSidebar />
-      <div className="min-w-0 flex-1">
+    <div className="flex w-full flex-1">
+      <CompanySidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
         <SubscriptionBanner />
-        {children}
+        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 sm:px-8 lg:py-8">
+          {children}
+        </div>
       </div>
     </div>
   );

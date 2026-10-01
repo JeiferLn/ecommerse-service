@@ -13,7 +13,7 @@ import {
 } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronRight } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -33,8 +33,19 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
-const fieldLabelClass =
-  "text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
+const fieldClass = "h-11 rounded-lg";
+
+const tagClass =
+  "font-data rounded-md border border-border px-1.5 py-0.5 text-[10px] tracking-wider text-muted-foreground uppercase";
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} className="text-sm text-destructive">
+      {message}
+    </p>
+  );
+}
 
 function planPriceLabel(plan: PlanView | undefined, code: PlanCode): string {
   if (code === "free") return "15 días gratis";
@@ -206,51 +217,40 @@ function RegisterFormInner() {
             : "pointer-events-none absolute inset-x-0 top-0 -translate-x-6 opacity-0",
         )}
         aria-hidden={step !== "form"}
+        inert={step !== "form"}
       >
         <div className="flex flex-col gap-2">
-          <Label className={fieldLabelClass}>Plan</Label>
+          <span className="text-sm font-medium">Plan</span>
           <button
             type="button"
             onClick={goToPlanStep}
-            className="group flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3.5 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
+            className="group flex w-full items-center gap-4 rounded-lg border border-border bg-card px-4 py-3.5 text-left transition-colors hover:border-foreground/30 focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
           >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Sparkles className="size-4" aria-hidden />
-            </span>
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
-                <span className="font-heading text-sm font-semibold">
-                  {PLAN_CODE_LABELS[selectedPlan]}
-                </span>
-                {selectedPlan === "free" ? (
-                  <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
-                    Sin tarjeta
-                  </span>
-                ) : selectedPlan === "pro" ? (
-                  <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-primary uppercase">
-                    Popular
-                  </span>
-                ) : null}
+                <span className="text-sm font-semibold">{PLAN_CODE_LABELS[selectedPlan]}</span>
+                {selectedPlan === "free" ? <span className={tagClass}>Sin tarjeta</span> : null}
+                {selectedPlan === "pro" ? <span className={tagClass}>Recomendado</span> : null}
               </span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
+              <span className="font-data mt-1 block text-xs text-muted-foreground">
                 {planPriceLabel(selectedPlanData, selectedPlan)}
                 {selectedPlan !== "free"
                   ? ` · ${BILLING_INTERVAL_LABELS[selectedInterval]}`
                   : null}
               </span>
             </span>
-            <span className="flex items-center gap-1 text-xs font-semibold text-primary">
+            <span className="flex items-center gap-1 text-sm text-muted-foreground group-hover:text-foreground">
               Cambiar
-              <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              <ChevronRight className="size-4" aria-hidden />
             </span>
           </button>
         </div>
 
         {selectedPlan !== "free" ? (
           <div className="flex flex-col gap-2">
-            <Label className={fieldLabelClass}>Ciclo de facturación</Label>
+            <span className="text-sm font-medium">Ciclo de facturación</span>
             <div
-              className="grid grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-muted/30 p-1"
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted p-1"
               role="radiogroup"
               aria-label="Ciclo de facturación"
             >
@@ -264,22 +264,21 @@ function RegisterFormInner() {
                     aria-checked={selected}
                     onClick={() => setValue("billingInterval", interval)}
                     className={cn(
-                      "rounded-xl px-3 py-2.5 text-center text-sm transition-all",
+                      "rounded-md px-3 py-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
                       selected
-                        ? "bg-background font-semibold text-primary shadow-sm ring-1 ring-border dark:bg-[#282a33] dark:ring-white/10"
+                        ? "bg-card font-medium text-foreground ring-1 ring-border"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     <span className="block">{BILLING_INTERVAL_LABELS[interval]}</span>
-                    {interval === "year" ? (
-                      <span className="mt-0.5 block text-[10px] font-medium text-primary">
-                        2 meses gratis
-                      </span>
-                    ) : (
-                      <span className="mt-0.5 block text-[10px] font-medium opacity-70">
-                        Mes a mes
-                      </span>
-                    )}
+                    <span
+                      className={cn(
+                        "font-data mt-0.5 block text-[11px]",
+                        interval === "year" && selected ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {interval === "year" ? "2 meses gratis" : "Mes a mes"}
+                    </span>
                   </button>
                 );
               })}
@@ -288,22 +287,24 @@ function RegisterFormInner() {
         ) : null}
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name" className={fieldLabelClass}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="name">
               Tu nombre
             </Label>
             <Input
               id="name"
               placeholder="Tu nombre"
               autoComplete="name"
-              className="h-12 rounded-lg"
+              className={fieldClass}
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "name-error" : undefined}
               {...register("name")}
             />
-            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+            <FieldError id="name-error" message={errors.name?.message} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email" className={fieldLabelClass}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="email">
               Email
             </Label>
             <Input
@@ -311,72 +312,81 @@ function RegisterFormInner() {
               type="email"
               placeholder="tu@empresa.com"
               autoComplete="email"
-              className="h-12 rounded-lg"
+              className={fieldClass}
+              aria-invalid={errors.email ? true : undefined}
+              aria-describedby={errors.email ? "email-error" : undefined}
               {...register("email")}
             />
-            {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            <FieldError id="email-error" message={errors.email?.message} />
           </div>
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password" className={fieldLabelClass}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="password">
               Contraseña
             </Label>
             <Input
               id="password"
               type="password"
               autoComplete="new-password"
-              className="h-12 rounded-lg"
+              className={fieldClass}
+              aria-invalid={errors.password ? true : undefined}
+              aria-describedby={errors.password ? "password-error" : undefined}
               {...register("password")}
             />
-            {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+            <FieldError id="password-error" message={errors.password?.message} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="confirmPassword" className={fieldLabelClass}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="confirmPassword">
               Confirmar contraseña
             </Label>
             <Input
               id="confirmPassword"
               type="password"
               autoComplete="new-password"
-              className="h-12 rounded-lg"
+              className={fieldClass}
+              aria-invalid={errors.confirmPassword ? true : undefined}
+              aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
               {...register("confirmPassword")}
             />
-            {errors.confirmPassword && (
-              <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-            )}
+            <FieldError id="confirmPassword-error" message={errors.confirmPassword?.message} />
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="companyName" className={fieldLabelClass}>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="companyName">
             Nombre de la empresa
           </Label>
           <Input
             id="companyName"
             placeholder="Mi tienda"
-            className="h-12 rounded-lg"
+            className={fieldClass}
+            aria-invalid={errors.companyName ? true : undefined}
+            aria-describedby={errors.companyName ? "companyName-error" : undefined}
             {...register("companyName")}
           />
-          {errors.companyName && (
-            <p className="text-sm text-destructive">{errors.companyName.message}</p>
-          )}
+          <FieldError id="companyName-error" message={errors.companyName?.message} />
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label className={fieldLabelClass}>Tipo de empresa</Label>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="companyType">Tipo de empresa</Label>
             <Controller
               control={control}
               name="companyType"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-12! rounded-lg">
+                  <SelectTrigger
+                    id="companyType"
+                    className="h-11! w-full rounded-lg"
+                    aria-invalid={errors.companyType ? true : undefined}
+                    aria-describedby={errors.companyType ? "companyType-error" : undefined}
+                  >
                     <SelectValue placeholder="Selecciona un tipo" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="site">
                     {COMPANY_TYPES.map((type) => (
                       <SelectItem key={type} value={type}>
                         {COMPANY_TYPE_LABELS[type]}
@@ -386,22 +396,25 @@ function RegisterFormInner() {
                 </Select>
               )}
             />
-            {errors.companyType && (
-              <p className="text-sm text-destructive">{errors.companyType.message}</p>
-            )}
+            <FieldError id="companyType-error" message={errors.companyType?.message} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className={fieldLabelClass}>País</Label>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="countryCode">País</Label>
             <Controller
               control={control}
               name="countryCode"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-12! rounded-lg">
+                  <SelectTrigger
+                    id="countryCode"
+                    className="h-11! w-full rounded-lg"
+                    aria-invalid={errors.countryCode ? true : undefined}
+                    aria-describedby={errors.countryCode ? "countryCode-error" : undefined}
+                  >
                     <SelectValue placeholder="País de la empresa" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="site">
                     {COMPANY_COUNTRIES.map((country) => (
                       <SelectItem key={country.code} value={country.code}>
                         {country.name}
@@ -411,25 +424,22 @@ function RegisterFormInner() {
                 </Select>
               )}
             />
-            {errors.countryCode && (
-              <p className="text-sm text-destructive">{errors.countryCode.message}</p>
-            )}
+            <FieldError id="countryCode-error" message={errors.countryCode?.message} />
           </div>
         </div>
 
         {mutation.isError && (
-          <p className="text-sm text-destructive">
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
             {mutation.error instanceof ApiClientError
               ? mutation.error.message
               : "No se pudo crear la cuenta"}
           </p>
         )}
 
-        <Button
-          type="submit"
-          disabled={mutation.isPending}
-          className="premium-btn-primary mt-1 h-12 w-full gap-2 rounded-xl text-sm font-semibold tracking-wide text-white uppercase"
-        >
+        <Button type="submit" size="lg" disabled={mutation.isPending} className="mt-2 h-11 w-full">
           {mutation.isPending
             ? selectedPlan === "free"
               ? "Creando cuenta…"
@@ -450,18 +460,19 @@ function RegisterFormInner() {
             : "pointer-events-none absolute inset-x-0 top-0 translate-x-6 opacity-0",
         )}
         aria-hidden={step !== "plan"}
+        inert={step !== "plan"}
       >
         <div className="flex items-start gap-3">
           <button
             type="button"
             onClick={goToFormStep}
-            className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
             aria-label="Volver al registro"
           >
             <ArrowLeft className="size-4" aria-hidden />
           </button>
           <div>
-            <h2 className="font-heading text-xl font-bold tracking-tight">Elige tu plan</h2>
+            <h2 className="text-xl font-semibold tracking-tight">Elige tu plan</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Free no pide tarjeta. Pro y Business se activan tras pagar en Mercado Pago.
             </p>
@@ -469,7 +480,7 @@ function RegisterFormInner() {
         </div>
 
         <div
-          className="overflow-hidden rounded-2xl border border-border/70 bg-muted/30"
+          className="overflow-hidden rounded-lg border border-border bg-card"
           role="radiogroup"
           aria-label="Plan"
         >
@@ -486,9 +497,9 @@ function RegisterFormInner() {
                 aria-checked={selected}
                 onClick={() => selectPlan(code)}
                 className={cn(
-                  "flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors",
-                  index > 0 && "border-t border-border/60",
-                  selected ? "bg-primary/10" : "hover:bg-muted/50",
+                  "flex w-full items-center gap-3 px-4 py-4 text-left transition-colors focus-visible:bg-muted focus-visible:outline-none",
+                  index > 0 && "border-t border-border",
+                  selected ? "bg-accent" : "hover:bg-muted",
                 )}
               >
                 <span
@@ -500,31 +511,23 @@ function RegisterFormInner() {
                   )}
                   aria-hidden
                 >
-                  {selected ? <Check className="size-3 stroke-[3]" /> : null}
+                  {selected ? <Check className="size-3 stroke-3" /> : null}
                 </span>
 
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
-                    <span className="font-heading text-sm font-semibold">
-                      {PLAN_CODE_LABELS[code]}
-                    </span>
+                    <span className="text-sm font-semibold">{PLAN_CODE_LABELS[code]}</span>
                     {highlighted && code !== "free" ? (
-                      <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-primary uppercase">
-                        Popular
-                      </span>
+                      <span className={tagClass}>Recomendado</span>
                     ) : null}
-                    {code === "free" ? (
-                      <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
-                        Sin tarjeta
-                      </span>
-                    ) : null}
+                    {code === "free" ? <span className={tagClass}>Sin tarjeta</span> : null}
                   </span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                  <span className="mt-1 block text-xs text-muted-foreground">
                     {planHint(code)}
                   </span>
                 </span>
 
-                <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
+                <span className="font-data shrink-0 text-right text-sm">
                   {planPriceLabel(plan, code)}
                 </span>
               </button>

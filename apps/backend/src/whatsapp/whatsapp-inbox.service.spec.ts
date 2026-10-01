@@ -76,7 +76,7 @@ describe("WhatsAppInboxService", () => {
     const result = await service.listConversations("company-a", { page: 1, perPage: 20 });
 
     expect(prisma.conversation.count).toHaveBeenCalledWith({
-      where: { companyId: "company-a" },
+      where: { companyId: "company-a", isPlayground: false },
     });
     expect(result.items[0]?.customerWaId).toBe("57300");
     expect(result.items[0]?.lastMessagePreview).toBe("Hola");

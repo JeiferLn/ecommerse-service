@@ -5,38 +5,67 @@ import type {
   BillingCheckoutResult,
   BillingInterval,
   PlanCode,
+  PlanView,
   SubscriptionDetails,
+  SubscriptionStatus,
 } from "@commerce-ai/types";
 import {
   BILLING_INTERVAL_LABELS,
+  PLAN_CODE_LABELS,
   canManageBilling,
   SUBSCRIPTION_STATUS_LABELS,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, Wallet } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Segmented } from "@/components/ui/segmented";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
-function UsageBar({ label, used, max }: { label: string; used: number; max: number }) {
+const STATUS_TONE: Record<SubscriptionStatus, StatusTone> = {
+  trialing: "neutral",
+  active: "positive",
+  past_due: "attention",
+  trial_expired: "negative",
+  canceled: "negative",
+};
+
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
+function UsageRow({ label, used, max }: { label: string; used: number; max: number }) {
+  const [shown, setShown] = useState(false);
   const pct = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex justify-between text-sm">
-        <span>{label}</span>
-        <span className="text-muted-foreground">
-          {used} / {max}
-        </span>
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1.5 py-3 sm:grid-cols-[10rem_minmax(0,1fr)_7rem]">
+      <span className="text-sm">{label}</span>
+      <span className="text-right text-sm text-muted-foreground tabular-nums sm:order-last">
+        {used.toLocaleString("es-CO")} / {max.toLocaleString("es-CO")}
+      </span>
+      <div className="col-span-2 h-1 overflow-hidden rounded-full bg-muted sm:col-span-1">
+        <div
+          className={cn(
+            "h-full rounded-full transition-[width] duration-700 ease-out",
+            pct >= 90 ? "bg-destructive" : pct >= 75 ? "bg-warning" : "bg-primary",
+          )}
+          style={{ width: shown ? `${pct}%` : 0 }}
+        />
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
+    </li>
   );
 }
 
@@ -52,6 +81,12 @@ function BillingPageInner() {
     queryKey: ["billing-subscription", user?.companyId],
     queryFn: () => apiFetch<SubscriptionDetails>("/billing/subscription"),
     enabled: Boolean(user?.companyId),
+  });
+
+  const { data: plans } = useQuery({
+    queryKey: ["billing-plans"],
+    queryFn: () => apiFetch<PlanView[]>("/billing/plans"),
+    enabled: canManage,
   });
 
   useEffect(() => {
@@ -127,228 +162,262 @@ function BillingPageInner() {
     },
   });
 
+  const header = (
+    <PageHeader
+      title="Facturación"
+      description="Tu plan, lo que llevas usado este periodo y la suscripción a Pro o Business."
+      className="mb-6"
+    />
+  );
+
+  if (!user) {
+    return (
+      <>
+        {header}
+        <Skeleton className="h-20 w-full max-w-5xl rounded-lg" />
+      </>
+    );
+  }
+
   if (!canManage) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Solo el dueño de la empresa puede gestionar la facturación.
-      </p>
+      <>
+        {header}
+        <p className="text-sm text-muted-foreground">
+          Solo el dueño de la empresa puede gestionar la facturación.
+        </p>
+      </>
     );
   }
 
   const periodEndLabel = data?.currentPeriodEnd
-    ? new Date(data.currentPeriodEnd).toLocaleDateString("es-CO")
+    ? new Date(data.currentPeriodEnd).toLocaleDateString("es-CO", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
     : null;
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Facturación</h1>
-        <p className="text-muted-foreground">
-          Plan actual, uso del periodo y suscripción recurrente Pro o Business.
-        </p>
-      </div>
+  const paidPlans = [...(plans ?? [])]
+    .filter((plan): plan is PlanView & { code: Exclude<PlanCode, "free"> } => plan.code !== "free")
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando suscripción…</p>}
-      {error && (
+  return (
+    <div className="flex max-w-5xl flex-col">
+      {header}
+
+      {isLoading ? (
+        <div className="flex flex-col gap-6">
+          <Skeleton className="h-20 w-full rounded-lg" />
+          <SkeletonText lines={5} />
+        </div>
+      ) : null}
+      {error ? (
         <p className="text-sm text-destructive">
           {error instanceof ApiClientError ? error.message : "No se pudo cargar la suscripción"}
         </p>
-      )}
+      ) : null}
 
-      {data && (
+      {data ? (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card className="border-border/70 bg-card/80 shadow-brand-sm">
-              <CardHeader>
-                <CardTitle className="font-heading flex items-center gap-2 text-xl">
-                  <Wallet className="size-5" aria-hidden />
-                  {data.planName}
-                </CardTitle>
-                <CardDescription>
+          <section className="flex flex-col gap-4 rounded-lg border border-border p-5 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-lg font-medium">{data.planName}</span>
+                <StatusPill tone={STATUS_TONE[data.status]}>
                   {SUBSCRIPTION_STATUS_LABELS[data.status]}
-                  {data.trialDaysLeft != null ? ` · ${data.trialDaysLeft} días de prueba` : ""}
-                  {data.billingInterval
-                    ? ` · ${BILLING_INTERVAL_LABELS[data.billingInterval]}`
-                    : ""}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3 text-sm">
-                {data.featuresLocked ? (
-                  <p className="text-destructive">
-                    Funciones bloqueadas hasta que actives un plan de pago.
-                  </p>
-                ) : (
-                  <p className="text-muted-foreground">
-                    Periodo de uso: {data.usage.periodKey}
-                    {periodEndLabel
+                </StatusPill>
+                {data.billingInterval ? (
+                  <span className="text-sm text-muted-foreground">
+                    {BILLING_INTERVAL_LABELS[data.billingInterval]}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {data.featuresLocked
+                  ? "Funciones bloqueadas hasta que actives un plan de pago."
+                  : data.trialDaysLeft != null
+                    ? `Te quedan ${data.trialDaysLeft} días de prueba.`
+                    : periodEndLabel
                       ? data.cancelAtPeriodEnd
-                        ? ` · acceso hasta ${periodEndLabel}`
-                        : ` · próxima renovación ~${periodEndLabel}`
-                      : ""}
-                  </p>
-                )}
-                {data.cancelAtPeriodEnd && periodEndLabel && !data.featuresLocked ? (
-                  <p className="text-sm text-amber-800 dark:text-amber-200">
-                    Renovación cancelada. Sigues con el plan hasta el {periodEndLabel}.
-                  </p>
-                ) : null}
-                {data.desiredPlanCode && data.status === "trialing" ? (
-                  <p className="text-sm">
-                    Plan elegido al registrarte: <strong>{data.desiredPlanCode}</strong>
-                    {data.desiredBillingInterval
-                      ? ` (${BILLING_INTERVAL_LABELS[data.desiredBillingInterval]})`
-                      : ""}{" "}
-                    (pendiente de pago)
-                  </p>
-                ) : null}
-                {data.status === "active" && !data.cancelAtPeriodEnd ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={cancelMutation.isPending}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "¿Cancelar la renovación automática? Mantendrás el acceso hasta el fin del periodo actual.",
-                        )
-                      ) {
-                        cancelMutation.mutate();
-                      }
-                    }}
-                  >
-                    {cancelMutation.isPending ? "Cancelando…" : "Cancelar renovación"}
-                  </Button>
-                ) : null}
-                {cancelMutation.isError && (
-                  <p className="text-sm text-destructive">
-                    {cancelMutation.error instanceof ApiClientError
-                      ? cancelMutation.error.message
-                      : "No se pudo cancelar"}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                        ? `Acceso hasta el ${periodEndLabel}.`
+                        : `Se renueva el ${periodEndLabel}.`
+                      : `Periodo ${data.usage.periodKey}.`}
+              </p>
+              {data.desiredPlanCode && data.status === "trialing" ? (
+                <p className="text-sm">
+                  Elegiste {PLAN_CODE_LABELS[data.desiredPlanCode]}
+                  {data.desiredBillingInterval
+                    ? ` (${BILLING_INTERVAL_LABELS[data.desiredBillingInterval].toLowerCase()})`
+                    : ""}{" "}
+                  al registrarte; está pendiente de pago.
+                </p>
+              ) : null}
+            </div>
+            {data.status === "active" && !data.cancelAtPeriodEnd ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-fit text-muted-foreground"
+                disabled={cancelMutation.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "¿Cancelar la renovación automática? Mantendrás el acceso hasta el fin del periodo actual.",
+                    )
+                  ) {
+                    cancelMutation.mutate();
+                  }
+                }}
+              >
+                {cancelMutation.isPending ? "Cancelando…" : "Cancelar renovación"}
+              </Button>
+            ) : null}
+          </section>
 
-            <Card className="border-border/70 bg-card/80 shadow-brand-sm">
-              <CardHeader>
-                <CardTitle className="font-heading flex items-center gap-2 text-xl">
-                  <CreditCard className="size-5" aria-hidden />
-                  Mejorar plan
-                </CardTitle>
-                <CardDescription>
-                  Pro $39/mes o $390/año · Business $99/mes o $990/año (aprox. local al pagar)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                <div className="flex rounded-lg border border-border/70 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setInterval("month")}
-                    className={cn(
-                      "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-                      interval === "month"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    Mensual
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInterval("year")}
-                    className={cn(
-                      "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-                      interval === "year"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    Anual (−2 meses)
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    disabled={
-                      checkoutMutation.isPending ||
-                      (data.planCode === "pro" && data.status === "active" && !data.featuresLocked)
-                    }
-                    onClick={() =>
-                      checkoutMutation.mutate({ planCode: "pro", billingInterval: interval })
-                    }
-                  >
-                    Activar Pro
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={
-                      checkoutMutation.isPending ||
-                      (data.planCode === "business" &&
-                        data.status === "active" &&
-                        !data.featuresLocked)
-                    }
-                    onClick={() =>
-                      checkoutMutation.mutate({
-                        planCode: "business",
-                        billingInterval: interval,
-                      })
-                    }
-                  >
-                    Activar Business
-                  </Button>
-                </div>
-                {checkoutMutation.isError && (
-                  <p className="w-full text-sm text-destructive">
-                    {checkoutMutation.error instanceof ApiClientError
-                      ? checkoutMutation.error.message
-                      : "No se pudo iniciar el checkout"}
-                  </p>
-                )}
-                {checkoutMutation.isSuccess && checkoutMutation.data.activatedWithoutPayment && (
-                  <p className="w-full text-sm text-primary">
-                    Plan activado en modo desarrollo (sin cobro MP).
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {data.cancelAtPeriodEnd && periodEndLabel && !data.featuresLocked ? (
+            <p className="mt-3 flex items-start gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              Renovación cancelada. Sigues con el plan hasta el {periodEndLabel}.
+            </p>
+          ) : null}
+          {cancelMutation.isError ? (
+            <p className="mt-3 text-sm text-destructive">
+              {cancelMutation.error instanceof ApiClientError
+                ? cancelMutation.error.message
+                : "No se pudo cancelar"}
+            </p>
+          ) : null}
 
-          <Card className="border-border/70 bg-card/80 shadow-brand-sm">
-            <CardHeader>
-              <CardTitle className="font-heading text-xl">Uso del periodo</CardTitle>
-              <CardDescription>Contadores del mes {data.usage.periodKey} (UTC)</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <UsageBar label="Miembros" used={data.usage.members} max={data.limits.maxMembers} />
-              <UsageBar label="Productos" used={data.usage.products} max={data.limits.maxProducts} />
-              <UsageBar label="Variantes" used={data.usage.variants} max={data.limits.maxVariants} />
-              <UsageBar
-                label="Knowledge"
+          <section className="mt-10 flex flex-col gap-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-sm font-medium">Planes</h2>
+                <p className="text-sm text-muted-foreground">
+                  Precios en USD; al pagar se cobra el equivalente en tu moneda.
+                </p>
+              </div>
+              <Segmented
+                label="Periodo de facturación"
+                size="sm"
+                value={interval}
+                onChange={setInterval}
+                options={[
+                  { value: "month" as const, label: "Mensual" },
+                  { value: "year" as const, label: "Anual · 2 meses gratis" },
+                ]}
+              />
+            </div>
+
+            {plans ? (
+              <div className="grid divide-y divide-border rounded-lg border border-border md:grid-cols-2 md:divide-x md:divide-y-0">
+                {paidPlans.map((plan) => {
+                  const isCurrent =
+                    data.planCode === plan.code && data.status === "active" && !data.featuresLocked;
+                  const price = interval === "year" ? plan.priceYearUsdCents : plan.priceUsdCents;
+                  return (
+                    <div key={plan.code} className="flex flex-col gap-4 p-5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{plan.name}</span>
+                        {isCurrent ? <StatusPill tone="positive">Plan actual</StatusPill> : null}
+                      </div>
+                      <p key={interval} className="fade-swap flex items-baseline gap-1">
+                        <span className="text-3xl font-semibold tracking-tight tabular-nums">
+                          {formatUsd(price)}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {interval === "year" ? "/año" : "/mes"}
+                        </span>
+                      </p>
+                      <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                        <li>{plan.maxProducts.toLocaleString("es-CO")} productos</li>
+                        <li>{plan.maxMembers.toLocaleString("es-CO")} personas en el equipo</li>
+                        <li>
+                          {plan.maxAiRepliesMonth.toLocaleString("es-CO")} respuestas del asistente
+                          al mes
+                        </li>
+                      </ul>
+                      <Button
+                        type="button"
+                        className="mt-auto w-fit"
+                        variant={plan.highlighted ? "default" : "outline"}
+                        disabled={checkoutMutation.isPending || isCurrent}
+                        onClick={() =>
+                          checkoutMutation.mutate({
+                            planCode: plan.code,
+                            billingInterval: interval,
+                          })
+                        }
+                      >
+                        {isCurrent ? "Tu plan" : `Activar ${plan.name}`}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <Skeleton className="h-56 w-full rounded-lg" />
+            )}
+            {checkoutMutation.isError ? (
+              <p className="text-sm text-destructive">
+                {checkoutMutation.error instanceof ApiClientError
+                  ? checkoutMutation.error.message
+                  : "No se pudo iniciar el checkout"}
+              </p>
+            ) : null}
+            {checkoutMutation.isSuccess && checkoutMutation.data.activatedWithoutPayment ? (
+              <p className="text-sm text-muted-foreground">
+                Plan activado en modo desarrollo (sin cobro).
+              </p>
+            ) : null}
+          </section>
+
+          <section className="mt-10 flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-medium">Uso del periodo</h2>
+              <p className="text-sm text-muted-foreground">
+                Contadores de {data.usage.periodKey} (UTC).
+              </p>
+            </div>
+            <ul className="divide-y divide-border border-y border-border">
+              <UsageRow label="Miembros" used={data.usage.members} max={data.limits.maxMembers} />
+              <UsageRow
+                label="Productos"
+                used={data.usage.products}
+                max={data.limits.maxProducts}
+              />
+              <UsageRow
+                label="Variantes"
+                used={data.usage.variants}
+                max={data.limits.maxVariants}
+              />
+              <UsageRow
+                label="Documentos"
                 used={data.usage.knowledgeDocs}
                 max={data.limits.maxKnowledgeDocs}
               />
-              <UsageBar
-                label="WhatsApp inbound"
+              <UsageRow
+                label="Mensajes recibidos"
                 used={data.usage.waInbound}
                 max={data.limits.maxWaMessagesMonth}
               />
-              <UsageBar
+              <UsageRow
                 label="Respuestas IA"
                 used={data.usage.aiReplies}
                 max={data.limits.maxAiRepliesMonth}
               />
-            </CardContent>
-          </Card>
+            </ul>
+          </section>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
 
 export default function BillingPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando…</p>}>
+    <Suspense fallback={<SkeletonText lines={4} className="max-w-md" />}>
       <BillingPageInner />
     </Suspense>
   );

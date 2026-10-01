@@ -1,11 +1,54 @@
 "use client";
 
 import type { SubscriptionSummary } from "@commerce-ai/types";
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, ArrowRight, Clock, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
+
+type Tone = "neutral" | "attention" | "negative";
+
+const TONE: Record<Tone, { strip: string; icon: string }> = {
+  neutral: { strip: "bg-muted/60", icon: "text-muted-foreground" },
+  attention: { strip: "bg-warning-soft", icon: "text-warning" },
+  negative: { strip: "bg-destructive/10", icon: "text-destructive" },
+};
+
+function Strip({
+  tone,
+  icon: Icon,
+  message,
+  cta,
+}: {
+  tone: Tone;
+  icon: LucideIcon;
+  message: string;
+  cta: string;
+}) {
+  const t = TONE[tone];
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex min-h-10 items-center justify-between gap-3 border-b border-border px-4 py-2 text-sm sm:px-8",
+        t.strip,
+      )}
+    >
+      <p className="inline-flex min-w-0 items-center gap-2">
+        <Icon className={cn("size-4 shrink-0", t.icon)} aria-hidden />
+        <span className="truncate">{message}</span>
+      </p>
+      <Link
+        href="/billing"
+        className="inline-flex shrink-0 items-center gap-1 font-medium underline-offset-4 hover:underline"
+      >
+        {cta}
+        <ArrowRight className="size-3.5" aria-hidden />
+      </Link>
+    </div>
+  );
+}
 
 export function SubscriptionBanner() {
   const { user } = useSession();
@@ -16,31 +59,26 @@ export function SubscriptionBanner() {
 
   if (sub.status === "trialing" && sub.trialDaysLeft != null) {
     return (
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm">
-        <p className="inline-flex items-center gap-2">
-          <Clock className="size-4 text-primary" aria-hidden />
-          Prueba gratuita: {sub.trialDaysLeft} día(s) restante(s)
-          {sub.checkoutRequired ? " · Tienes un plan de pago pendiente" : ""}
-        </p>
-        <Button asChild size="sm" variant="outline">
-          <Link href="/billing">Ver facturación</Link>
-        </Button>
-      </div>
+      <Strip
+        tone="neutral"
+        icon={Clock}
+        message={`Prueba gratuita: ${sub.trialDaysLeft} día(s) restante(s)${
+          sub.checkoutRequired ? " · Tienes un plan de pago pendiente" : ""
+        }`}
+        cta="Ver facturación"
+      />
     );
   }
 
   if (sub.cancelAtPeriodEnd && sub.currentPeriodEnd && !sub.featuresLocked) {
     const until = new Date(sub.currentPeriodEnd).toLocaleDateString("es-CO");
     return (
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
-        <p className="inline-flex items-center gap-2">
-          <Clock className="size-4 text-amber-700 dark:text-amber-300" aria-hidden />
-          Renovación cancelada. Mantienes acceso hasta el {until}.
-        </p>
-        <Button asChild size="sm" variant="outline">
-          <Link href="/billing">Ver facturación</Link>
-        </Button>
-      </div>
+      <Strip
+        tone="attention"
+        icon={Clock}
+        message={`Renovación cancelada. Mantienes acceso hasta el ${until}.`}
+        cta="Ver facturación"
+      />
     );
   }
 
@@ -50,17 +88,7 @@ export function SubscriptionBanner() {
         ? "Tu periodo de plan venció. Renueva en Facturación para reactivar WhatsApp, IA y nuevas altas."
         : "Tu plan no está activo. Elige un plan para reactivar WhatsApp, IA y nuevas altas.";
 
-    return (
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
-        <p className="inline-flex items-center gap-2">
-          <AlertTriangle className="size-4 text-destructive" aria-hidden />
-          {lockedMessage}
-        </p>
-        <Button asChild size="sm">
-          <Link href="/billing">Elegir plan</Link>
-        </Button>
-      </div>
-    );
+    return <Strip tone="negative" icon={AlertTriangle} message={lockedMessage} cta="Elegir plan" />;
   }
 
   return null;

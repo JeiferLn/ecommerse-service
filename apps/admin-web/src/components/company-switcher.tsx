@@ -13,12 +13,13 @@ import {
 } from "@/components/ui/select";
 import { CreateCompanyDialog } from "@/components/create-company-dialog";
 import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/lib/session";
 import { useSession } from "@/providers/session-provider";
 
 const CREATE_COMPANY_VALUE = "__create_company__";
 
-export function CompanySwitcher() {
+export function CompanySwitcher({ variant = "default" }: { variant?: "default" | "ghost" }) {
   const router = useRouter();
   const { user, refresh } = useSession();
   const companies = user?.companies ?? [];
@@ -57,7 +58,14 @@ export function CompanySwitcher() {
         }}
         disabled={switchMutation.isPending}
       >
-        <SelectTrigger aria-label="Cambiar de empresa" className="w-52">
+        <SelectTrigger
+          aria-label="Cambiar de empresa"
+          className={cn(
+            variant === "ghost"
+              ? "h-9 w-auto max-w-56 border-transparent bg-transparent font-medium shadow-none hover:bg-muted dark:bg-transparent"
+              : "w-full",
+          )}
+        >
           <SelectValue placeholder="Selecciona empresa" />
         </SelectTrigger>
         <SelectContent>
@@ -66,9 +74,7 @@ export function CompanySwitcher() {
               {company.name}
             </SelectItem>
           ))}
-          {canCreate && (
-            <SelectItem value={CREATE_COMPANY_VALUE}>Crear empresa</SelectItem>
-          )}
+          {canCreate && <SelectItem value={CREATE_COMPANY_VALUE}>Crear empresa</SelectItem>}
         </SelectContent>
       </Select>
       <CreateCompanyDialog open={createOpen} onOpenChange={setCreateOpen} />

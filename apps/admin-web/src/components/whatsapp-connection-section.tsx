@@ -5,50 +5,35 @@ import {
   type CompanyDetails,
   type WhatsAppConnection,
 } from "@commerce-ai/types";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, MessageSquareText, Trash2 } from "lucide-react";
+import {
+  Check,
+  Clock,
+  Copy,
+  ExternalLink,
+  FlaskConical,
+  MessageSquareText,
+  Pause,
+  Play,
+} from "lucide-react";
 import Link from "next/link";
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { useState } from "react";
 
+import { FormSection } from "@/components/form-section";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { apiFetch, ApiClientError } from "@/lib/api";
-import { useSession } from "@/providers/session-provider";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusPill } from "@/components/ui/status-pill";
 import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
 import { WhatsAppKnowledgeRequiredGate } from "@/components/whatsapp-knowledge-required-gate";
 import { WhatsAppPaymentsRequiredGate } from "@/components/whatsapp-payments-required-gate";
-
-const connectionSchema = z.object({
-  twilioWhatsAppNumber: z
-    .string()
-    .regex(/^\+[1-9]\d{7,14}$/, "Usa formato E.164 con +: +14155238886"),
-  displayPhoneNumber: z.string().optional(),
-  isActive: z.boolean(),
-});
-
-type ConnectionValues = z.infer<typeof connectionSchema>;
-
-const simulateSchema = z.object({
-  from: z
-    .string()
-    .min(8, "Indica el número del cliente en E.164")
-    .regex(/^\+?[1-9]\d{7,14}$/, "Ej. +573001112233"),
-  text: z.string().min(1, "Escribe un mensaje"),
-  customerName: z.string().optional(),
-});
-
-type SimulateValues = z.infer<typeof simulateSchema>;
+import { apiFetch, ApiClientError } from "@/lib/api";
+import { useSession } from "@/providers/session-provider";
 
 export function WhatsAppConnectionSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const canManage = Boolean(user && canManageWhatsapp(user.role));
+  const [copied, setCopied] = useState(false);
 
   const {
     data: connection,
@@ -63,302 +48,207 @@ export function WhatsAppConnectionSection() {
   const { data: company, isLoading: companyLoading } = useQuery({
     queryKey: ["company", user?.companyId],
     queryFn: () => apiFetch<CompanyDetails>("/company"),
-    enabled: Boolean(user?.companyId),
+    enabled: Boolean(user?.companyId && canManage),
   });
 
-  const commerceReady = Boolean(company?.commerce.isConfigured);
-  const knowledgeReady = Boolean(company?.knowledge.isConfigured);
-  const paymentsReady = Boolean(company?.payments.isConfigured);
-  const missingKnowledge = company?.knowledge.missingTypes ?? [];
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors, isDirty },
-  } = useForm<ConnectionValues>({
-    resolver: zodResolver(connectionSchema),
-    defaultValues: {
-      twilioWhatsAppNumber: "",
-      displayPhoneNumber: "",
-      isActive: true,
-    },
-  });
-
-  useEffect(() => {
-    if (!connection) {
-      return;
-    }
-    reset({
-      twilioWhatsAppNumber: connection.twilioWhatsAppNumber,
-      displayPhoneNumber: connection.displayPhoneNumber ?? "",
-      isActive: connection.isActive,
-    });
-  }, [connection, reset]);
-
-  const saveMutation = useMutation({
-    mutationFn: (values: ConnectionValues) =>
+  const toggleMutation = useMutation({
+    mutationFn: (isActive: boolean) =>
       apiFetch<WhatsAppConnection>("/whatsapp/connection", {
-        method: "PUT",
-        body: JSON.stringify({
-          twilioWhatsAppNumber: values.twilioWhatsAppNumber.trim(),
-          displayPhoneNumber: values.displayPhoneNumber?.trim() || undefined,
-          isActive: values.isActive,
-        }),
+        method: "PATCH",
+        body: JSON.stringify({ isActive }),
       }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-connection"] });
+    onSuccess: (data) => {
+      queryClient.setQueryData(["whatsapp-connection", user?.companyId], data);
+      void queryClient.invalidateQueries({ queryKey: ["company"] });
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => apiFetch<null>("/whatsapp/connection", { method: "DELETE" }),
-    onSuccess: () => {
-      reset({
-        twilioWhatsAppNumber: "",
-        displayPhoneNumber: "",
-        isActive: true,
-      });
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-connection"] });
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversations"] });
-    },
-  });
-
-  const simulateForm = useForm<SimulateValues>({
-    resolver: zodResolver(simulateSchema),
-    defaultValues: {
-      from: "+573001112233",
-      text: "Hola, ¿tienen este producto?",
-      customerName: "Cliente demo",
-    },
-  });
-
-  const simulateMutation = useMutation({
-    mutationFn: (values: SimulateValues) =>
-      apiFetch<{ conversationId: string; messageId: string }>("/whatsapp/webhook/simulate", {
-        method: "POST",
-        body: JSON.stringify(values),
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversations"] });
-    },
-  });
+  if (!user) {
+    return <Skeleton className="h-40 w-full max-w-4xl rounded-lg" />;
+  }
 
   if (!canManage) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>WhatsApp</CardTitle>
-          <CardDescription>
-            Solo owner y manager pueden configurar la conexión. Puedes ver el inbox de
-            conversaciones.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild>
-            <Link href="/whatsapp/inbox">Ir al inbox</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <p className="text-sm text-muted-foreground">
+        Solo el dueño o un administrador de la tienda pueden ver el canal de WhatsApp.
+      </p>
     );
   }
 
   if (isLoading || companyLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando conexión…</p>;
+    return <Skeleton className="h-40 w-full max-w-4xl rounded-lg" />;
   }
 
   if (error) {
     return (
       <p className="text-sm text-destructive">
-        {error instanceof ApiClientError ? error.message : "No se pudo cargar la conexión"}
+        {error instanceof ApiClientError ? error.message : "No se pudo cargar el canal"}
       </p>
     );
   }
 
-  if (!commerceReady) {
+  if (!company?.commerce.isConfigured) {
     return <WhatsAppCommerceRequiredGate />;
   }
 
-  if (!knowledgeReady) {
-    return <WhatsAppKnowledgeRequiredGate missingTypes={missingKnowledge} />;
+  if (!company.knowledge.isConfigured) {
+    return <WhatsAppKnowledgeRequiredGate missingTypes={company.knowledge.missingTypes} />;
   }
 
-  if (!paymentsReady) {
+  if (!company.payments.isConfigured) {
     return <WhatsAppPaymentsRequiredGate />;
   }
 
-  const isActive = watch("isActive");
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button asChild variant="outline">
-          <Link href="/whatsapp/inbox">
-            <MessageSquareText className="size-4" aria-hidden />
-            Abrir inbox
+  if (!connection) {
+    return (
+      <div className="flex max-w-4xl flex-col gap-4 rounded-lg border border-border p-5 sm:flex-row sm:items-start">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <Clock className="size-4" aria-hidden />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 className="text-sm font-medium">Estamos preparando tu número</h2>
+          <p className="max-w-xl text-sm text-pretty text-muted-foreground">
+            Tu tienda ya tiene todo lo necesario. Nuestro equipo está asignando el número de
+            WhatsApp de tu asistente; te avisaremos cuando esté listo para recibir clientes.
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="w-fit shrink-0">
+          <Link href="/assistant/playground">
+            <FlaskConical className="size-4" aria-hidden />
+            Prueba tu asistente
           </Link>
         </Button>
-        {connection?.waMeLink && (
-          <a
-            href={connection.waMeLink}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"
-          >
-            {connection.waMeLink}
-            <ExternalLink className="size-3.5" aria-hidden />
-          </a>
-        )}
       </div>
+    );
+  }
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Conexión Twilio WhatsApp</CardTitle>
-          <CardDescription>
-            Account SID y Auth Token van en el backend (`.env` de plataforma). Aquí solo vinculas el
-            número WhatsApp de Twilio de esta empresa (sandbox o sender aprobado).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={handleSubmit((values) => saveMutation.mutate(values))}
-          >
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wa-twilio-number">Número WhatsApp (E.164)</Label>
-              <Input
-                id="wa-twilio-number"
-                placeholder="+14155238886"
-                {...register("twilioWhatsAppNumber")}
-              />
-              <p className="text-xs text-muted-foreground">
-                Sandbox típico: +14155238886. Sin prefijo <code>whatsapp:</code>.
-              </p>
-              {errors.twilioWhatsAppNumber && (
-                <p className="text-sm text-destructive">{errors.twilioWhatsAppNumber.message}</p>
+  const phone = connection.displayPhoneNumber || connection.twilioWhatsAppNumber;
+  const nextActive = !connection.isActive;
+
+  const copyLink = async () => {
+    if (!connection.waMeLink) {
+      return;
+    }
+    await navigator.clipboard.writeText(connection.waMeLink);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  const requirements = [
+    { label: "Envíos configurados", href: "/settings/shipping" },
+    { label: "Documentos de conocimiento", href: "/knowledge" },
+    { label: "Mercado Pago conectado", href: "/settings/payments" },
+  ];
+
+  return (
+    <div className="flex max-w-4xl flex-col">
+      <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Número de tu asistente</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-data text-2xl tracking-tight">{phone}</span>
+            <StatusPill tone={connection.isActive ? "positive" : "attention"}>
+              {connection.isActive ? "Activo" : "En pausa"}
+            </StatusPill>
+          </div>
+          <p key={String(connection.isActive)} className="fade-swap text-sm text-muted-foreground">
+            {connection.isActive
+              ? "El asistente responde a tus clientes las 24 horas."
+              : "En pausa, el asistente no responde y los mensajes nuevos no llegan a Conversaciones."}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={connection.isActive ? "outline" : "default"}
+          disabled={toggleMutation.isPending}
+          onClick={() => toggleMutation.mutate(nextActive)}
+          className="w-fit shrink-0"
+        >
+          {connection.isActive ? (
+            <Pause className="size-4" aria-hidden />
+          ) : (
+            <Play className="size-4" aria-hidden />
+          )}
+          {toggleMutation.isPending
+            ? "Guardando…"
+            : connection.isActive
+              ? "Pausar asistente"
+              : "Activar asistente"}
+        </Button>
+      </div>
+      {toggleMutation.isError ? (
+        <p className="-mt-4 mb-6 text-sm text-destructive">
+          {toggleMutation.error instanceof ApiClientError
+            ? toggleMutation.error.message
+            : "No se pudo cambiar el estado"}
+        </p>
+      ) : null}
+
+      {connection.waMeLink ? (
+        <FormSection
+          title="Enlace para clientes"
+          description="Compártelo en tu Instagram, tu web o tus anuncios para que te escriban directo."
+        >
+          <div className="flex min-w-0 items-center gap-2 rounded-md border border-border py-1 pr-1 pl-3">
+            <a
+              href={connection.waMeLink}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-w-0 flex-1 items-center gap-1.5 truncate font-data text-[13px] underline-offset-4 hover:underline"
+            >
+              <span className="truncate">{connection.waMeLink}</span>
+              <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            </a>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void copyLink()}>
+              {copied ? (
+                <Check className="size-4" aria-hidden />
+              ) : (
+                <Copy className="size-4" aria-hidden />
               )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wa-display">Número visible (opcional, wa.me)</Label>
-              <Input
-                id="wa-display"
-                placeholder="+57 300 111 2233"
-                {...register("displayPhoneNumber")}
-              />
-            </div>
-
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="size-4 rounded border-border"
-                checked={isActive}
-                onChange={(event) =>
-                  setValue("isActive", event.target.checked, { shouldDirty: true })
-                }
-              />
-              Conexión activa
-            </label>
-
-            {saveMutation.isError && (
-              <p className="text-sm text-destructive">
-                {saveMutation.error instanceof ApiClientError
-                  ? saveMutation.error.message
-                  : "No se pudo guardar"}
-              </p>
-            )}
-            {saveMutation.isSuccess && (
-              <p className="text-sm text-muted-foreground">Conexión guardada.</p>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                disabled={saveMutation.isPending || (!isDirty && Boolean(connection))}
-              >
-                {saveMutation.isPending ? "Guardando…" : "Guardar conexión"}
-              </Button>
-              {connection && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => {
-                    if (window.confirm("¿Eliminar la conexión WhatsApp de esta empresa?")) {
-                      deleteMutation.mutate();
-                    }
-                  }}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                  Eliminar
-                </Button>
-              )}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Simular mensaje entrante</CardTitle>
-          <CardDescription>
-            Inyecta un mensaje sintético sin Twilio. Requiere conexión guardada. Genera conversación,
-            mensaje inbound y auto-reply (con IA si el backend tiene `AI_ENABLED=true`).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={simulateForm.handleSubmit((values) => simulateMutation.mutate(values))}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="sim-from">Cliente (E.164)</Label>
-                <Input id="sim-from" placeholder="+573001112233" {...simulateForm.register("from")} />
-                {simulateForm.formState.errors.from && (
-                  <p className="text-sm text-destructive">
-                    {simulateForm.formState.errors.from.message}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="sim-name">Nombre (opcional)</Label>
-                <Input id="sim-name" {...simulateForm.register("customerName")} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="sim-text">Mensaje</Label>
-              <Textarea id="sim-text" rows={3} {...simulateForm.register("text")} />
-              {simulateForm.formState.errors.text && (
-                <p className="text-sm text-destructive">
-                  {simulateForm.formState.errors.text.message}
-                </p>
-              )}
-            </div>
-            {simulateMutation.isError && (
-              <p className="text-sm text-destructive">
-                {simulateMutation.error instanceof ApiClientError
-                  ? simulateMutation.error.message
-                  : "No se pudo simular"}
-              </p>
-            )}
-            {simulateMutation.isSuccess && (
-              <p className="text-sm text-muted-foreground">
-                Mensaje simulado. Revisa el{" "}
-                <Link href="/whatsapp/inbox" className="underline underline-offset-4">
-                  inbox
-                </Link>
-                .
-              </p>
-            )}
-            <Button type="submit" disabled={simulateMutation.isPending || !connection}>
-              {simulateMutation.isPending ? "Simulando…" : "Simular mensaje entrante"}
+              <span key={String(copied)} className="fade-swap">
+                {copied ? "Copiado" : "Copiar"}
+              </span>
             </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </div>
+        </FormSection>
+      ) : null}
+
+      <FormSection
+        title="Requisitos"
+        description="Lo que el asistente necesita para atender. Si quitas alguno, el canal se pausa."
+      >
+        <ul className="divide-y divide-border border-y border-border">
+          {requirements.map((item) => (
+            <li key={item.href} className="flex items-center gap-3 py-2.5 text-sm">
+              <Check className="size-4 text-primary" aria-hidden />
+              <span className="flex-1">{item.label}</span>
+              <Link
+                href={item.href}
+                className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              >
+                Ver
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </FormSection>
+
+      <FormSection title="Atajos">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/whatsapp/inbox">
+              <MessageSquareText className="size-4" aria-hidden />
+              Ver conversaciones
+            </Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/assistant/playground">
+              <FlaskConical className="size-4" aria-hidden />
+              Prueba tu asistente
+            </Link>
+          </Button>
+        </div>
+      </FormSection>
     </div>
   );
 }

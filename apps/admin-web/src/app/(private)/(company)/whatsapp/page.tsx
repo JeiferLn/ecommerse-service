@@ -1,21 +1,20 @@
 import type { Metadata } from "next";
 
+import { PageHeader } from "@/components/page-header";
 import { WhatsAppConnectionSection } from "@/components/whatsapp-connection-section";
 
 export const metadata: Metadata = {
-  title: "WhatsApp | Commerce AI SaaS",
+  title: "Canal WhatsApp",
 };
 
 export default function WhatsAppPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">WhatsApp</h1>
-        <p className="text-muted-foreground">
-          Conecta el número Twilio WhatsApp de tu empresa y prueba el flujo con simulación o webhook
-          real.
-        </p>
-      </div>
+    <div className="flex flex-col">
+      <PageHeader
+        title="Canal WhatsApp"
+        description="El número donde tu asistente atiende a tus clientes."
+        className="mb-6"
+      />
       <WhatsAppConnectionSection />
     </div>
   );

@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 
@@ -27,6 +27,7 @@ describe("WhatsAppWebhookService", () => {
     addCartItem: jest.Mock;
     formatCartMessage: jest.Mock;
   };
+  let billing: { recordWaInbound: jest.Mock; recordAiReply: jest.Mock };
   let configValues: Record<string, unknown>;
 
   beforeEach(async () => {
@@ -71,6 +72,10 @@ describe("WhatsAppWebhookService", () => {
       addCartItem: jest.fn(),
       formatCartMessage: jest.fn().mockReturnValue("Carrito vacío"),
     };
+    billing = {
+      recordWaInbound: jest.fn().mockResolvedValue({ allowed: true }),
+      recordAiReply: jest.fn().mockResolvedValue({ allowed: true }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -89,13 +94,7 @@ describe("WhatsAppWebhookService", () => {
           useValue: { assertCommerceConfigured: jest.fn().mockResolvedValue(undefined) },
         },
         { provide: OrdersService, useValue: ordersService },
-        {
-          provide: BillingService,
-          useValue: {
-            recordWaInbound: jest.fn().mockResolvedValue({ allowed: true }),
-            recordAiReply: jest.fn().mockResolvedValue({ allowed: true }),
-          },
-        },
+        { provide: BillingService, useValue: billing },
       ],
     }).compile();
 
@@ -316,6 +315,52 @@ describe("WhatsAppWebhookService", () => {
     expect(result.processed).toBe(1);
     expect(prisma.whatsAppConnection.findUnique).toHaveBeenCalledWith({
       where: { twilioWhatsAppNumber: "+14155238886" },
+    });
+  });
+
+  describe("Prueba tu asistente", () => {
+    it("responde sin enviar nada por Twilio", async () => {
+      prisma.conversation.findUnique.mockResolvedValue({ handler: "pending" });
+      prisma.message.create.mockResolvedValue({ id: "msg-out-1" });
+      prisma.conversation.update.mockResolvedValue({});
+
+      await service.replyInPlayground("company-a", "conv-play", "Hola");
+
+      expect(twilioClient.sendText).not.toHaveBeenCalled();
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          conversationId: "conv-play",
+          direction: "outbound",
+          body: "¿Bot o asesor?",
+          wamid: null,
+          status: "sent",
+        }),
+      });
+    });
+
+    it("al confirmar pedido no crea la orden ni consume cupo de WhatsApp", async () => {
+      prisma.conversation.findUnique.mockResolvedValue({ handler: "bot" });
+      prisma.message.create.mockResolvedValue({ id: "msg-out-1" });
+      prisma.conversation.update.mockResolvedValue({});
+
+      await service.replyInPlayground("company-a", "conv-play", "confirmar pedido");
+
+      expect(ordersService.beginCheckout).not.toHaveBeenCalled();
+      expect(billing.recordWaInbound).not.toHaveBeenCalled();
+      expect(twilioClient.sendText).not.toHaveBeenCalled();
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          body: expect.stringContaining("Modo prueba"),
+        }),
+      });
+    });
+
+    it("rechaza el simulador en producción", async () => {
+      configValues.NODE_ENV = "production";
+
+      await expect(
+        service.simulateInbound("company-a", { from: "+573001112233", text: "Hola" }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

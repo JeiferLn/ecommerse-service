@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -28,6 +29,15 @@ export interface InboundMessageInput {
   wamid?: string | null;
   rawPayload?: Prisma.InputJsonValue;
 }
+
+/** Canal de respuesta. Sin número Twilio = "Prueba tu asistente": no se envía nada fuera. */
+interface ReplyChannel {
+  companyId: string;
+  twilioWhatsAppNumber: string | null;
+}
+
+export const PLAYGROUND_CHECKOUT_TEXT =
+  "Modo prueba: aquí tu cliente recibiría el enlace de pago de Mercado Pago para confirmar el pedido. En la prueba no se crea el pedido ni se descuenta stock.";
 
 @Injectable()
 export class WhatsAppWebhookService {
@@ -134,6 +144,7 @@ export class WhatsAppWebhookService {
     companyId: string | null,
     input: { from: string; text: string; customerName?: string },
   ): Promise<{ conversationId: string; messageId: string }> {
+    this.assertDevelopmentOnly();
     if (!companyId) {
       throw new BadRequestException("No perteneces a una empresa");
     }
@@ -160,6 +171,27 @@ export class WhatsAppWebhookService {
       wamid: `SM_sim_in_${Date.now()}`,
       rawPayload: { simulated: true, from: input.from, text: input.text },
     });
+  }
+
+  /** Herramientas de desarrollo que no deben existir en producción. */
+  assertDevelopmentOnly(): void {
+    if (this.config.get("NODE_ENV", { infer: true }) === "production") {
+      throw new ForbiddenException("No disponible en producción");
+    }
+  }
+
+  /** Responde a un mensaje de "Prueba tu asistente" sin enviar nada por WhatsApp. */
+  async replyInPlayground(
+    companyId: string,
+    conversationId: string,
+    customerText: string,
+  ): Promise<void> {
+    await this.maybeAutoReply(
+      { companyId, twilioWhatsAppNumber: null },
+      conversationId,
+      "",
+      customerText,
+    );
   }
 
   /** Expone la lógica de ingestión para tests unitarios. */
@@ -250,17 +282,14 @@ export class WhatsAppWebhookService {
   }
 
   private async maybeAutoReply(
-    connection: {
-      id: string;
-      companyId: string;
-      twilioWhatsAppNumber: string;
-    },
+    connection: ReplyChannel,
     conversationId: string,
     customerWaId: string,
     customerText: string,
   ): Promise<void> {
+    const playground = connection.twilioWhatsAppNumber === null;
     const enabled = this.config.get("WHATSAPP_AUTO_REPLY_ENABLED", { infer: true });
-    if (!enabled) {
+    if (!enabled && !playground) {
       return;
     }
 
@@ -336,7 +365,9 @@ export class WhatsAppWebhookService {
           this.config.get("WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT", { infer: true }),
         );
       } else {
-        const waQuota = await this.billing.recordWaInbound(connection.companyId);
+        const waQuota = playground
+          ? { allowed: true }
+          : await this.billing.recordWaInbound(connection.companyId);
         if (!waQuota.allowed) {
           outboundTexts.push(
             "El negocio no puede atender por bot en este momento. Un asesor te contactará pronto.",
@@ -346,6 +377,7 @@ export class WhatsAppWebhookService {
             connection.companyId,
             conversationId,
             customerText,
+            playground,
           );
           if (orderReply) {
             outboundTexts.push(orderReply);
@@ -417,6 +449,7 @@ export class WhatsAppWebhookService {
     companyId: string,
     conversationId: string,
     customerText: string,
+    playground = false,
   ): Promise<string | null> {
     try {
       const cart = await this.ordersService.getCartForConversation(companyId, conversationId);
@@ -448,6 +481,11 @@ export class WhatsAppWebhookService {
       }
 
       if (intent.type === "checkout") {
+        if (playground) {
+          return `${PLAYGROUND_CHECKOUT_TEXT}
+
+${this.ordersService.formatCartMessage(cart)}`;
+        }
         const result = await this.ordersService.beginCheckout(companyId, conversationId);
         return result.message;
       }
@@ -584,7 +622,7 @@ export class WhatsAppWebhookService {
   }
 
   private async sendOutboundText(params: {
-    connection: { twilioWhatsAppNumber: string };
+    connection: { twilioWhatsAppNumber: string | null };
     conversationId: string;
     customerWaId: string;
     text: string;
@@ -593,11 +631,13 @@ export class WhatsAppWebhookService {
     let status: "sent" | "failed" = "sent";
 
     try {
-      sendResult = await this.twilioClient.sendText({
-        from: params.connection.twilioWhatsAppNumber,
-        to: params.customerWaId,
-        text: params.text,
-      });
+      sendResult = !params.connection.twilioWhatsAppNumber
+        ? { simulated: true, wamid: null }
+        : await this.twilioClient.sendText({
+            from: params.connection.twilioWhatsAppNumber,
+            to: params.customerWaId,
+            text: params.text,
+          });
     } catch (error) {
       this.logger.error(`Auto-reply failed: ${String(error)}`);
       sendResult = { simulated: false, wamid: null };
@@ -617,7 +657,7 @@ export class WhatsAppWebhookService {
   }
 
   private async sendOutboundMedia(params: {
-    connection: { twilioWhatsAppNumber: string };
+    connection: { twilioWhatsAppNumber: string | null };
     conversationId: string;
     customerWaId: string;
     mediaUrl: string;
@@ -626,11 +666,13 @@ export class WhatsAppWebhookService {
     let status: "sent" | "failed" = "sent";
 
     try {
-      sendResult = await this.twilioClient.sendMedia({
-        from: params.connection.twilioWhatsAppNumber,
-        to: params.customerWaId,
-        mediaUrl: params.mediaUrl,
-      });
+      sendResult = !params.connection.twilioWhatsAppNumber
+        ? { simulated: true, wamid: null }
+        : await this.twilioClient.sendMedia({
+            from: params.connection.twilioWhatsAppNumber,
+            to: params.customerWaId,
+            mediaUrl: params.mediaUrl,
+          });
     } catch (error) {
       this.logger.error(`Media auto-reply failed: ${String(error)}`);
       sendResult = { simulated: false, wamid: null };

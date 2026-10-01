@@ -81,6 +81,7 @@ describe("AuthService", () => {
       upsert: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
+      deleteMany: jest.Mock;
       findUnique: jest.Mock;
     };
   };
@@ -149,6 +150,7 @@ describe("AuthService", () => {
         upsert: jest.fn().mockResolvedValue({ id: "pending-1", email: "paid@test.com" }),
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn(),
       },
     };

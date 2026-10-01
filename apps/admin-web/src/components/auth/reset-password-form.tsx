@@ -82,9 +82,16 @@ export function ResetPasswordForm() {
           type="password"
           placeholder="Mínimo 8 caracteres"
           autoComplete="new-password"
+          className="h-11 rounded-lg"
+          aria-invalid={errors.password ? true : undefined}
+          aria-describedby={errors.password ? "password-error" : undefined}
           {...register("password")}
         />
-        {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+        {errors.password && (
+          <p id="password-error" className="text-sm text-destructive">
+            {errors.password.message}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -94,10 +101,15 @@ export function ResetPasswordForm() {
           type="password"
           placeholder="Repite la contraseña"
           autoComplete="new-password"
+          className="h-11 rounded-lg"
+          aria-invalid={errors.confirmPassword ? true : undefined}
+          aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
           {...register("confirmPassword")}
         />
         {errors.confirmPassword && (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+          <p id="confirmPassword-error" className="text-sm text-destructive">
+            {errors.confirmPassword.message}
+          </p>
         )}
       </div>
 
@@ -109,7 +121,7 @@ export function ResetPasswordForm() {
         </p>
       )}
 
-      <Button type="submit" className="mt-1 w-full" disabled={mutation.isPending}>
+      <Button type="submit" size="lg" className="mt-2 h-11 w-full" disabled={mutation.isPending}>
         {mutation.isPending ? "Actualizando…" : "Actualizar contraseña"}
       </Button>
     </form>

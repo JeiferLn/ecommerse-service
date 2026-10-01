@@ -238,7 +238,18 @@ export class CompaniesService {
     mercadoPagoConnection?: MercadoPagoConnection | null;
   }): Promise<CompanyDetails> {
     const shippingScopes = company.shippingScopes as ShippingScope[];
-    const knowledge = await this.knowledgeService.getSettings(company.id);
+    const [knowledge, activeProducts, playground, whatsapp] = await Promise.all([
+      this.knowledgeService.getSettings(company.id),
+      this.prisma.product.count({ where: { companyId: company.id, status: "active" } }),
+      this.prisma.conversation.findFirst({
+        where: { companyId: company.id, isPlayground: true },
+        select: { id: true },
+      }),
+      this.prisma.whatsAppConnection.findUnique({
+        where: { companyId: company.id },
+        select: { isActive: true },
+      }),
+    ]);
     const payments = this.mercadoPagoConnection.toPaymentsSettings(
       company.mercadoPagoConnection ?? null,
     );
@@ -267,6 +278,12 @@ export class CompaniesService {
       },
       knowledge,
       payments,
+      onboarding: {
+        activeProducts,
+        playgroundTried: Boolean(playground),
+        whatsappAssigned: Boolean(whatsapp),
+        whatsappActive: Boolean(whatsapp?.isActive),
+      },
       createdAt: company.createdAt.toISOString(),
     };
   }

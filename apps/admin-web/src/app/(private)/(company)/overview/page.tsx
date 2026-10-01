@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { CompanyDashboard } from "@/components/company-dashboard";
 
 export const metadata: Metadata = {
-  title: "Dashboard | Commerce AI SaaS",
+  title: "Dashboard",
 };
 
 export default function DashboardPage() {

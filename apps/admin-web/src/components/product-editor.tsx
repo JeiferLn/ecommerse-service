@@ -12,14 +12,17 @@ import {
 } from "@commerce-ai/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Upload, Wand2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Upload, Wand2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormActions } from "@/components/form-actions";
+import { FormSection } from "@/components/form-section";
+import { PageHeader } from "@/components/page-header";
 import {
   Dialog,
   DialogContent,
@@ -30,10 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  ProductImagesSortable,
-  type GalleryImageItem,
-} from "@/components/product-images-sortable";
+import { ProductImagesSortable, type GalleryImageItem } from "@/components/product-images-sortable";
 import {
   Select,
   SelectContent,
@@ -41,8 +41,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SkeletonText } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { formatMoney } from "@/lib/orders";
 import { useSession } from "@/providers/session-provider";
 
 function parseOptionValues(raw: string): string[] {
@@ -77,12 +87,15 @@ const variantSchema = z.object({
   sku: z.string().min(1, "SKU obligatorio").max(64),
   name: z.string().min(1, "Nombre obligatorio").max(120),
   price: z.preprocess((value) => Number(value), z.number().min(0, "Precio inválido")),
-  compareAtPrice: z.preprocess((value) => {
-    if (value === "" || value == null) {
-      return "";
-    }
-    return Number(value);
-  }, z.union([z.number().min(0), z.literal("")])),
+  compareAtPrice: z.preprocess(
+    (value) => {
+      if (value === "" || value == null) {
+        return "";
+      }
+      return Number(value);
+    },
+    z.union([z.number().min(0), z.literal("")]),
+  ),
   stock: z.preprocess((value) => Number(value), z.number().int().min(0)),
 });
 
@@ -162,6 +175,8 @@ export function ProductEditor({ productId }: ProductEditorProps) {
 
   const { fields, append, remove, replace } = useFieldArray({ control, name: "variants" });
   const status = watch("status");
+  const variantValues = watch("variants");
+  const readOnlyRole = Boolean(user) && !canManage;
   const categoryId = watch("categoryId");
   const [optionGroups, setOptionGroups] = useState([
     { name: "", values: "" },
@@ -501,15 +516,59 @@ export function ProductEditor({ productId }: ProductEditorProps) {
     setMessage(`Se generaron ${next.length} variantes. Revisa precio/stock y guarda.`);
   }
 
-  if (!user?.companyId) {
+  const pageHeader = (
+    <div className="mb-6 flex flex-col gap-3">
+      <Link
+        href="/products"
+        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" aria-hidden />
+        Productos
+      </Link>
+      <PageHeader
+        title={isNew ? "Nuevo producto" : (product?.name ?? "Producto")}
+        description={
+          readOnlyRole
+            ? "Solo lectura para tu rol."
+            : isNew
+              ? "Crea un producto con sus variantes, stock e imágenes."
+              : "Detalle, variantes, stock e imágenes."
+        }
+        className="mb-0"
+      />
+    </div>
+  );
+
+  if (!user) {
+    return (
+      <>
+        {pageHeader}
+        <SkeletonText lines={6} className="max-w-2xl" />
+      </>
+    );
+  }
+
+  if (!user.companyId) {
     return <p className="text-sm text-muted-foreground">Selecciona una empresa para continuar.</p>;
   }
 
   if (!isNew && isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando producto…</p>;
+    return (
+      <>
+        {pageHeader}
+        <SkeletonText lines={6} className="max-w-2xl" />
+      </>
+    );
   }
 
   const readOnly = !canManage;
+  const totalStock = (variantValues ?? []).reduce(
+    (sum, variant) => sum + (Number(variant?.stock) || 0),
+    0,
+  );
+  const prices = (variantValues ?? []).map((variant) => Number(variant?.price) || 0);
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
   return (
     <form
@@ -517,26 +576,246 @@ export function ProductEditor({ productId }: ProductEditorProps) {
         setMessage(null);
         saveMutation.mutate(values);
       })}
-      className="flex flex-col gap-6"
+      className="flex flex-col"
     >
-      <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl font-bold">
-            {isNew ? "Nuevo producto" : "Editar producto"}
-          </CardTitle>
-          <CardDescription>
-            {readOnly ? "Solo lectura para tu rol." : "Datos generales del producto."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="flex flex-col gap-2 md:col-span-2">
-            <Label htmlFor="product-name">Nombre</Label>
-            <Input id="product-name" disabled={readOnly} {...register("name")} />
-            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-          </div>
-          <div className="flex flex-col gap-2 md:col-span-2">
-            <Label htmlFor="product-description">Descripción</Label>
-            <Textarea id="product-description" disabled={readOnly} {...register("description")} />
+      {pageHeader}
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="flex min-w-0 flex-col">
+          <FormSection
+            stacked
+            title="General"
+            description="Así lo verá el cliente y así lo describirá el asistente."
+          >
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="product-name">Nombre</Label>
+              <Input id="product-name" disabled={readOnly} {...register("name")} />
+              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="product-description">Descripción</Label>
+              <Textarea
+                id="product-description"
+                rows={5}
+                disabled={readOnly}
+                {...register("description")}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection
+            stacked
+            title="Variantes e inventario"
+            description="Cada combinación vendible tiene su SKU, precio y stock. Si no hay opciones, deja una sola."
+          >
+            {canManage ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMatrixError(null);
+                    setMatrixDialogOpen(true);
+                  }}
+                >
+                  <Wand2 className="size-4" aria-hidden />
+                  Generar desde opciones
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    append({
+                      sku: `SKU-${fields.length + 1}`,
+                      name: `Variante ${fields.length + 1}`,
+                      price: 0,
+                      stock: 0,
+                      compareAtPrice: "",
+                    })
+                  }
+                >
+                  <Plus className="size-4" aria-hidden />
+                  Añadir variante
+                </Button>
+              </div>
+            ) : null}
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <Table className="min-w-150">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead className="w-28 text-right">Precio</TableHead>
+                    <TableHead className="w-28 text-right">Comparado</TableHead>
+                    <TableHead className="w-20 text-right">Stock</TableHead>
+                    {canManage ? <TableHead className="w-10" /> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fields.map((field, index) => (
+                    <TableRow key={field.id} className="hover:bg-transparent">
+                      <TableCell className="py-1.5">
+                        <input type="hidden" {...register(`variants.${index}.id`)} />
+                        <Input
+                          aria-label={`SKU de la variante ${index + 1}`}
+                          className="h-8 font-data text-[13px]"
+                          disabled={readOnly}
+                          {...register(`variants.${index}.sku`)}
+                        />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <Input
+                          aria-label={`Nombre de la variante ${index + 1}`}
+                          className="h-8"
+                          disabled={readOnly}
+                          {...register(`variants.${index}.name`)}
+                        />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <Input
+                          aria-label={`Precio de la variante ${index + 1}`}
+                          type="number"
+                          step="0.01"
+                          className="h-8 text-right"
+                          disabled={readOnly}
+                          {...register(`variants.${index}.price`)}
+                        />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <Input
+                          aria-label={`Precio comparado de la variante ${index + 1}`}
+                          type="number"
+                          step="0.01"
+                          className="h-8 text-right"
+                          disabled={readOnly}
+                          {...register(`variants.${index}.compareAtPrice`)}
+                        />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <Input
+                          aria-label={`Stock de la variante ${index + 1}`}
+                          type="number"
+                          step="1"
+                          className="h-8 text-right"
+                          disabled={readOnly}
+                          {...register(`variants.${index}.stock`)}
+                        />
+                      </TableCell>
+                      {canManage ? (
+                        <TableCell className="py-1.5 text-right">
+                          {fields.length > 1 ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              aria-label={`Quitar variante ${index + 1}`}
+                              onClick={() => remove(index)}
+                            >
+                              <Trash2 aria-hidden />
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {errors.variants && (
+              <p className="text-sm text-destructive">
+                {errors.variants.message ?? "Revisa las variantes"}
+              </p>
+            )}
+          </FormSection>
+
+          <FormSection
+            stacked
+            title="Imágenes"
+            description={
+              isNew
+                ? "Opcional. Se suben al guardar. Arrastra para ordenar; la primera es la portada."
+                : "Opcional. Arrastra para reordenar; la primera es la portada."
+            }
+          >
+            {canManage && (
+              <Label className="inline-flex h-9 w-fit cursor-pointer items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-150 hover:bg-muted">
+                <Upload className="size-4" aria-hidden />
+                {uploading ? "Subiendo…" : isNew ? "Añadir imagen" : "Subir imagen"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  disabled={uploading || saveMutation.isPending || reordering}
+                  onChange={(event) => {
+                    void handleUpload(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+              </Label>
+            )}
+            {isNew ? (
+              <ProductImagesSortable
+                images={pendingImages.map((image) => ({
+                  id: image.id,
+                  src: image.previewUrl,
+                  alt: image.file.name,
+                }))}
+                canManage={canManage}
+                disabled={saveMutation.isPending}
+                onReorder={handlePendingReorder}
+                onRemove={removePendingImage}
+              />
+            ) : (
+              <ProductImagesSortable
+                images={orderedImages.map((image) => ({
+                  id: image.id,
+                  src: image.url,
+                  alt: image.alt ?? product?.name ?? "Producto",
+                }))}
+                canManage={canManage}
+                disabled={reordering || uploading}
+                onReorder={handleSavedReorder}
+                onRemove={(id) => {
+                  void handleDeleteImage(id);
+                }}
+              />
+            )}
+            {(isNew ? pendingImages.length : orderedImages.length) === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Aún no hay imágenes. Máx. 5 MB (JPEG, PNG, WebP o GIF).
+              </p>
+            ) : null}
+          </FormSection>
+        </div>
+
+        <aside className="flex flex-col gap-5 border-t border-border pt-6 lg:sticky lg:top-20 lg:self-start lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
+          <div className="flex flex-col gap-2">
+            <Label>Estado</Label>
+            <Select
+              value={status}
+              onValueChange={(value) =>
+                setValue("status", value as ProductStatus, { shouldDirty: true })
+              }
+              disabled={readOnly}
+            >
+              <SelectTrigger aria-label="Estado" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRODUCT_STATUSES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {PRODUCT_STATUS_LABELS[item]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              El asistente solo ofrece productos activos con stock.
+            </p>
           </div>
           <div className="flex flex-col gap-2">
             <Label>Categoría</Label>
@@ -547,7 +826,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
               }
               disabled={readOnly}
             >
-              <SelectTrigger aria-label="Categoría">
+              <SelectTrigger aria-label="Categoría" className="w-full">
                 <SelectValue placeholder="Sin categoría" />
               </SelectTrigger>
               <SelectContent>
@@ -560,203 +839,30 @@ export function ProductEditor({ productId }: ProductEditorProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label>Estado</Label>
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setValue("status", value as ProductStatus, { shouldDirty: true })
-              }
-              disabled={readOnly}
-            >
-              <SelectTrigger aria-label="Estado">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PRODUCT_STATUSES.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {PRODUCT_STATUS_LABELS[item]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
-          <div>
-            <CardTitle className="font-heading text-xl font-bold">Variantes e inventario</CardTitle>
-            <CardDescription>
-              Cada combinación vendible es una variante con su SKU, precio y stock. Si el producto no
-              tiene opciones, deja una sola variante.
-            </CardDescription>
-          </div>
-          {canManage && (
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setMatrixError(null);
-                  setMatrixDialogOpen(true);
-                }}
-              >
-                <Wand2 className="size-4" aria-hidden />
-                Generar desde opciones
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  append({
-                    sku: `SKU-${fields.length + 1}`,
-                    name: `Variante ${fields.length + 1}`,
-                    price: 0,
-                    stock: 0,
-                    compareAtPrice: "",
-                  })
-                }
-              >
-                Añadir variante
-              </Button>
+          <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Variantes</dt>
+              <dd className="tabular-nums">{fields.length}</dd>
             </div>
-          )}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {fields.map((field, index) => (
-            <div key={field.id} className="grid gap-3 rounded-xl border p-3 md:grid-cols-5">
-              <input type="hidden" {...register(`variants.${index}.id`)} />
-              <div className="flex flex-col gap-1">
-                <Label>SKU</Label>
-                <Input disabled={readOnly} {...register(`variants.${index}.sku`)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Nombre</Label>
-                <Input disabled={readOnly} {...register(`variants.${index}.name`)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Precio</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  disabled={readOnly}
-                  {...register(`variants.${index}.price`)}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Comparado</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  disabled={readOnly}
-                  {...register(`variants.${index}.compareAtPrice`)}
-                />
-              </div>
-              <div className="flex items-end gap-2">
-                <div className="flex flex-1 flex-col gap-1">
-                  <Label>Stock</Label>
-                  <Input
-                    type="number"
-                    step="1"
-                    disabled={readOnly}
-                    {...register(`variants.${index}.stock`)}
-                  />
-                </div>
-                {canManage && fields.length > 1 && (
-                  <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}>
-                    <Trash2 aria-hidden />
-                  </Button>
-                )}
-              </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Stock total</dt>
+              <dd className="tabular-nums">{totalStock}</dd>
             </div>
-          ))}
-          {errors.variants && (
-            <p className="text-sm text-destructive">
-              {errors.variants.message ?? "Revisa las variantes"}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl font-bold">Imágenes</CardTitle>
-          <CardDescription>
-            Opcional. Máx. 5 MB (JPEG, PNG, WebP, GIF).
-            {isNew
-              ? " Se subirán al guardar. Arrastra para ordenar; la primera será la portada."
-              : " Arrastra para reordenar; la primera es la portada."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {canManage && (
-            <Label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm">
-              <Upload className="size-4" aria-hidden />
-              {uploading ? "Subiendo…" : isNew ? "Añadir imagen" : "Subir imagen"}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                multiple
-                className="hidden"
-                disabled={uploading || saveMutation.isPending || reordering}
-                onChange={(event) => {
-                  void handleUpload(event.target.files);
-                  event.target.value = "";
-                }}
-              />
-            </Label>
-          )}
-          {isNew ? (
-            <ProductImagesSortable
-              images={pendingImages.map((image) => ({
-                id: image.id,
-                src: image.previewUrl,
-                alt: image.file.name,
-              }))}
-              canManage={canManage}
-              disabled={saveMutation.isPending}
-              onReorder={handlePendingReorder}
-              onRemove={removePendingImage}
-            />
-          ) : (
-            <ProductImagesSortable
-              images={orderedImages.map((image) => ({
-                id: image.id,
-                src: image.url,
-                alt: image.alt ?? product?.name ?? "Producto",
-              }))}
-              canManage={canManage}
-              disabled={reordering || uploading}
-              onReorder={handleSavedReorder}
-              onRemove={(id) => {
-                void handleDeleteImage(id);
-              }}
-            />
-          )}
-          {isNew && pendingImages.length === 0 && (
-            <p className="text-sm text-muted-foreground">Sin imágenes (opcional).</p>
-          )}
-          {!isNew && orderedImages.length === 0 && (
-            <p className="text-sm text-muted-foreground">Aún no hay imágenes.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
-
-      {canManage && (
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={saveMutation.isPending || (!isNew && !isDirty)}>
-            {saveMutation.isPending ? "Guardando…" : "Guardar producto"}
-          </Button>
-          {!isNew && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Precio</dt>
+              <dd className="text-right tabular-nums">
+                {minPrice === maxPrice
+                  ? formatMoney(minPrice)
+                  : `${formatMoney(minPrice)} – ${formatMoney(maxPrice)}`}
+              </dd>
+            </div>
+          </dl>
+          {canManage && !isNew ? (
             <Button
               type="button"
-              variant="destructive"
+              variant="ghost"
+              size="sm"
+              className="w-fit text-destructive hover:bg-destructive/10 hover:text-destructive"
               disabled={deleteMutation.isPending}
               onClick={() => {
                 if (window.confirm("¿Eliminar este producto y sus variantes?")) {
@@ -764,14 +870,27 @@ export function ProductEditor({ productId }: ProductEditorProps) {
                 }
               }}
             >
+              <Trash2 className="size-4" aria-hidden />
               Eliminar producto
             </Button>
-          )}
-          <Button type="button" variant="outline" onClick={() => router.push("/products")}>
-            Volver
-          </Button>
-        </div>
-      )}
+          ) : null}
+        </aside>
+      </div>
+
+      {message ? (
+        <p key={message} role="status" className="slide-up-in mt-6 text-sm text-muted-foreground">
+          {message}
+        </p>
+      ) : null}
+
+      {canManage ? (
+        <FormActions
+          dirty={isNew ? undefined : isDirty}
+          pending={saveMutation.isPending}
+          submitLabel={isNew ? "Crear producto" : "Guardar cambios"}
+          className="mt-6"
+        />
+      ) : null}
 
       <Dialog
         open={matrixDialogOpen}

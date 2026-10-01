@@ -317,7 +317,19 @@ export interface CompanyDetails {
   commerce: CompanyCommerceSettings;
   knowledge: CompanyKnowledgeSettings;
   payments: CompanyPaymentsSettings;
+  onboarding: CompanyOnboarding;
   createdAt: string;
+}
+
+/** Estado de la puesta en marcha del asistente. */
+export interface CompanyOnboarding {
+  activeProducts: number;
+  /** El dueño ya habló con su asistente en "Prueba tu asistente". */
+  playgroundTried: boolean;
+  /** La plataforma ya asignó un número de WhatsApp. */
+  whatsappAssigned: boolean;
+  /** El número está asignado y el asistente no está en pausa. */
+  whatsappActive: boolean;
 }
 
 export interface CompanyMember {
@@ -720,6 +732,21 @@ export interface PlatformCompanySummary {
   createdAt: string;
 }
 
+/** Empresa vista desde el panel de plataforma, con lo necesario para asignar WhatsApp. */
+export interface AdminCompanyRow extends PlatformCompanySummary {
+  planCode: PlanCode | null;
+  subscriptionStatus: SubscriptionStatus | null;
+  requirements: {
+    products: boolean;
+    shipping: boolean;
+    knowledge: boolean;
+    payments: boolean;
+  };
+  /** Cumple todos los requisitos y aún no tiene número asignado. */
+  awaitingNumber: boolean;
+  whatsapp: WhatsAppConnection | null;
+}
+
 export interface PlatformDashboardStats {
   companiesTotal: number;
   usersTotal: number;
@@ -775,6 +802,13 @@ export interface WhatsAppMessage {
   body: string;
   status: MessageStatus | null;
   createdAt: string;
+}
+
+/** Conversación de "Prueba tu asistente" (no pasa por WhatsApp). */
+export interface AssistantPlaygroundThread {
+  conversationId: string | null;
+  handler: ConversationHandler;
+  messages: WhatsAppMessage[];
 }
 
 export type OrderStatus =

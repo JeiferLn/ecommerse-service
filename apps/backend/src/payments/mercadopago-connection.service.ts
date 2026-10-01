@@ -236,7 +236,7 @@ export class MercadoPagoConnectionService {
     const frontend = (
       this.config.get("FRONTEND_URL", { infer: true }) || "http://localhost:3000"
     ).replace(/\/$/, "");
-    const settingsBase = `${frontend}/dashboard/settings`;
+    const settingsBase = `${frontend}/settings/payments`;
 
     if (params.error) {
       this.logger.warn(`OAuth MP denegado: ${params.error}`);

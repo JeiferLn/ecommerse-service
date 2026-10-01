@@ -13,8 +13,8 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormActions } from "@/components/form-actions";
+import { FormSection } from "@/components/form-section";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SkeletonText } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
@@ -125,19 +126,16 @@ export function CompanySettingsForm() {
     },
   });
 
-  if (!user?.companyId) {
-    return (
-      <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl font-bold">Empresa</CardTitle>
-          <CardDescription>No perteneces a una empresa activa.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+  if (!user) {
+    return <SkeletonText lines={6} className="max-w-xl" />;
+  }
+
+  if (!user.companyId) {
+    return <p className="text-sm text-muted-foreground">No perteneces a una empresa activa.</p>;
   }
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando configuración…</p>;
+    return <SkeletonText lines={6} className="max-w-xl" />;
   }
 
   if (error || !company) {
@@ -150,125 +148,136 @@ export function CompanySettingsForm() {
     );
   }
 
+  const locked = !canEdit || mutation.isPending;
+
   return (
-    <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="font-heading text-xl font-bold">Datos de la empresa</CardTitle>
-        <CardDescription>
-          {canEdit
-            ? "Actualiza el perfil, contacto y tipo de negocio de tu empresa."
-            : "Solo el dueño puede editar estos datos."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          onSubmit={handleSubmit((values) => mutation.mutate(values))}
-          className="flex max-w-xl flex-col gap-4"
-        >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="settings-company-name">Nombre</Label>
-            <Input
-              id="settings-company-name"
-              autoComplete="organization"
-              disabled={!canEdit || mutation.isPending}
-              {...register("name")}
-            />
-            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-          </div>
+    <form onSubmit={handleSubmit((values) => mutation.mutate(values))} className="flex flex-col">
+      {!canEdit ? (
+        <p className="mb-6 text-sm text-muted-foreground">
+          Solo el dueño puede editar estos datos.
+        </p>
+      ) : null}
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="settings-company-type">Tipo de negocio</Label>
-            <Select
-              value={companyType}
-              onValueChange={(value) =>
-                setValue("companyType", value as CompanyType, { shouldDirty: true })
-              }
-              disabled={!canEdit || mutation.isPending}
+      <FormSection title="Identidad" description="Cómo se llama tu tienda y qué vende.">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="settings-company-name">Nombre</Label>
+          <Input
+            id="settings-company-name"
+            autoComplete="organization"
+            disabled={locked}
+            {...register("name")}
+          />
+          {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="settings-company-type">Tipo de negocio</Label>
+          <Select
+            value={companyType}
+            onValueChange={(value) =>
+              setValue("companyType", value as CompanyType, { shouldDirty: true })
+            }
+            disabled={locked}
+          >
+            <SelectTrigger
+              id="settings-company-type"
+              aria-label="Tipo de empresa"
+              className="w-full"
             >
-              <SelectTrigger id="settings-company-type" aria-label="Tipo de empresa">
-                <SelectValue placeholder="Selecciona el tipo" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                {COMPANY_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {COMPANY_TYPE_LABELS[type]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.companyType && (
-              <p className="text-sm text-destructive">{errors.companyType.message}</p>
+              <SelectValue placeholder="Selecciona el tipo" />
+            </SelectTrigger>
+            <SelectContent className="max-h-72">
+              {COMPANY_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {COMPANY_TYPE_LABELS[type]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {errors.companyType && (
+            <p className="text-sm text-destructive">{errors.companyType.message}</p>
+          )}
+        </div>
+      </FormSection>
+
+      <FormSection
+        title="Contacto"
+        description="Datos que el asistente comparte cuando un cliente los pide."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="settings-company-phone">Teléfono</Label>
+            <Input
+              id="settings-company-phone"
+              type="tel"
+              placeholder="+57 300 000 0000"
+              autoComplete="tel"
+              disabled={locked}
+              {...register("phone")}
+            />
+            {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="settings-company-email">Email de contacto</Label>
+            <Input
+              id="settings-company-email"
+              type="email"
+              placeholder="hola@tuempresa.com"
+              autoComplete="email"
+              disabled={locked}
+              {...register("contactEmail")}
+            />
+            {errors.contactEmail && (
+              <p className="text-sm text-destructive">{errors.contactEmail.message}</p>
             )}
           </div>
+        </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="settings-company-phone">Teléfono</Label>
-              <Input
-                id="settings-company-phone"
-                type="tel"
-                placeholder="+57 300 000 0000"
-                autoComplete="tel"
-                disabled={!canEdit || mutation.isPending}
-                {...register("phone")}
-              />
-              {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
-            </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="settings-company-website">Sitio web</Label>
+          <Input
+            id="settings-company-website"
+            type="url"
+            placeholder="https://tuempresa.com"
+            autoComplete="url"
+            disabled={locked}
+            {...register("website")}
+          />
+          {errors.website && <p className="text-sm text-destructive">{errors.website.message}</p>}
+        </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="settings-company-email">Email de contacto</Label>
-              <Input
-                id="settings-company-email"
-                type="email"
-                placeholder="hola@tuempresa.com"
-                autoComplete="email"
-                disabled={!canEdit || mutation.isPending}
-                {...register("contactEmail")}
-              />
-              {errors.contactEmail && (
-                <p className="text-sm text-destructive">{errors.contactEmail.message}</p>
-              )}
-            </div>
-          </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="settings-company-address">Dirección</Label>
+          <Input
+            id="settings-company-address"
+            placeholder="Calle, ciudad, país"
+            autoComplete="street-address"
+            disabled={locked}
+            {...register("address")}
+          />
+          {errors.address && <p className="text-sm text-destructive">{errors.address.message}</p>}
+        </div>
+      </FormSection>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="settings-company-website">Sitio web</Label>
-            <Input
-              id="settings-company-website"
-              type="url"
-              placeholder="https://tuempresa.com"
-              autoComplete="url"
-              disabled={!canEdit || mutation.isPending}
-              {...register("website")}
-            />
-            {errors.website && <p className="text-sm text-destructive">{errors.website.message}</p>}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="settings-company-address">Dirección</Label>
-            <Input
-              id="settings-company-address"
-              placeholder="Calle, ciudad, país"
-              autoComplete="street-address"
-              disabled={!canEdit || mutation.isPending}
-              {...register("address")}
-            />
-            {errors.address && <p className="text-sm text-destructive">{errors.address.message}</p>}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="settings-company-description">Descripción del negocio</Label>
-            <Textarea
-              id="settings-company-description"
-              placeholder="Cuéntanos qué vende tu empresa, horarios, políticas o lo que quieras que sepa el asistente."
-              disabled={!canEdit || mutation.isPending}
-              {...register("description")}
-            />
-            {errors.description && (
-              <p className="text-sm text-destructive">{errors.description.message}</p>
-            )}
-          </div>
-
+      <FormSection
+        title="Descripción"
+        description="Qué vendes, horarios o políticas. El asistente lo usa como contexto."
+      >
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="settings-company-description" className="sr-only">
+            Descripción del negocio
+          </Label>
+          <Textarea
+            id="settings-company-description"
+            rows={5}
+            placeholder="Cuéntanos qué vende tu empresa, horarios, políticas o lo que quieras que sepa el asistente."
+            disabled={locked}
+            {...register("description")}
+          />
+          {errors.description && (
+            <p className="text-sm text-destructive">{errors.description.message}</p>
+          )}
           <p className="text-xs text-muted-foreground">
             Creada el{" "}
             {new Date(company.createdAt).toLocaleDateString("es", {
@@ -277,26 +286,23 @@ export function CompanySettingsForm() {
               year: "numeric",
             })}
           </p>
+        </div>
+      </FormSection>
 
-          {mutation.isError && (
-            <p className="text-sm text-destructive">
-              {mutation.error instanceof ApiClientError
+      {canEdit ? (
+        <FormActions
+          dirty={isDirty}
+          pending={mutation.isPending}
+          saved={mutation.isSuccess}
+          error={
+            mutation.isError
+              ? mutation.error instanceof ApiClientError
                 ? mutation.error.message
-                : "No se pudo conectar con el servidor"}
-            </p>
-          )}
-
-          {mutation.isSuccess && !isDirty && (
-            <p className="text-sm text-muted-foreground">Cambios guardados.</p>
-          )}
-
-          {canEdit && (
-            <Button type="submit" disabled={mutation.isPending || !isDirty} className="w-fit">
-              {mutation.isPending ? "Guardando…" : "Guardar cambios"}
-            </Button>
-          )}
-        </form>
-      </CardContent>
-    </Card>
+                : "No se pudo conectar con el servidor"
+              : null
+          }
+        />
+      ) : null}
+    </form>
   );
 }

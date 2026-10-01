@@ -1,8 +1,13 @@
 "use client";
 
-import { COMPANY_TYPE_LABELS, type PlatformDashboardStats } from "@commerce-ai/types";
+import {
+  COMPANY_TYPE_LABELS,
+  type AdminCompanyRow,
+  type PlatformDashboardStats,
+} from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Package, UserRound, Users } from "lucide-react";
+import { ArrowRight, Building2, Package, Phone, UserRound, Users } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
@@ -35,7 +40,7 @@ function KpiCard({
   icon: typeof Package;
 }) {
   return (
-    <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
+    <Card className="border-border bg-card">
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <CardDescription className="text-sm font-medium">{label}</CardDescription>
         <Icon className="size-4 text-muted-foreground" aria-hidden />
@@ -63,6 +68,13 @@ export function PlatformDashboard() {
     enabled: user?.role === "admin",
   });
 
+  const { data: companies } = useQuery({
+    queryKey: ["admin-companies"],
+    queryFn: () => apiFetch<AdminCompanyRow[]>("/admin/companies"),
+    enabled: user?.role === "admin",
+  });
+  const awaitingNumber = companies?.filter((company) => company.awaitingNumber).length ?? 0;
+
   if (sessionLoading || (user && user.role !== "admin")) {
     return <p className="text-sm text-muted-foreground">Cargando panel de plataforma…</p>;
   }
@@ -83,12 +95,34 @@ export function PlatformDashboard() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
-            Panel de plataforma
+            Resumen
           </h1>
-          <p className="text-muted-foreground">Métricas globales de Commerce AI SaaS.</p>
+          <p className="text-muted-foreground">Métricas globales de la plataforma.</p>
         </div>
         <SessionRoleBadge />
       </div>
+
+      {awaitingNumber > 0 ? (
+        <Link
+          href="/admin/companies"
+          className="flex items-center gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Phone className="size-4" aria-hidden />
+          </span>
+          <span className="flex-1">
+            <span className="block font-medium">
+              {awaitingNumber === 1
+                ? "1 tienda está esperando su número de WhatsApp"
+                : `${awaitingNumber} tiendas están esperando su número de WhatsApp`}
+            </span>
+            <span className="block text-sm text-muted-foreground">
+              Ya completaron productos, envíos, documentos y pagos.
+            </span>
+          </span>
+          <ArrowRight className="size-4 text-muted-foreground" aria-hidden />
+        </Link>
+      ) : null}
 
       {isLoading && <p className="text-sm text-muted-foreground">Cargando métricas…</p>}
       {isError && (
@@ -105,7 +139,7 @@ export function PlatformDashboard() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
+            <Card className="border-border bg-card">
               <CardHeader>
                 <CardTitle className="font-heading text-lg">Altas de empresas</CardTitle>
                 <CardDescription>Últimos 30 días.</CardDescription>
@@ -129,7 +163,7 @@ export function PlatformDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
+            <Card className="border-border bg-card">
               <CardHeader>
                 <CardTitle className="font-heading text-lg">Altas de usuarios</CardTitle>
                 <CardDescription>Últimos 30 días (sin staff admin).</CardDescription>
@@ -154,7 +188,7 @@ export function PlatformDashboard() {
             </Card>
           </div>
 
-          <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
+          <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="font-heading text-lg">Empresas recientes</CardTitle>
               <CardDescription>Las últimas registradas en la plataforma.</CardDescription>
@@ -166,7 +200,7 @@ export function PlatformDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[640px] text-left text-sm">
                     <thead className="text-muted-foreground">
-                      <tr className="border-b border-border/70">
+                      <tr className="border-b border-border">
                         <th className="pb-2 pr-3 font-medium">Empresa</th>
                         <th className="pb-2 pr-3 font-medium">Tipo</th>
                         <th className="pb-2 pr-3 font-medium">Owner</th>

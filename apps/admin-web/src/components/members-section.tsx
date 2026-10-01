@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserMinus } from "lucide-react";
+import { Mail, UserMinus, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import type {
   CompanyInvitation,
@@ -16,9 +16,18 @@ import {
   canViewMembers,
 } from "@commerce-ai/types";
 
+import { PageHeader } from "@/components/page-header";
 import { RoleBadge } from "@/components/role-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,14 +37,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { useStaggerOnce } from "@/lib/use-stagger-once";
 import { useSession } from "@/providers/session-provider";
+
+function initials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?"
+  );
+}
 
 export function MembersSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
-  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
 
   const canManage = Boolean(user && canManageMembers(user.role));
@@ -46,6 +77,7 @@ export function MembersSection() {
     queryFn: () => apiFetch<CompanyMember[]>("/company/members"),
     enabled: Boolean(user?.companyId) && canView,
   });
+  const rowsStagger = useStaggerOnce(Boolean(members?.length));
 
   const inviteMutation = useMutation({
     mutationFn: (inviteEmail: string) =>
@@ -55,12 +87,13 @@ export function MembersSection() {
       }),
     onSuccess: (result) => {
       setEmail("");
-      setInviteMessage(result.message);
+      setInviteOpen(false);
+      setMemberMessage(result.message);
       void queryClient.invalidateQueries({ queryKey: ["company-members"] });
       void queryClient.invalidateQueries({ queryKey: ["company-invitations"] });
     },
     onError: (error: unknown) => {
-      setInviteMessage(
+      setInviteError(
         error instanceof ApiClientError ? error.message : "No se pudo conectar con el servidor",
       );
     },
@@ -123,8 +156,8 @@ export function MembersSection() {
 
   function handleInvite(event: FormEvent) {
     event.preventDefault();
-    setInviteMessage(null);
-    inviteMutation.mutate(email);
+    setInviteError(null);
+    inviteMutation.mutate(email.trim());
   }
 
   function handleRemove(member: CompanyMember) {
@@ -138,147 +171,216 @@ export function MembersSection() {
     removeMutation.mutate(member.id);
   }
 
-  if (!user?.companyId) {
+  if (!user) {
+    return <SkeletonRows rows={3} columns={3} />;
+  }
+
+  if (!user.companyId) {
     return null;
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="font-heading text-xl font-bold">Miembros</CardTitle>
-        <CardDescription>Personas con acceso a la empresa.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {canManage && (
-          <form onSubmit={handleInvite} className="flex flex-col gap-2">
-            <Label htmlFor="invite-email">Invitar miembro</Label>
-            <div className="flex gap-2">
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="correo@persona.com"
-                autoComplete="off"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                disabled={inviteMutation.isPending}
-              />
-              <Button type="submit" disabled={inviteMutation.isPending}>
-                {inviteMutation.isPending ? "Enviando…" : "Invitar"}
-              </Button>
-            </div>
-            {inviteMessage && <p className="text-sm text-muted-foreground">{inviteMessage}</p>}
-          </form>
-        )}
-
-        {isLoading && <p className="text-sm text-muted-foreground">Cargando miembros…</p>}
-
-        {canManage && invitations && invitations.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-lg border p-4">
-            <h3 className="text-sm font-semibold">Invitaciones pendientes</h3>
-            <ul className="flex flex-col gap-2">
-              {invitations.map((invitation) => (
-                <li
-                  key={invitation.id}
-                  className="flex items-center justify-between gap-3 rounded-md bg-muted/50 p-3"
-                >
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate font-medium">{invitation.email}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {new Date(invitation.createdAt).toLocaleDateString("es", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </span>
+    <div className="flex flex-col">
+      <PageHeader
+        title="Equipo"
+        description="Las personas con acceso a tu tienda y lo que cada una puede hacer."
+        className="mb-6"
+        actions={
+          canManage ? (
+            <Dialog
+              open={inviteOpen}
+              onOpenChange={(open) => {
+                setInviteOpen(open);
+                if (open) {
+                  setInviteError(null);
+                }
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button>
+                  <UserPlus aria-hidden />
+                  Invitar
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <form onSubmit={handleInvite} className="flex flex-col gap-4">
+                  <DialogHeader>
+                    <DialogTitle>Invitar al equipo</DialogTitle>
+                    <DialogDescription>
+                      Le enviaremos un correo para que cree su cuenta. Entra con rol de usuario y
+                      luego puedes cambiarlo.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="invite-email">Correo</Label>
+                    <Input
+                      id="invite-email"
+                      type="email"
+                      placeholder="correo@persona.com"
+                      autoComplete="off"
+                      autoFocus
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      disabled={inviteMutation.isPending}
+                    />
+                    {inviteError ? <p className="text-sm text-destructive">{inviteError}</p> : null}
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => cancelMutation.mutate(invitation.id)}
-                    disabled={cancelMutation.isPending}
-                  >
-                    Cancelar
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+                  <DialogFooter>
+                    <Button type="submit" disabled={inviteMutation.isPending || !email.trim()}>
+                      {inviteMutation.isPending ? "Enviando…" : "Enviar invitación"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          ) : null
+        }
+      />
 
-        {!isLoading && members && members.length === 0 && (
-          <p className="text-sm text-muted-foreground">Aún no hay miembros.</p>
-        )}
+      {memberMessage ? (
+        <p
+          key={memberMessage}
+          role="status"
+          className="slide-up-in mb-4 text-sm text-muted-foreground"
+        >
+          {memberMessage}
+        </p>
+      ) : null}
 
-        {memberMessage && <p className="text-sm text-muted-foreground">{memberMessage}</p>}
+      {isLoading ? <SkeletonRows rows={3} columns={3} /> : null}
 
-        {!isLoading && members && members.length > 0 && (
-          <ul className="flex flex-col gap-2">
+      {!isLoading && members && members.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aún no hay miembros.</p>
+      ) : null}
+
+      {!isLoading && members && members.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Persona</TableHead>
+              <TableHead className="w-40">Rol</TableHead>
+              {canManage ? <TableHead className="w-12" /> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody className={rowsStagger}>
             {members.map((member) => {
-              const isEditable =
-                canManage && member.id !== user?.id && member.role !== "owner";
+              const isEditable = canManage && member.id !== user?.id && member.role !== "owner";
               return (
-                <li
-                  key={member.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border p-3"
-                >
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate font-medium">{member.name}</span>
-                    <span className="truncate text-sm text-muted-foreground">{member.email}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                <TableRow key={member.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <span
+                        aria-hidden
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                      >
+                        {initials(member.name)}
+                      </span>
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate font-medium">
+                          {member.name}
+                          {member.id === user?.id ? (
+                            <span className="font-normal text-muted-foreground"> · tú</span>
+                          ) : null}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {member.email}
+                        </span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     {isEditable ? (
-                      <>
-                        <Select
-                          value={
-                            member.role === "user" || member.role === "manager"
-                              ? member.role
-                              : undefined
-                          }
-                          onValueChange={(role) =>
-                            roleMutation.mutate({
-                              memberId: member.id,
-                              role: role as (typeof MEMBER_ASSIGNABLE_ROLES)[number],
-                            })
-                          }
-                          disabled={roleMutation.isPending || removeMutation.isPending}
+                      <Select
+                        value={
+                          member.role === "user" || member.role === "manager"
+                            ? member.role
+                            : undefined
+                        }
+                        onValueChange={(role) =>
+                          roleMutation.mutate({
+                            memberId: member.id,
+                            role: role as (typeof MEMBER_ASSIGNABLE_ROLES)[number],
+                          })
+                        }
+                        disabled={roleMutation.isPending || removeMutation.isPending}
+                      >
+                        <SelectTrigger
+                          aria-label={`Cambiar rol de ${member.name}`}
+                          className="h-8 w-32"
                         >
-                          <SelectTrigger
-                            aria-label={`Cambiar rol de ${member.name}`}
-                            className="h-8 w-32"
-                          >
-                            <SelectValue placeholder="Rol" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MEMBER_ASSIGNABLE_ROLES.map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {ROLE_LABELS[role]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <SelectValue placeholder="Rol" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MEMBER_ASSIGNABLE_ROLES.map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {ROLE_LABELS[role]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <RoleBadge role={member.role} />
+                    )}
+                  </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-right">
+                      {isEditable ? (
                         <Button
                           type="button"
-                          variant="destructive"
-                          size="sm"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive"
                           aria-label={`Eliminar a ${member.name} de la empresa`}
                           onClick={() => handleRemove(member)}
                           disabled={removeMutation.isPending || roleMutation.isPending}
                         >
                           <UserMinus aria-hidden />
-                          Eliminar
                         </Button>
-                      </>
-                    ) : (
-                      <RoleBadge role={member.role} />
-                    )}
-                  </div>
-                </li>
+                      ) : null}
+                    </TableCell>
+                  ) : null}
+                </TableRow>
               );
             })}
+          </TableBody>
+        </Table>
+      ) : null}
+
+      {canManage && invitations && invitations.length > 0 ? (
+        <section className="mt-10 flex flex-col gap-3">
+          <h2 className="text-sm font-medium">
+            Invitaciones pendientes{" "}
+            <span className="font-normal text-muted-foreground tabular-nums">
+              {invitations.length}
+            </span>
+          </h2>
+          <ul className="divide-y divide-border border-y border-border">
+            {invitations.map((invitation) => (
+              <li key={invitation.id} className="flex items-center gap-3 py-2.5">
+                <Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-sm">{invitation.email}</span>
+                <span className="text-xs whitespace-nowrap text-muted-foreground max-sm:hidden">
+                  Enviada el{" "}
+                  {new Date(invitation.createdAt).toLocaleDateString("es", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => cancelMutation.mutate(invitation.id)}
+                  disabled={cancelMutation.isPending}
+                >
+                  Cancelar
+                </Button>
+              </li>
+            ))}
           </ul>
-        )}
-      </CardContent>
-    </Card>
+        </section>
+      ) : null}
+    </div>
   );
 }

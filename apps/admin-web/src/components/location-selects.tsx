@@ -32,6 +32,8 @@ type LocationSelectsProps = {
   variant?: "company" | "customer";
   /** Si true, el país no se puede cambiar (ya fijado en el registro). */
   lockCountry?: boolean;
+  /** Los tres campos en una fila desde `sm`. */
+  inline?: boolean;
 };
 
 function resolveRegionCode(countryCode: string, regionName: string, regionCode?: string): string {
@@ -55,6 +57,7 @@ export function LocationSelects({
   required = false,
   variant = "customer",
   lockCountry = false,
+  inline = false,
 }: LocationSelectsProps) {
   const states = useMemo(
     () =>
@@ -77,10 +80,22 @@ export function LocationSelects({
     );
   }, [value.countryCode, regionCode]);
 
-  const countryLabel = variant === "company" ? "País de la tienda" : "País";
-  const regionLabel =
-    variant === "company" ? "Departamento / estado de la tienda" : "Departamento / estado";
-  const cityLabel = variant === "company" ? "Municipio / ciudad de la tienda" : "Municipio / ciudad";
+  const countryLabel = variant === "company" && !inline ? "País de la tienda" : "País";
+  const regionLabel = inline
+    ? "Departamento"
+    : variant === "company"
+      ? "Departamento / estado de la tienda"
+      : "Departamento / estado";
+  const cityLabel = inline
+    ? "Municipio"
+    : variant === "company"
+      ? "Municipio / ciudad de la tienda"
+      : "Municipio / ciudad";
+  const lockHint = lockCountry ? (
+    <p className="text-xs text-muted-foreground">
+      El país se definió al registrarte. Aquí solo configuras departamento y municipio.
+    </p>
+  ) : null;
 
   const regionSelectValue =
     states.find((state) => state.name === value.region)?.isoCode ||
@@ -91,107 +106,126 @@ export function LocationSelects({
   const hasCities = cities.length > 0;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${idPrefix}-country`}>{countryLabel}</Label>
-        <Select
-          value={value.countryCode || undefined}
-          onValueChange={(countryCode) =>
-            onChange({ countryCode, region: "", regionCode: "", city: "" })
-          }
-          disabled={disabled || lockCountry}
-          required={required}
-        >
-          <SelectTrigger id={`${idPrefix}-country`} aria-label={countryLabel}>
-            <SelectValue placeholder="Selecciona el país" />
-          </SelectTrigger>
-          <SelectContent className="max-h-72">
-            {COMPANY_COUNTRIES.map((country) => (
-              <SelectItem key={country.code} value={country.code}>
-                {country.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {lockCountry && (
-          <p className="text-xs text-muted-foreground">
-            El país se definió al registrarte. Aquí solo configuras departamento y municipio.
-          </p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${idPrefix}-region`}>{regionLabel}</Label>
-        <Select
-          value={regionSelectValue}
-          onValueChange={(isoCode) => {
-            const state = states.find((item) => item.isoCode === isoCode);
-            onChange({
-              ...value,
-              region: state?.name ?? isoCode,
-              regionCode: isoCode,
-              city: "",
-            });
-          }}
-          disabled={disabled || !value.countryCode || !hasStates}
-          required={required}
-        >
-          <SelectTrigger id={`${idPrefix}-region`} aria-label={regionLabel}>
-            <SelectValue
-              placeholder={
-                !value.countryCode
-                  ? "Elige país primero"
-                  : hasStates
-                    ? "Selecciona departamento / estado"
-                    : "Sin divisiones disponibles"
-              }
-            />
-          </SelectTrigger>
-          <SelectContent className="max-h-72">
-            {states.map((state) => (
-              <SelectItem key={state.isoCode} value={state.isoCode}>
-                {state.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${idPrefix}-city`}>{cityLabel}</Label>
-        {hasCities ? (
+    <div className="flex flex-col gap-2">
+      <div className={inline ? "grid gap-4 sm:grid-cols-3" : "flex flex-col gap-4"}>
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor={`${idPrefix}-country`}>{countryLabel}</Label>
           <Select
-            value={value.city || undefined}
-            onValueChange={(city) => onChange({ ...value, city })}
-            disabled={disabled || !regionCode}
+            value={value.countryCode || undefined}
+            onValueChange={(countryCode) =>
+              onChange({ countryCode, region: "", regionCode: "", city: "" })
+            }
+            disabled={disabled || lockCountry}
             required={required}
           >
-            <SelectTrigger id={`${idPrefix}-city`} aria-label={cityLabel}>
-              <SelectValue placeholder="Selecciona municipio / ciudad" />
+            <SelectTrigger
+              id={`${idPrefix}-country`}
+              aria-label={countryLabel}
+              className={inline ? "w-full" : undefined}
+            >
+              <SelectValue placeholder="Selecciona el país" />
             </SelectTrigger>
             <SelectContent className="max-h-72">
-              {cities.map((city) => (
-                <SelectItem key={`${city.name}-${city.latitude}`} value={city.name}>
-                  {city.name}
+              {COMPANY_COUNTRIES.map((country) => (
+                <SelectItem key={country.code} value={country.code}>
+                  {country.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <Input
-            id={`${idPrefix}-city`}
-            value={value.city}
-            disabled={disabled || !value.region}
+          {inline ? null : lockHint}
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor={`${idPrefix}-region`}>{regionLabel}</Label>
+          <Select
+            value={regionSelectValue}
+            onValueChange={(isoCode) => {
+              const state = states.find((item) => item.isoCode === isoCode);
+              onChange({
+                ...value,
+                region: state?.name ?? isoCode,
+                regionCode: isoCode,
+                city: "",
+              });
+            }}
+            disabled={disabled || !value.countryCode || !hasStates}
             required={required}
-            placeholder={
-              value.region
-                ? "Escribe el municipio / ciudad"
-                : "Elige departamento primero"
-            }
-            onChange={(event) => onChange({ ...value, city: event.target.value })}
-          />
-        )}
+          >
+            <SelectTrigger
+              id={`${idPrefix}-region`}
+              aria-label={regionLabel}
+              className={inline ? "w-full" : undefined}
+            >
+              <SelectValue
+                placeholder={
+                  !value.countryCode
+                    ? "Elige país primero"
+                    : hasStates
+                      ? inline
+                        ? "Selecciona"
+                        : "Selecciona departamento / estado"
+                      : "Sin divisiones disponibles"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent className="max-h-72">
+              {states.map((state) => (
+                <SelectItem key={state.isoCode} value={state.isoCode}>
+                  {state.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor={`${idPrefix}-city`}>{cityLabel}</Label>
+          {hasCities ? (
+            <Select
+              value={value.city || undefined}
+              onValueChange={(city) => onChange({ ...value, city })}
+              disabled={disabled || !regionCode}
+              required={required}
+            >
+              <SelectTrigger
+                id={`${idPrefix}-city`}
+                aria-label={cityLabel}
+                className={inline ? "w-full" : undefined}
+              >
+                <SelectValue
+                  placeholder={inline ? "Selecciona" : "Selecciona municipio / ciudad"}
+                />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {cities.map((city) => (
+                  <SelectItem key={`${city.name}-${city.latitude}`} value={city.name}>
+                    {city.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id={`${idPrefix}-city`}
+              value={value.city}
+              disabled={disabled || !value.region}
+              required={required}
+              placeholder={
+                value.region
+                  ? inline
+                    ? "Escribe el municipio"
+                    : "Escribe el municipio / ciudad"
+                  : inline
+                    ? "Primero el departamento"
+                    : "Elige departamento primero"
+              }
+              onChange={(event) => onChange({ ...value, city: event.target.value })}
+            />
+          )}
+        </div>
       </div>
+      {inline ? lockHint : null}
     </div>
   );
 }

@@ -30,7 +30,7 @@ export class WhatsAppInboxService {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 20;
 
-    const where = { companyId: scopedCompanyId };
+    const where = { companyId: scopedCompanyId, isPlayground: false };
 
     const [total, conversations] = await this.prisma.$transaction([
       this.prisma.conversation.count({ where }),
@@ -87,9 +87,11 @@ export class WhatsAppInboxService {
   ): Promise<WhatsAppMessage> {
     await this.connectionService.assertCommerceConfigured(companyId);
     const conversation = await this.findOwnedConversation(companyId, conversationId);
-    const connection = await this.prisma.whatsAppConnection.findUnique({
-      where: { id: conversation.waConnectionId },
-    });
+    const connection = conversation.waConnectionId
+      ? await this.prisma.whatsAppConnection.findUnique({
+          where: { id: conversation.waConnectionId },
+        })
+      : null;
     if (!connection || !connection.isActive) {
       throw new BadRequestException("La conexión WhatsApp no está activa");
     }
@@ -158,7 +160,7 @@ export class WhatsAppInboxService {
 
     let lastMessagePreview = updated.messages[0]?.body ?? null;
 
-    if (handler === "bot") {
+    if (handler === "bot" && conversation.waConnectionId) {
       const connection = await this.prisma.whatsAppConnection.findUnique({
         where: { id: conversation.waConnectionId },
       });
@@ -207,7 +209,7 @@ export class WhatsAppInboxService {
   async clearAllConversations(companyId: string | null): Promise<number> {
     const scopedCompanyId = this.requireCompany(companyId);
     const result = await this.prisma.conversation.deleteMany({
-      where: { companyId: scopedCompanyId },
+      where: { companyId: scopedCompanyId, isPlayground: false },
     });
     return result.count;
   }
@@ -215,7 +217,7 @@ export class WhatsAppInboxService {
   private async findOwnedConversation(companyId: string | null, conversationId: string) {
     const scopedCompanyId = this.requireCompany(companyId);
     const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, companyId: scopedCompanyId },
+      where: { id: conversationId, companyId: scopedCompanyId, isPlayground: false },
     });
     if (!conversation) {
       throw new NotFoundException("Conversación no encontrada");

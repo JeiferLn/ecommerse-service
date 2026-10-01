@@ -10,14 +10,16 @@ import {
   type ProductSummary,
 } from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ImageOff, Package, Plus, Search } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import {
   Select,
   SelectContent,
@@ -25,17 +27,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { apiFetch } from "@/lib/api";
+import { formatMoney } from "@/lib/orders";
+import { useStaggerOnce } from "@/lib/use-stagger-once";
+import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
-function formatMoney(value: number | null): string {
-  if (value == null) {
-    return "—";
-  }
-  return new Intl.NumberFormat("es", { style: "currency", currency: "USD" }).format(value);
-}
+const LOW_STOCK = 5;
+
+export const PRODUCT_STATUS_TONE: Record<ProductStatus, StatusTone> = {
+  active: "positive",
+  draft: "neutral",
+  archived: "negative",
+};
 
 export function ProductsSection() {
+  const router = useRouter();
   const { user } = useSession();
   const canManage = Boolean(user && canManageCatalog(user.role));
   const [q, setQ] = useState("");
@@ -46,7 +63,7 @@ export function ProductsSection() {
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     params.set("page", String(page));
-    params.set("perPage", "12");
+    params.set("perPage", "20");
     if (q.trim()) {
       params.set("q", q.trim());
     }
@@ -70,141 +87,223 @@ export function ProductsSection() {
     queryFn: () => apiFetch<PaginatedResponse<ProductSummary>>(`/products?${queryString}`),
     enabled: Boolean(user?.companyId),
   });
+  const rowsStagger = useStaggerOnce(Boolean(data?.items.length));
 
-  if (!user?.companyId) {
-    return <p className="text-sm text-muted-foreground">Selecciona una empresa para continuar.</p>;
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Input
-            className="w-56"
-            placeholder="Buscar productos o SKU"
-            value={q}
-            onChange={(event) => {
-              setPage(1);
-              setQ(event.target.value);
-            }}
-          />
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              setPage(1);
-              setStatus(value as ProductStatus | "all");
-            }}
-          >
-            <SelectTrigger className="w-40" aria-label="Filtrar por estado">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {PRODUCT_STATUSES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {PRODUCT_STATUS_LABELS[item]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={categoryId}
-            onValueChange={(value) => {
-              setPage(1);
-              setCategoryId(value);
-            }}
-          >
-            <SelectTrigger className="w-48" aria-label="Filtrar por categoría">
-              <SelectValue placeholder="Categoría" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {categories?.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {canManage && (
+  const header = (
+    <PageHeader
+      title="Productos"
+      description="Tu catálogo: lo que el asistente puede ofrecer y vender."
+      className="mb-6"
+      actions={
+        canManage ? (
           <Button asChild>
             <Link href="/products/new">
               <Plus aria-hidden />
               Nuevo producto
             </Link>
           </Button>
-        )}
+        ) : null
+      }
+    />
+  );
+
+  if (!user) {
+    return (
+      <>
+        {header}
+        <SkeletonRows rows={6} columns={5} />
+      </>
+    );
+  }
+
+  if (!user.companyId) {
+    return (
+      <>
+        {header}
+        <p className="text-sm text-muted-foreground">Selecciona una empresa para continuar.</p>
+      </>
+    );
+  }
+
+  const hasFilters = q.trim() !== "" || status !== "all" || categoryId !== "all";
+
+  return (
+    <div className="flex flex-col">
+      {header}
+
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative lg:w-72">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            className="h-9 pl-9"
+            placeholder="Nombre o SKU"
+            aria-label="Buscar productos"
+            value={q}
+            onChange={(event) => {
+              setPage(1);
+              setQ(event.target.value);
+            }}
+          />
+        </div>
+        <Segmented
+          label="Filtrar por estado"
+          size="sm"
+          value={status}
+          onChange={(value) => {
+            setPage(1);
+            setStatus(value);
+          }}
+          options={[
+            { value: "all" as const, label: "Todos" },
+            ...PRODUCT_STATUSES.map((item) => ({
+              value: item,
+              label: PRODUCT_STATUS_LABELS[item],
+            })),
+          ]}
+        />
+        <Select
+          value={categoryId}
+          onValueChange={(value) => {
+            setPage(1);
+            setCategoryId(value);
+          }}
+        >
+          <SelectTrigger
+            className="h-9 w-full lg:ml-auto lg:w-52"
+            aria-label="Filtrar por categoría"
+          >
+            <SelectValue placeholder="Categoría" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las categorías</SelectItem>
+            {categories?.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando productos…</p>}
+      {isLoading ? <SkeletonRows rows={6} columns={5} /> : null}
 
-      {!isLoading && data && data.items.length === 0 && (
-        <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="font-heading text-lg">Sin productos</CardTitle>
-            <CardDescription>Crea el primero para empezar tu catálogo.</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      {!isLoading && data && data.items.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          title={hasFilters ? "Sin resultados" : "Aún no hay productos"}
+          description={
+            hasFilters
+              ? "Ningún producto coincide con estos filtros."
+              : "Crea el primero para que el asistente pueda ofrecerlo."
+          }
+          action={
+            !hasFilters && canManage ? (
+              <Button asChild size="sm">
+                <Link href="/products/new">Nuevo producto</Link>
+              </Button>
+            ) : null
+          }
+          className="rounded-lg border border-dashed border-border"
+        />
+      ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {data?.items.map((product) => (
-          <Link key={product.id} href={`/products/${product.id}`} className="block">
-            <Card className="h-full border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm transition-colors hover:border-primary/40">
-              <CardHeader className="gap-3">
-                {product.coverImageUrl ? (
-                  <div className="aspect-square w-full overflow-hidden rounded-xl bg-muted">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={product.coverImageUrl}
-                      alt={product.name}
-                      className="h-full w-full object-contain"
-                    />
+      {data && data.items.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Producto</TableHead>
+              <TableHead className="hidden md:table-cell">Categoría</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Variantes</TableHead>
+              <TableHead className="text-right">Stock</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Desde</TableHead>
+              <TableHead>Estado</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className={rowsStagger}>
+            {data.items.map((product) => (
+              <TableRow
+                key={product.id}
+                className="cursor-pointer"
+                onClick={() => router.push(`/products/${product.id}`)}
+              >
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-muted-foreground">
+                      {product.coverImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={product.coverImageUrl}
+                          alt=""
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <ImageOff className="size-4" aria-hidden />
+                      )}
+                    </span>
+                    <Link
+                      href={`/products/${product.id}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="min-w-0 truncate font-medium underline-offset-4 hover:underline"
+                    >
+                      {product.name}
+                    </Link>
                   </div>
-                ) : (
-                  <div className="flex aspect-square items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground">
-                    Sin imagen
-                  </div>
-                )}
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="font-heading text-base">{product.name}</CardTitle>
-                  <Badge variant="secondary">{PRODUCT_STATUS_LABELS[product.status]}</Badge>
-                </div>
-                <CardDescription>
-                  {product.categoryName ?? "Sin categoría"} · {product.variantsCount} variantes
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-between text-sm">
-                <span>Desde {formatMoney(product.minPrice)}</span>
-                <span className="text-muted-foreground">Stock {product.totalStock}</span>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
+                </TableCell>
+                <TableCell className="hidden text-muted-foreground md:table-cell">
+                  {product.categoryName ?? "Sin categoría"}
+                </TableCell>
+                <TableCell className="hidden text-right sm:table-cell">
+                  {product.variantsCount}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    "text-right",
+                    product.totalStock <= LOW_STOCK && "font-medium text-destructive",
+                  )}
+                >
+                  {product.totalStock}
+                </TableCell>
+                <TableCell className="hidden text-right whitespace-nowrap sm:table-cell">
+                  {product.minPrice == null ? "—" : formatMoney(product.minPrice)}
+                </TableCell>
+                <TableCell>
+                  <StatusPill tone={PRODUCT_STATUS_TONE[product.status]}>
+                    {PRODUCT_STATUS_LABELS[product.status]}
+                  </StatusPill>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : null}
 
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((current) => current - 1)}
-          >
-            Anterior
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Página {data.page} de {data.totalPages}
+        <div className="mt-4 flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground tabular-nums">
+            Página {data.page} de {data.totalPages} · {data.total} productos
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= data.totalPages}
-            onClick={() => setPage((current) => current + 1)}
-          >
-            Siguiente
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => current - 1)}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= data.totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Siguiente
+            </Button>
+          </div>
         </div>
       )}
     </div>

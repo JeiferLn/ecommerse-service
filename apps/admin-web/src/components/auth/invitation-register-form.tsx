@@ -163,8 +163,20 @@ export function InvitationRegisterForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Tu nombre</Label>
-        <Input id="name" placeholder="Tu nombre" autoComplete="name" {...register("name")} />
-        {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+        <Input
+          id="name"
+          placeholder="Tu nombre"
+          autoComplete="name"
+          className="h-11 rounded-lg"
+          aria-invalid={errors.name ? true : undefined}
+          aria-describedby={errors.name ? "name-error" : undefined}
+          {...register("name")}
+        />
+        {errors.name && (
+          <p id="name-error" className="text-sm text-destructive">
+            {errors.name.message}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -174,9 +186,16 @@ export function InvitationRegisterForm() {
           type="password"
           placeholder="Mínimo 8 caracteres"
           autoComplete="new-password"
+          className="h-11 rounded-lg"
+          aria-invalid={errors.password ? true : undefined}
+          aria-describedby={errors.password ? "password-error" : undefined}
           {...register("password")}
         />
-        {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+        {errors.password && (
+          <p id="password-error" className="text-sm text-destructive">
+            {errors.password.message}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -186,10 +205,15 @@ export function InvitationRegisterForm() {
           type="password"
           placeholder="Repite la contraseña"
           autoComplete="new-password"
+          className="h-11 rounded-lg"
+          aria-invalid={errors.confirmPassword ? true : undefined}
+          aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
           {...register("confirmPassword")}
         />
         {errors.confirmPassword && (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+          <p id="confirmPassword-error" className="text-sm text-destructive">
+            {errors.confirmPassword.message}
+          </p>
         )}
       </div>
 
@@ -201,7 +225,12 @@ export function InvitationRegisterForm() {
         </p>
       )}
 
-      <Button type="submit" className="mt-1 w-full" disabled={registerMutation.isPending}>
+      <Button
+        type="submit"
+        size="lg"
+        className="mt-2 h-11 w-full"
+        disabled={registerMutation.isPending}
+      >
         {registerMutation.isPending ? "Creando cuenta…" : "Aceptar invitación e ingresar"}
       </Button>
     </form>

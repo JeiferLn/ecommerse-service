@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Figtree, Outfit } from "next/font/google";
+import { Geist_Mono, Instrument_Serif, Inter } from "next/font/google";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { SessionProvider } from "@/providers/session-provider";
@@ -7,17 +7,23 @@ import { ThemeProvider } from "@/providers/theme-provider";
 
 import "./globals.css";
 
-const figtree = Figtree({
-  variable: "--font-figtree",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+  display: "swap",
+});
+
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
   display: "swap",
 });
 
@@ -37,7 +43,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className="scroll-smooth" suppressHydrationWarning>
-      <body className={`${figtree.variable} ${outfit.variable} antialiased`} suppressHydrationWarning>
+      <body
+        className={`${inter.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}
+        suppressHydrationWarning
+      >
         <ThemeProvider>
           <QueryProvider>
             <SessionProvider>{children}</SessionProvider>

@@ -34,7 +34,7 @@ export function BrandMark({ href = "/", className, size = "md" }: BrandMarkProps
     <Link
       href={href}
       className={cn(
-        "font-heading inline-flex items-center font-bold tracking-tight text-foreground",
+        "font-heading inline-flex shrink-0 items-center font-bold tracking-tight whitespace-nowrap text-foreground",
         s.wrap,
         className,
       )}

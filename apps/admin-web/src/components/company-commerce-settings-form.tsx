@@ -8,15 +8,15 @@ import {
   type ShippingScope,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Truck, X } from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { FormActions } from "@/components/form-actions";
+import { FormSection } from "@/components/form-section";
 import { LocationSelects, type LocationValue } from "@/components/location-selects";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SkeletonText } from "@/components/ui/skeleton";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
@@ -42,7 +42,7 @@ function TagList({
       {items.map((item) => (
         <li
           key={item}
-          className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-xs"
+          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs"
         >
           <span>{item}</span>
           {!disabled && (
@@ -118,12 +118,16 @@ export function CompanyCommerceSettingsForm() {
     },
   });
 
-  if (!user?.companyId) {
+  if (!user) {
+    return <SkeletonText lines={5} className="max-w-xl" />;
+  }
+
+  if (!user.companyId) {
     return null;
   }
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando envíos…</p>;
+    return <SkeletonText lines={5} className="max-w-xl" />;
   }
 
   if (error || !company) {
@@ -148,144 +152,131 @@ export function CompanyCommerceSettingsForm() {
     setCarrierDraft("");
   };
 
-  return (
-    <Card
-      id="envios-y-pagos"
-      className="scroll-mt-6 border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm"
-    >
-      <CardHeader>
-        <CardTitle className="font-heading flex items-center gap-2 text-xl font-bold">
-          <Truck className="size-5" aria-hidden />
-          Envíos
-        </CardTitle>
-        <CardDescription>
-          El bot necesita ubicación, cobertura y transportadoras para orientar al cliente. El pago se
-          manejará por pasarela de la plataforma (no se configura aquí).
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex max-w-xl flex-col gap-5">
-        {!company.commerce.isConfigured && (
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
-            Aún incompleto: hasta que configures envíos, WhatsApp permanece bloqueado.
-          </p>
-        )}
+  const locked = !canEdit || mutation.isPending;
 
+  return (
+    <form
+      id="envios-y-pagos"
+      className="flex scroll-mt-6 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        mutation.mutate();
+      }}
+    >
+      {!company.commerce.isConfigured ? (
+        <p className="mb-6 flex items-start gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm text-foreground">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+          Aún incompleto: el asistente no puede atender en WhatsApp hasta que configures envíos.
+        </p>
+      ) : null}
+      {!canEdit ? (
+        <p className="mb-6 text-sm text-muted-foreground">
+          Solo el dueño puede editar esta sección.
+        </p>
+      ) : null}
+
+      <FormSection
+        title="Origen"
+        description="Desde dónde despachas. Sirve para validar destinos en el checkout; el cliente elige su propia ubicación al pagar."
+      >
         <LocationSelects
           idPrefix="commerce"
           variant="company"
+          inline
           lockCountry={Boolean(company.commerce.countryCode)}
           value={location}
-          disabled={!canEdit || mutation.isPending}
+          disabled={locked}
           onChange={(next) => {
             setLocation(next);
             setDirty(true);
           }}
         />
-        <p className="text-xs text-muted-foreground">
-          Departamento y municipio son la base de la tienda (obligatorios si ofreces envío local) y
-          sirven para validar destinos en el checkout. El cliente elige su propio país / depto /
-          municipio al pagar.
-        </p>
+      </FormSection>
 
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium">Alcance de envíos</legend>
-          <div className="flex flex-col gap-2">
-            {SHIPPING_SCOPES.map((scope) => {
-              const checked = shippingScopes.includes(scope);
-              return (
-                <label
-                  key={scope}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm",
-                    checked && "border-primary/40 bg-primary/5",
-                    (!canEdit || mutation.isPending) && "cursor-not-allowed opacity-60",
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={checked}
-                    disabled={!canEdit || mutation.isPending}
-                    onChange={() => {
-                      setShippingScopes(toggleInList(shippingScopes, scope));
-                      setDirty(true);
-                    }}
-                  />
-                  {SHIPPING_SCOPE_LABELS[scope]}
-                </label>
-              );
-            })}
-          </div>
+      <FormSection title="Alcance" description="Hasta dónde llegan tus envíos.">
+        <fieldset className="flex flex-col divide-y divide-border rounded-md border border-border">
+          <legend className="sr-only">Alcance de envíos</legend>
+          {SHIPPING_SCOPES.map((scope) => {
+            const checked = shippingScopes.includes(scope);
+            return (
+              <label
+                key={scope}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150 hover:bg-muted/40",
+                  locked && "cursor-not-allowed opacity-60 hover:bg-transparent",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={checked}
+                  disabled={locked}
+                  onChange={() => {
+                    setShippingScopes(toggleInList(shippingScopes, scope));
+                    setDirty(true);
+                  }}
+                />
+                {SHIPPING_SCOPE_LABELS[scope]}
+              </label>
+            );
+          })}
         </fieldset>
+      </FormSection>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="commerce-carrier">Empresas de transporte</Label>
-          <div className="flex gap-2">
-            <Input
-              id="commerce-carrier"
-              placeholder="Ej. Servientrega, Interrapidisimo…"
-              value={carrierDraft}
-              disabled={!canEdit || mutation.isPending}
-              onChange={(event) => setCarrierDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addCarrier();
-                }
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!canEdit || mutation.isPending || !carrierDraft.trim()}
-              onClick={addCarrier}
-            >
-              <Plus className="size-4" aria-hidden />
-              Añadir
-            </Button>
-          </div>
-          <TagList
-            items={shippingCarriers}
-            disabled={!canEdit || mutation.isPending}
-            onRemove={(value) => {
-              setShippingCarriers(shippingCarriers.filter((item) => item !== value));
-              setDirty(true);
+      <FormSection
+        title="Transportadoras"
+        description="Las empresas con las que envías. El asistente las menciona al cliente."
+      >
+        <div className="flex gap-2">
+          <Input
+            id="commerce-carrier"
+            aria-label="Empresa de transporte"
+            placeholder="Ej. Servientrega, Interrapidisimo…"
+            value={carrierDraft}
+            disabled={locked}
+            onChange={(event) => setCarrierDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addCarrier();
+              }
             }}
           />
-        </div>
-
-        {mutation.isError && (
-          <p className="text-sm text-destructive">
-            {mutation.error instanceof ApiClientError
-              ? mutation.error.message
-              : "No se pudo guardar"}
-          </p>
-        )}
-        {mutation.isSuccess && !dirty && (
-          <p className="text-sm text-muted-foreground">Envíos guardados.</p>
-        )}
-
-        {canEdit ? (
           <Button
             type="button"
-            className="w-fit"
-            disabled={mutation.isPending || !dirty}
-            onClick={() => mutation.mutate()}
+            variant="outline"
+            disabled={locked || !carrierDraft.trim()}
+            onClick={addCarrier}
           >
-            {mutation.isPending ? "Guardando…" : "Guardar envíos"}
+            <Plus className="size-4" aria-hidden />
+            Añadir
           </Button>
-        ) : (
-          <p className="text-xs text-muted-foreground">Solo el dueño puede editar esta sección.</p>
-        )}
+        </div>
+        <TagList
+          items={shippingCarriers}
+          disabled={locked}
+          onRemove={(value) => {
+            setShippingCarriers(shippingCarriers.filter((item) => item !== value));
+            setDirty(true);
+          }}
+        />
+      </FormSection>
 
-        <p className="text-xs text-muted-foreground">
-          También puedes volver desde WhatsApp:{" "}
-          <Link href="/whatsapp" className="underline underline-offset-4">
-            conexión WhatsApp
-          </Link>
-          .
-        </p>
-      </CardContent>
-    </Card>
+      {canEdit ? (
+        <FormActions
+          dirty={dirty}
+          pending={mutation.isPending}
+          saved={mutation.isSuccess}
+          submitLabel="Guardar envíos"
+          error={
+            mutation.isError
+              ? mutation.error instanceof ApiClientError
+                ? mutation.error.message
+                : "No se pudo guardar"
+              : null
+          }
+        />
+      ) : null}
+    </form>
   );
 }

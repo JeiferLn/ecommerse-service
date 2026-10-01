@@ -3,15 +3,28 @@
 import { canManageCatalog } from "@commerce-ai/types";
 import type { Category } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { useStaggerOnce } from "@/lib/use-stagger-once";
 import { useSession } from "@/providers/session-provider";
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiClientError ? error.message : fallback;
+}
 
 export function CategoriesSection() {
   const { user } = useSession();
@@ -19,13 +32,17 @@ export function CategoriesSection() {
   const canManage = Boolean(user && canManageCatalog(user.role));
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
 
   const { data: categories, isLoading } = useQuery({
     queryKey: ["categories"],
     queryFn: () => apiFetch<Category[]>("/categories"),
     enabled: Boolean(user?.companyId),
   });
+  const rowsStagger = useStaggerOnce(Boolean(categories?.length));
+
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["categories"] });
 
   const createMutation = useMutation({
     mutationFn: (categoryName: string) =>
@@ -35,12 +52,11 @@ export function CategoriesSection() {
       }),
     onSuccess: () => {
       setName("");
-      setMessage("Categoría creada");
-      void queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setMessage({ text: "Categoría creada" });
+      invalidate();
     },
-    onError: (error: unknown) => {
-      setMessage(error instanceof ApiClientError ? error.message : "No se pudo crear");
-    },
+    onError: (error: unknown) =>
+      setMessage({ text: errorMessage(error, "No se pudo crear"), error: true }),
   });
 
   const updateMutation = useMutation({
@@ -51,147 +67,198 @@ export function CategoriesSection() {
       }),
     onSuccess: () => {
       setEditingId(null);
-      setName("");
-      setMessage("Categoría actualizada");
-      void queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setMessage({ text: "Categoría actualizada" });
+      invalidate();
     },
-    onError: (error: unknown) => {
-      setMessage(error instanceof ApiClientError ? error.message : "No se pudo actualizar");
-    },
+    onError: (error: unknown) =>
+      setMessage({ text: errorMessage(error, "No se pudo actualizar"), error: true }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<null>(`/categories/${id}`, {
-        method: "DELETE",
-      }),
+    mutationFn: (id: string) => apiFetch<null>(`/categories/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      setMessage("Categoría eliminada");
-      void queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setMessage({ text: "Categoría eliminada" });
+      invalidate();
     },
-    onError: (error: unknown) => {
-      setMessage(error instanceof ApiClientError ? error.message : "No se pudo eliminar");
-    },
+    onError: (error: unknown) =>
+      setMessage({ text: errorMessage(error, "No se pudo eliminar"), error: true }),
   });
 
-  function handleSubmit(event: FormEvent) {
+  function handleCreate(event: FormEvent) {
     event.preventDefault();
     setMessage(null);
-    if (editingId) {
-      updateMutation.mutate({ id: editingId, categoryName: name });
-      return;
+    if (name.trim()) {
+      createMutation.mutate(name.trim());
     }
-    createMutation.mutate(name);
   }
 
-  function startEdit(category: Category) {
-    setEditingId(category.id);
-    setName(category.name);
-    setMessage(null);
+  function handleUpdate(event: FormEvent) {
+    event.preventDefault();
+    if (editingId && editingName.trim()) {
+      updateMutation.mutate({ id: editingId, categoryName: editingName.trim() });
+    }
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setName("");
+  if (!user) {
+    return <SkeletonRows rows={4} columns={3} className="max-w-3xl" />;
   }
 
-  if (!user?.companyId) {
+  if (!user.companyId) {
     return <p className="text-sm text-muted-foreground">Selecciona una empresa para continuar.</p>;
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-brand-sm backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="font-heading text-xl font-bold">Categorías</CardTitle>
-        <CardDescription>
-          Organiza tu catálogo. {canManage ? "Puedes crear y editar." : "Solo lectura."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {canManage && (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-            <Label htmlFor="category-name">{editingId ? "Editar categoría" : "Nueva categoría"}</Label>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                id="category-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Ej. Calzado deportivo"
-                disabled={createMutation.isPending || updateMutation.isPending}
-              />
-              <Button
-                type="submit"
-                disabled={
-                  !name.trim() || createMutation.isPending || updateMutation.isPending
-                }
-              >
-                {editingId
-                  ? updateMutation.isPending
-                    ? "Guardando…"
-                    : "Guardar"
-                  : createMutation.isPending
-                    ? "Creando…"
-                    : "Crear"}
-              </Button>
-              {editingId && (
-                <Button type="button" variant="outline" onClick={cancelEdit}>
-                  Cancelar
-                </Button>
-              )}
-            </div>
-          </form>
-        )}
+    <div className="flex max-w-3xl flex-col gap-4">
+      {canManage ? (
+        <form onSubmit={handleCreate} className="flex gap-2">
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Nueva categoría, ej. Calzado deportivo"
+            aria-label="Nombre de la nueva categoría"
+            disabled={createMutation.isPending}
+            className="h-9"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className="h-9"
+            disabled={!name.trim() || createMutation.isPending}
+          >
+            <Plus aria-hidden />
+            {createMutation.isPending ? "Creando…" : "Crear"}
+          </Button>
+        </form>
+      ) : (
+        <p className="text-sm text-muted-foreground">Solo lectura.</p>
+      )}
 
-        {message && <p className="text-sm text-muted-foreground">{message}</p>}
-        {isLoading && <p className="text-sm text-muted-foreground">Cargando categorías…</p>}
+      {message ? (
+        <p
+          key={message.text}
+          role="status"
+          className={
+            message.error
+              ? "slide-up-in text-sm text-destructive"
+              : "slide-up-in text-sm text-muted-foreground"
+          }
+        >
+          {message.text}
+        </p>
+      ) : null}
 
-        {!isLoading && categories && categories.length === 0 && (
-          <p className="text-sm text-muted-foreground">Aún no hay categorías.</p>
-        )}
+      {isLoading ? <SkeletonRows rows={4} columns={3} /> : null}
 
-        {!isLoading && categories && categories.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {categories.map((category) => (
-              <li
-                key={category.id}
-                className="flex items-center justify-between gap-3 rounded-lg border p-3"
-              >
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate font-medium">{category.name}</span>
-                  <span className="truncate text-sm text-muted-foreground">{category.slug}</span>
-                </div>
-                {canManage && (
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startEdit(category)}
-                    >
-                      <Pencil aria-hidden />
-                      Editar
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar la categoría “${category.name}”?`)) {
-                          deleteMutation.mutate(category.id);
-                        }
-                      }}
-                      disabled={deleteMutation.isPending}
-                    >
-                      <Trash2 aria-hidden />
-                      Eliminar
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+      {!isLoading && categories && categories.length === 0 ? (
+        <EmptyState
+          icon={FolderTree}
+          title="Aún no hay categorías"
+          description="Agrupan tus productos y ayudan al asistente a recomendar."
+          className="rounded-lg border border-dashed border-border"
+        />
+      ) : null}
+
+      {categories && categories.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre</TableHead>
+              <TableHead className="hidden sm:table-cell">Identificador</TableHead>
+              {canManage ? <TableHead className="text-right">Acciones</TableHead> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody className={rowsStagger}>
+            {categories.map((category) => {
+              const editing = editingId === category.id;
+              return (
+                <TableRow key={category.id}>
+                  <TableCell className="font-medium">
+                    {editing ? (
+                      <form id={`edit-${category.id}`} onSubmit={handleUpdate}>
+                        <Input
+                          autoFocus
+                          value={editingName}
+                          onChange={(event) => setEditingName(event.target.value)}
+                          aria-label="Nuevo nombre"
+                          className="h-8"
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              setEditingId(null);
+                            }
+                          }}
+                        />
+                      </form>
+                    ) : (
+                      category.name
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden font-data text-[13px] text-muted-foreground sm:table-cell">
+                    {category.slug}
+                  </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-right whitespace-nowrap">
+                      {editing ? (
+                        <>
+                          <Button
+                            type="submit"
+                            form={`edit-${category.id}`}
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Guardar"
+                            disabled={!editingName.trim() || updateMutation.isPending}
+                          >
+                            <Check aria-hidden />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Cancelar"
+                            onClick={() => setEditingId(null)}
+                          >
+                            <X aria-hidden />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Editar ${category.name}`}
+                            onClick={() => {
+                              setEditingId(category.id);
+                              setEditingName(category.name);
+                              setMessage(null);
+                            }}
+                          >
+                            <Pencil aria-hidden />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label={`Eliminar ${category.name}`}
+                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm(`¿Eliminar la categoría “${category.name}”?`)) {
+                                deleteMutation.mutate(category.id);
+                              }
+                            }}
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        </>
+                      )}
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      ) : null}
+    </div>
   );
 }

@@ -4,42 +4,54 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, LayoutDashboard } from "lucide-react";
 
+import {
+  NAV_ITEM_ACTIVE,
+  NAV_ITEM_CLASS,
+  NAV_ITEM_IDLE,
+  useActiveIndicator,
+} from "@/components/company-sidebar";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/admin", label: "Overview", icon: LayoutDashboard },
+  { href: "/admin", label: "Resumen", icon: LayoutDashboard },
   { href: "/admin/companies", label: "Empresas", icon: Building2 },
 ] as const;
 
-export function AdminSidebar() {
+export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { navRef, indicator } = useActiveIndicator(pathname);
 
   return (
-    <aside className="w-56 shrink-0">
-      <nav className="sticky top-6 flex flex-col gap-1 rounded-2xl border border-border/70 bg-card/70 p-2 shadow-brand-sm backdrop-blur-sm">
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/admin" && pathname.startsWith(`${item.href}/`));
-          const Icon = item.icon;
+    <nav ref={navRef} aria-label="Navegación de plataforma" className="relative flex flex-col gap-0.5">
+      {indicator}
+      <p className="px-3 pb-1 text-xs text-muted-foreground">Plataforma</p>
+      {NAV_ITEMS.map((item) => {
+        const isActive =
+          pathname === item.href ||
+          (item.href !== "/admin" && pathname.startsWith(`${item.href}/`));
+        const Icon = item.icon;
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "inline-flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              <Icon className="size-4 shrink-0" aria-hidden />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(NAV_ITEM_CLASS, isActive ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE)}
+          >
+            <Icon className="size-4 shrink-0" aria-hidden />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function AdminSidebar() {
+  return (
+    <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 overflow-y-auto border-r border-border px-3 py-5 lg:block">
+      <AdminNav />
     </aside>
   );
 }

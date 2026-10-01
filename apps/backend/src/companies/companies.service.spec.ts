@@ -39,6 +39,13 @@ const companyDetailsBase = {
   mercadoPagoConnection: null,
 };
 
+const emptyOnboarding = {
+  activeProducts: 0,
+  playgroundTried: false,
+  whatsappAssigned: false,
+  whatsappActive: false,
+};
+
 const mockUser: User = {
   id: "user-2",
   name: "Miembro",
@@ -84,6 +91,9 @@ describe("CompaniesService", () => {
     refreshToken: {
       updateMany: jest.Mock<Promise<unknown>, [args: Prisma.RefreshTokenUpdateManyArgs]>;
     };
+    product: { count: jest.Mock };
+    conversation: { findFirst: jest.Mock };
+    whatsAppConnection: { findUnique: jest.Mock };
   };
   let mailService: {
     sendCompanyInvitation: jest.Mock<
@@ -156,6 +166,9 @@ describe("CompaniesService", () => {
           .fn<Promise<unknown>, [Prisma.RefreshTokenUpdateManyArgs]>()
           .mockResolvedValue({ count: 1 }),
       },
+      product: { count: jest.fn().mockResolvedValue(0) },
+      conversation: { findFirst: jest.fn().mockResolvedValue(null) },
+      whatsAppConnection: { findUnique: jest.fn().mockResolvedValue(null) },
     };
 
     mailService = {
@@ -249,6 +262,7 @@ describe("CompaniesService", () => {
         },
         knowledge: emptyKnowledge,
         payments: emptyPayments,
+        onboarding: emptyOnboarding,
         createdAt: "2026-01-15T10:00:00.000Z",
       });
     });
@@ -341,6 +355,7 @@ describe("CompaniesService", () => {
         },
         knowledge: emptyKnowledge,
         payments: emptyPayments,
+        onboarding: emptyOnboarding,
         createdAt: "2026-01-15T10:00:00.000Z",
       });
     });

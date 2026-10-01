@@ -18,3 +18,10 @@ pnpm typecheck  # tsc --noEmit
 - Formularios: React Hook Form + Zod (a partir de Fase 1).
 - Estado de servidor: TanStack Query.
 - Más detalles en `docs/CONVENTIONS.md` (raíz del repo).
+
+## Variables de entorno
+
+| Variable | Uso |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | URL base del backend. |
+| `NEXT_PUBLIC_ENABLE_DEV_TOOLS` | `"true"` muestra herramientas solo para desarrollo, como pegar un Access Token de Mercado Pago a mano en Configuración → Pagos. Déjala sin definir en producción. |

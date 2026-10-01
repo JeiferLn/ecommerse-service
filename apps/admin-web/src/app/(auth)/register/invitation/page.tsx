@@ -4,34 +4,36 @@ import { Suspense } from "react";
 
 import { AuthCentered } from "@/components/auth/auth-centered";
 import { InvitationRegisterForm } from "@/components/auth/invitation-register-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { accentWords } from "@/components/site/words";
 
 export const metadata: Metadata = {
-  title: "Aceptar invitación | Commerce AI SaaS",
+  title: "Aceptar invitación",
 };
 
 export default function InvitationRegisterPage() {
   return (
-    <AuthCentered>
-      <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl font-bold">Únete a la empresa</CardTitle>
-          <CardDescription>
-            Te invitaron a colaborar. Solo necesitas tu nombre y una contraseña.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando invitación…</p>}>
-            <InvitationRegisterForm />
-          </Suspense>
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            ¿Quieres tu propia empresa?{" "}
-            <Link href="/register" className="font-medium text-foreground hover:underline">
-              Regístrate aquí
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
+    <AuthCentered
+      title={
+        <>
+          Únete <span className={accentWords}>al equipo.</span>
+        </>
+      }
+      description="Te invitaron a colaborar. Solo necesitas tu nombre y una contraseña."
+      footer={
+        <>
+          ¿Quieres tu propia tienda?{" "}
+          <Link
+            href="/register"
+            className="font-medium text-foreground underline underline-offset-4 hover:text-primary"
+          >
+            Crea una cuenta
+          </Link>
+        </>
+      }
+    >
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando invitación…</p>}>
+        <InvitationRegisterForm />
+      </Suspense>
     </AuthCentered>
   );
 }

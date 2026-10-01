@@ -58,9 +58,16 @@ export function ForgotPasswordForm() {
           type="email"
           placeholder="tu@empresa.com"
           autoComplete="email"
+          className="h-11 rounded-lg"
+          aria-invalid={errors.email ? true : undefined}
+          aria-describedby={errors.email ? "email-error" : undefined}
           {...register("email")}
         />
-        {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+        {errors.email && (
+          <p id="email-error" className="text-sm text-destructive">
+            {errors.email.message}
+          </p>
+        )}
       </div>
 
       {mutation.isError && (
@@ -71,7 +78,7 @@ export function ForgotPasswordForm() {
         </p>
       )}
 
-      <Button type="submit" className="mt-1 w-full" disabled={mutation.isPending}>
+      <Button type="submit" size="lg" className="mt-2 h-11 w-full" disabled={mutation.isPending}>
         {mutation.isPending ? "Enviando…" : "Enviar enlace de recuperación"}
       </Button>
     </form>

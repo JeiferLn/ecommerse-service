@@ -16,6 +16,7 @@ const COMPANY_ROUTES = [
   "/billing",
   "/settings",
   "/knowledge",
+  "/assistant",
 ];
 
 const PRIVATE_ROUTES = [...COMPANY_ROUTES, "/admin"];

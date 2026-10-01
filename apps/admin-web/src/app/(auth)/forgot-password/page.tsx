@@ -3,31 +3,31 @@ import Link from "next/link";
 
 import { AuthCentered } from "@/components/auth/auth-centered";
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { accentWords } from "@/components/site/words";
 
 export const metadata: Metadata = {
-  title: "Recuperar contraseña | Commerce AI SaaS",
+  title: "Recuperar contraseña",
 };
 
 export default function ForgotPasswordPage() {
   return (
-    <AuthCentered>
-      <Card className="w-full border-border/70 bg-card/80 shadow-brand backdrop-blur-md">
-        <CardHeader>
-          <CardTitle className="font-heading text-xl font-bold">Recuperar contraseña</CardTitle>
-          <CardDescription>
-            Ingresa tu email y te enviaremos un enlace para restablecerla.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ForgotPasswordForm />
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            <Link href="/login" className="font-medium text-foreground hover:underline">
-              Volver a iniciar sesión
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
+    <AuthCentered
+      title={
+        <>
+          Recupera <span className={accentWords}>tu contraseña.</span>
+        </>
+      }
+      description="Escribe el email de tu cuenta y te enviaremos un enlace para crear una nueva."
+      footer={
+        <Link
+          href="/login"
+          className="font-medium text-foreground underline underline-offset-4 hover:text-primary"
+        >
+          Volver a iniciar sesión
+        </Link>
+      }
+    >
+      <ForgotPasswordForm />
     </AuthCentered>
   );
 }

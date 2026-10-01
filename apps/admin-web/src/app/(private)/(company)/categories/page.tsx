@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
 
 import { CategoriesSection } from "@/components/categories-section";
+import { PageHeader } from "@/components/page-header";
 
 export const metadata: Metadata = {
-  title: "Categorías | Commerce AI SaaS",
+  title: "Categorías",
 };
 
 export default function CategoriesPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Categorías</h1>
-        <p className="text-muted-foreground">Clasifica los productos de tu empresa.</p>
-      </div>
+    <div className="flex flex-col">
+      <PageHeader
+        title="Categorías"
+        description="Agrupan tus productos para filtrarlos y para que el asistente recomiende mejor."
+        className="mb-6"
+      />
       <CategoriesSection />
     </div>
   );

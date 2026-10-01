@@ -1,22 +1,20 @@
 import type { Metadata } from "next";
 
 import { InStoreSaleForm } from "@/components/in-store-sale-form";
+import { PageHeader } from "@/components/page-header";
 
 export const metadata: Metadata = {
-  title: "Ventas tienda | Commerce AI SaaS",
+  title: "Nueva venta",
 };
 
 export default function SalesPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
-          Ventas de tienda
-        </h1>
-        <p className="text-muted-foreground">
-          Registra ventas físicas para llevar inventario e ingresos junto a los pedidos de WhatsApp.
-        </p>
-      </div>
+    <div className="flex flex-col">
+      <PageHeader
+        title="Nueva venta"
+        description="Registra ventas en tienda física para llevar el inventario y los ingresos junto a los pedidos de WhatsApp."
+        className="mb-6"
+      />
       <InStoreSaleForm />
     </div>
   );

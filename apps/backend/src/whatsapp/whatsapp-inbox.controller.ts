@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import type {
   ApiResponse,
   ConversationSummary,
@@ -7,6 +18,7 @@ import type {
 } from "@commerce-ai/types";
 
 import type { AuthenticatedUser } from "../auth/auth.types";
+import type { Env } from "../config/env.validation";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { ListConversationsQueryDto } from "./dto/list-conversations-query.dto";
@@ -16,7 +28,17 @@ import { WhatsAppInboxService } from "./whatsapp-inbox.service";
 
 @Controller("whatsapp/conversations")
 export class WhatsAppInboxController {
-  constructor(private readonly inboxService: WhatsAppInboxService) {}
+  constructor(
+    private readonly inboxService: WhatsAppInboxService,
+    private readonly config: ConfigService<Env, true>,
+  ) {}
+
+  /** Borrar conversaciones reales solo se permite en desarrollo. */
+  private assertDevelopmentOnly(): void {
+    if (this.config.get("NODE_ENV", { infer: true }) === "production") {
+      throw new ForbiddenException("No disponible en producción");
+    }
+  }
 
   @Get()
   async list(
@@ -34,6 +56,7 @@ export class WhatsAppInboxController {
   async clearAll(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiResponse<{ deleted: number }>> {
+    this.assertDevelopmentOnly();
     const deleted = await this.inboxService.clearAllConversations(user.companyId);
     return {
       status: "success",
@@ -86,6 +109,7 @@ export class WhatsAppInboxController {
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
   ): Promise<ApiResponse<null>> {
+    this.assertDevelopmentOnly();
     await this.inboxService.deleteConversation(user.companyId, id);
     return { status: "success", data: null, message: "Conversación eliminada" };
   }

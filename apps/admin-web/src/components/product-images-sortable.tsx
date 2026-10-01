@@ -64,8 +64,8 @@ function ImageCard({
   return (
     <div
       className={cn(
-        "relative h-full w-full overflow-hidden rounded-xl border bg-muted",
-        isDragging && "shadow-lg ring-2 ring-primary/40",
+        "relative h-full w-full overflow-hidden rounded-md border border-border bg-muted",
+        isDragging && "shadow-md ring-2 ring-primary/40",
         className,
       )}
     >
@@ -233,9 +233,7 @@ export function ProductImagesSortable({
           <div
             className="cursor-grabbing"
             style={
-              activeSize
-                ? { width: activeSize.width, height: activeSize.height }
-                : { width: 220 }
+              activeSize ? { width: activeSize.width, height: activeSize.height } : { width: 220 }
             }
           >
             <ImageCard
@@ -244,7 +242,7 @@ export function ProductImagesSortable({
               isCover={activeIndex === 0}
               canManage={false}
               onRemove={() => undefined}
-              className="scale-[1.02] shadow-2xl ring-2 ring-primary/50"
+              className="scale-[1.02] shadow-md ring-2 ring-primary/50"
               isDragging
             />
           </div>

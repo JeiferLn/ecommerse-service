@@ -6,8 +6,8 @@ import {
   Header,
   Headers,
   HttpCode,
+  Patch,
   Post,
-  Put,
   Req,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -19,7 +19,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Public } from "../common/decorators/public.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { SimulateInboundDto } from "./dto/simulate-inbound.dto";
-import { UpsertWhatsAppConnectionDto } from "./dto/upsert-connection.dto";
+import { SetConnectionActiveDto } from "./dto/set-connection-active.dto";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
 
@@ -82,26 +82,19 @@ export class WhatsAppController {
     };
   }
 
+  /** El número lo asigna la plataforma; la tienda solo pausa o reactiva su asistente. */
   @Roles("owner", "manager")
-  @Put("connection")
-  async upsertConnection(
+  @Patch("connection")
+  async setConnectionActive(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpsertWhatsAppConnectionDto,
+    @Body() dto: SetConnectionActiveDto,
   ): Promise<ApiResponse<WhatsAppConnection>> {
+    const data = await this.connectionService.setActive(user.companyId, dto.isActive);
     return {
       status: "success",
-      data: await this.connectionService.upsert(user.companyId, dto),
-      message: "Conexión WhatsApp guardada",
+      data,
+      message: dto.isActive ? "Asistente activado" : "Asistente en pausa",
     };
-  }
-
-  @Roles("owner", "manager")
-  @Delete("connection")
-  async removeConnection(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<ApiResponse<null>> {
-    await this.connectionService.remove(user.companyId);
-    return { status: "success", data: null, message: "Conexión eliminada" };
   }
 
   private toStringRecord(body: Record<string, unknown>): Record<string, string> {
