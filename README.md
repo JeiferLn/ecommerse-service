@@ -253,7 +253,7 @@ Incluye:
 - Empresas
 - Usuarios por empresa
 - Roles
-- Permisos (matriz de capacidades por rol; sin módulo/tabla Permission — ver `docs/CONVENTIONS.md`)
+- Permisos (matriz de capacidades por rol; sin módulo/tabla Permission — ver [docs/general/autenticacion.md](docs/general/autenticacion.md))
 - Configuración inicial
 - Envío de emails de plataforma (SMTP global, no por empresa)
 
@@ -530,7 +530,7 @@ Incluye (implementado):
 
 # Fase 12 — Diseño y organización del admin (casi cerrada)
 
-**Estado:** rediseño aplicado; quedan detalles de pulido. Reglas en `docs/CONVENTIONS.md` → "Diseño del admin".
+**Estado:** rediseño aplicado; quedan detalles de pulido. Reglas en [docs/frontend/diseno.md](docs/frontend/diseno.md).
 
 Hecho:
 

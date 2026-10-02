@@ -17,7 +17,7 @@ pnpm typecheck  # tsc --noEmit
 - Componentes UI: shadcn/ui en `src/components/ui/` (generados con el CLI).
 - Formularios: React Hook Form + Zod (a partir de Fase 1).
 - Estado de servidor: TanStack Query.
-- Más detalles en `docs/CONVENTIONS.md` (raíz del repo).
+- Más detalles en [`docs/frontend/`](../../docs/frontend/nextjs.md) (índice general en [`docs/README.md`](../../docs/README.md)).
 
 ## Variables de entorno
 
