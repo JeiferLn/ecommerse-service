@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useStaggerOnce } from "@/lib/use-stagger-once";
+import { useConfirm } from "@/providers/confirm-provider";
 import { useSession } from "@/providers/session-provider";
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -29,6 +30,7 @@ function errorMessage(error: unknown, fallback: string): string {
 export function CategoriesSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const canManage = Boolean(user && canManageCatalog(user.role));
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -241,8 +243,14 @@ export function CategoriesSection() {
                             className="text-muted-foreground hover:text-destructive"
                             aria-label={`Eliminar ${category.name}`}
                             disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (window.confirm(`¿Eliminar la categoría “${category.name}”?`)) {
+                            onClick={async () => {
+                              const confirmed = await confirm({
+                                title: `¿Eliminar la categoría “${category.name}”?`,
+                                description: "Los productos de esta categoría quedarán sin categoría.",
+                                confirmLabel: "Eliminar",
+                                destructive: true,
+                              });
+                              if (confirmed) {
                                 deleteMutation.mutate(category.id);
                               }
                             }}

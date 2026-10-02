@@ -166,8 +166,8 @@ export function WhatsAppConnectionSection() {
   }
 
   const isShared = connection.mode === "shared";
-  const phone = isShared
-    ? connection.twilioWhatsAppNumber
+  const headline = isShared
+    ? `#${connection.storeCode ?? ""}`
     : connection.displayPhoneNumber || connection.twilioWhatsAppNumber;
   const nextActive = !connection.isActive;
 
@@ -187,18 +187,13 @@ export function WhatsAppConnectionSection() {
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-xs text-muted-foreground">
-            {isShared ? "Número de la plataforma" : "Número de tu asistente"}
+            {isShared ? "Código de tu tienda" : "Número de tu asistente"}
           </span>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="font-data text-2xl tracking-tight">{phone}</span>
+            <span className="font-data text-2xl tracking-tight">{headline}</span>
             <StatusPill tone={connection.isActive ? "positive" : "attention"}>
               {connection.isActive ? "Activo" : "En pausa"}
             </StatusPill>
-            {isShared && connection.storeCode ? (
-              <span className="font-data text-sm text-muted-foreground">
-                #{connection.storeCode}
-              </span>
-            ) : null}
           </div>
           <p key={String(connection.isActive)} className="fade-swap text-sm text-muted-foreground">
             {connection.isActive
@@ -238,7 +233,7 @@ export function WhatsAppConnectionSection() {
           title="Enlace para clientes"
           description={
             isShared
-              ? "Compártelo en tu Instagram, tu web o tus anuncios. Tus clientes deben entrar por este enlace: el código de tu tienda viene en el mensaje y así sabemos que te escriben a ti."
+              ? "Compártelo en tu Instagram, tu web o tus anuncios. Abre WhatsApp con el código de tu tienda ya escrito, y así sabemos que te escriben a ti. Tus clientes deben entrar siempre por este enlace."
               : "Compártelo en tu Instagram, tu web o tus anuncios para que te escriban directo."
           }
         >

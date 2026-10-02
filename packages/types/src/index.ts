@@ -704,6 +704,39 @@ export interface PlatformDashboardStats {
   recentCompanies: PlatformCompanySummary[];
 }
 
+/** De dónde sale un ajuste de plataforma: guardado en el panel o tomado del `.env`. */
+export type PlatformSettingSource = "panel" | "env";
+
+/** WhatsApp/Twilio de la plataforma. Las credenciales nunca se exponen, solo si están. */
+export interface PlatformWhatsAppSettings {
+  /** Número compartido vigente, o null si no hay ninguno. */
+  sharedNumber: string | null;
+  sharedNumberSource: PlatformSettingSource | null;
+  /** Respaldo del `.env` al dejar vacío el número del panel. */
+  envSharedNumber: string | null;
+  /** Tiendas que hoy atienden por el número compartido. */
+  sharedStoresCount: number;
+  credentialsConfigured: boolean;
+  simulateSend: boolean;
+  simulateSendSource: PlatformSettingSource;
+  /** false en production: ahí el modo de envío solo se cambia en el `.env`. */
+  simulateSendEditable: boolean;
+  webhookUrl: string | null;
+  signatureValidation: boolean;
+  interactiveEnabled: boolean;
+  checkoutTemplateConfigured: boolean;
+}
+
+export interface PlatformSettings {
+  whatsapp: PlatformWhatsAppSettings;
+}
+
+/** `null` en un campo vuelve al valor del `.env`; los campos omitidos no cambian. */
+export interface UpdatePlatformSettingsRequest {
+  sharedWhatsAppNumber?: string | null;
+  whatsappSimulateSend?: boolean | null;
+}
+
 export type MessageDirection = "inbound" | "outbound";
 
 export type MessageStatus = "received" | "sent" | "failed";
@@ -722,14 +755,16 @@ export type WhatsAppConnectionMode = "shared" | "dedicated";
 export interface WhatsAppConnection {
   id: string;
   companyId: string;
-  /** Número WhatsApp E.164 (ej. +14155238886), sin prefijo whatsapp: */
-  twilioWhatsAppNumber: string;
+  /** Número WhatsApp E.164 (ej. +14155238886), sin prefijo whatsapp:. `null` para la tienda en modo
+   * compartido: el número de la plataforma solo lo ve el admin. */
+  twilioWhatsAppNumber: string | null;
   displayPhoneNumber: string | null;
   mode: WhatsAppConnectionMode;
   /** Código de la tienda en el número compartido (sin #). */
   storeCode: string | null;
   isActive: boolean;
-  /** En modo compartido incluye el texto con el código de la tienda. */
+  /** Enlace para clientes. En modo compartido es `<panel>/w/<código>`, que redirige a wa.me con el
+   * número vigente y el código de la tienda en el mensaje. */
   waMeLink: string | null;
   createdAt: string;
   updatedAt: string;

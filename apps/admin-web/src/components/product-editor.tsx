@@ -4,7 +4,6 @@ import {
   PRODUCT_STATUS_LABELS,
   PRODUCT_STATUSES,
   canManageCatalog,
-  type Category,
   type ProductDetails,
   type ProductImage,
   type ProductStatus,
@@ -20,6 +19,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import { CategoryPicker } from "@/components/category-picker";
 import { FormActions } from "@/components/form-actions";
 import { FormSection } from "@/components/form-section";
 import { PageHeader } from "@/components/page-header";
@@ -53,6 +53,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { formatMoney } from "@/lib/orders";
+import { useConfirm } from "@/providers/confirm-provider";
 import { useSession } from "@/providers/session-provider";
 
 function parseOptionValues(raw: string): string[] {
@@ -130,6 +131,7 @@ export function ProductEditor({ productId }: ProductEditorProps) {
   const isNew = !productId;
   const router = useRouter();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { user } = useSession();
   const canManage = Boolean(user && canManageCatalog(user.role));
   const [message, setMessage] = useState<string | null>(null);
@@ -141,12 +143,6 @@ export function ProductEditor({ productId }: ProductEditorProps) {
   pendingImagesRef.current = pendingImages;
   const [orderedImages, setOrderedImages] = useState<ProductImage[]>([]);
   const [reordering, setReordering] = useState(false);
-
-  const { data: categories } = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => apiFetch<Category[]>("/categories"),
-    enabled: Boolean(user?.companyId),
-  });
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", productId],
@@ -817,28 +813,13 @@ export function ProductEditor({ productId }: ProductEditorProps) {
               El asistente solo ofrece productos activos con stock.
             </p>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label>Categoría</Label>
-            <Select
-              value={categoryId || "none"}
-              onValueChange={(value) =>
-                setValue("categoryId", value === "none" ? "" : value, { shouldDirty: true })
-              }
-              disabled={readOnly}
-            >
-              <SelectTrigger aria-label="Categoría" className="w-full">
-                <SelectValue placeholder="Sin categoría" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin categoría</SelectItem>
-                {categories?.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <CategoryPicker
+            value={categoryId ?? ""}
+            onChange={(value) => setValue("categoryId", value, { shouldDirty: true })}
+            enabled={Boolean(user?.companyId)}
+            disabled={readOnly}
+            canCreate={canManage}
+          />
           <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">Variantes</dt>
@@ -864,8 +845,14 @@ export function ProductEditor({ productId }: ProductEditorProps) {
               size="sm"
               className="w-fit text-destructive hover:bg-destructive/10 hover:text-destructive"
               disabled={deleteMutation.isPending}
-              onClick={() => {
-                if (window.confirm("¿Eliminar este producto y sus variantes?")) {
+              onClick={async () => {
+                const confirmed = await confirm({
+                  title: "¿Eliminar este producto?",
+                  description: "Se eliminan también sus variantes e imágenes. No se puede deshacer.",
+                  confirmLabel: "Eliminar producto",
+                  destructive: true,
+                });
+                if (confirmed) {
                   deleteMutation.mutate();
                 }
               }}

@@ -15,9 +15,11 @@ Código en `app/modules/whatsapp/`. Los botones y listas están en [Mensajes int
 
 ## Número compartido (plan Free / arranque)
 
-- `TWILIO_SHARED_WHATSAPP_NUMBER` es un sender de la plataforma que comparten todas las tiendas sin número propio.
+- Es un sender de la plataforma que comparten todas las tiendas sin número propio. Se configura en `/admin/settings` (tabla `PlatformSettings`); `TWILIO_SHARED_WHATSAPP_NUMBER` del `.env` queda como respaldo si el panel está vacío. Al cambiarlo, las conexiones `shared` pasan al número nuevo en la misma transacción, y no se puede vaciar mientras haya tiendas usándolo.
+- Siempre leerlo con `await shared_number()` (`connection_service.py`), nunca directamente del `.env`.
 - La tienda lo activa sola con `POST /whatsapp/connection/shared` (solo `owner`, exige los [prerrequisitos](#prerrequisitos)). Se crea una conexión `shared` con `storeCode` único (slug del nombre, `-2`, `-3`… si choca).
-- Enlace de la tienda: `wa.me/<compartido>?text=Hola <Tienda> #<storeCode>`.
+- Enlace de la tienda: `<FRONTEND_URL>/w/<storeCode>`. La ruta `app/w/[code]/route.ts` del panel consulta `GET /whatsapp/store-links/:code` (público, sin límite por IP porque llega desde el servidor de Next) y redirige a `wa.me/<compartido>?text=Hola <Tienda> #<storeCode>` con el número vigente. Así los enlaces publicados sobreviven a un cambio del número compartido.
+- La tienda no ve el número compartido: `connection_dto` devuelve `twilioWhatsAppNumber: null` en modo `shared`. Solo el panel de plataforma lo recibe (`expose_shared_number=True`). El cliente final sí lo ve al abrir el chat; WhatsApp no permite ocultarlo.
 
 ### Enrutamiento del inbound
 
@@ -36,7 +38,7 @@ El código se quita del texto guardado. Un cliente solo está en una tienda a la
 ## Envío
 
 - `twilio_client.py` (`send_text`, `send_media`, `send_content`) → Messages API: texto, imagen con `MediaUrl` y contenido con `ContentSid`.
-- No llama a Twilio si `WHATSAPP_SIMULATE_SEND=true` o el SID/token es dummy/`test-`.
+- No llama a Twilio si el modo simulado está activo o el SID/token es dummy/`test-`. El modo simulado se elige en `/admin/settings` (solo fuera de production) o con `WHATSAPP_SIMULATE_SEND`; `await credentials()` ya combina ambos.
 - Las fotos salen con `storage.external_url` (ver [Catálogo](catalogo.md#imágenes)).
 
 ## Simulación
@@ -63,6 +65,12 @@ Para activar el canal: un producto activo, envíos configurados y Mercado Pago c
   - no consume cupo de WhatsApp (sí el de IA);
   - al confirmar pedido no crea la orden ni descuenta stock (responde `PLAYGROUND_CHECKOUT_TEXT` y el botón de pago sale deshabilitado como "Modo prueba").
 - Exige productos y envíos, no Mercado Pago. "Reiniciar" borra mensajes y carrito y vuelve a `pending`.
+
+## Configuración de plataforma (`/admin/settings`)
+
+- `GET|PATCH /api/v1/admin/platform-settings` (solo `admin`). Edita el número compartido y el modo simulado; `null` vuelve al valor del `.env`.
+- Muestra en solo lectura si hay credenciales, la URL del webhook para pegar en Twilio, la validación de firma, los interactivos y la plantilla de pago. El SID y el token nunca salen del `.env`.
+- Los valores se leen con una caché de 10 s (`app/modules/platform/overrides.py`), así un cambio llega a todas las réplicas.
 
 ## Fuera de alcance por ahora
 

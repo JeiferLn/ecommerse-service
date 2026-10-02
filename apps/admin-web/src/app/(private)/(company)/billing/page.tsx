@@ -27,6 +27,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/providers/confirm-provider";
 import { useSession } from "@/providers/session-provider";
 
 const STATUS_TONE: Record<SubscriptionStatus, StatusTone> = {
@@ -73,6 +74,7 @@ function BillingPageInner() {
   const { user, refresh } = useSession();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const canManage = Boolean(user && canManageBilling(user.role));
   const [interval, setInterval] = useState<BillingInterval>("month");
   const autoCheckoutStarted = useRef(false);
@@ -261,12 +263,15 @@ function BillingPageInner() {
                 size="sm"
                 className="w-fit text-muted-foreground"
                 disabled={cancelMutation.isPending}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "¿Cancelar la renovación automática? Mantendrás el acceso hasta el fin del periodo actual.",
-                    )
-                  ) {
+                onClick={async () => {
+                  const confirmed = await confirm({
+                    title: "¿Cancelar la renovación automática?",
+                    description: "Mantendrás el acceso hasta el fin del periodo actual.",
+                    confirmLabel: "Cancelar renovación",
+                    cancelLabel: "Mantener",
+                    destructive: true,
+                  });
+                  if (confirmed) {
                     cancelMutation.mutate();
                   }
                 }}

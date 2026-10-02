@@ -575,6 +575,19 @@ class UsageCounter(Base):
     updated_at: Mapped[datetime] = updated_at_column()
 
 
+class PlatformSettings(Base):
+    """Ajustes de plataforma editados desde el panel: una sola fila (`id = 'default'`).
+
+    `NULL` en una columna significa "usar el valor del `.env`"."""
+
+    __tablename__ = "PlatformSettings"
+
+    id: Mapped[str] = mapped_column("id", Text, primary_key=True)
+    shared_whatsapp_number: Mapped[str | None] = mapped_column("sharedWhatsAppNumber", Text)
+    whatsapp_simulate_send: Mapped[bool | None] = mapped_column("whatsappSimulateSend", Boolean)
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
 # Índices con los nombres de la base (heredados de Prisma).
 Index("Cart_companyId_idx", Cart.company_id)
 Index("Cart_conversationId_key", Cart.conversation_id, unique=True)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.core.config import get_settings
+from app.modules.platform.overrides import platform_overrides
 from app.modules.whatsapp.phone import to_twilio_whatsapp_address
 
 logger = logging.getLogger("app.whatsapp.twilio")
@@ -19,19 +20,33 @@ class SendResult:
     wamid: str | None
 
 
-def credentials() -> tuple[str, str] | None:
-    """Credenciales reales de la cuenta, o None si los envíos se simulan."""
+def account_credentials() -> tuple[str, str] | None:
+    """SID y token del `.env`, o None si faltan o son de prueba."""
     settings = get_settings()
     account_sid = (settings.TWILIO_ACCOUNT_SID or "").strip()
     auth_token = (settings.TWILIO_AUTH_TOKEN or "").strip()
-    simulate = (
-        settings.WHATSAPP_SIMULATE_SEND
-        or not account_sid
+    if (
+        not account_sid
         or not auth_token
         or account_sid.startswith(("dummy", "test-"))
         or auth_token.startswith(("dummy", "test-"))
-    )
-    return None if simulate else (account_sid, auth_token)
+    ):
+        return None
+    return account_sid, auth_token
+
+
+def resolve_simulate_send(saved: bool | None) -> tuple[bool, str]:
+    """Modo simulado vigente y su origen (`panel` | `env`). En production solo cuenta el `.env`."""
+    settings = get_settings()
+    if saved is None or settings.is_production:
+        return settings.WHATSAPP_SIMULATE_SEND, "env"
+    return saved, "panel"
+
+
+async def credentials() -> tuple[str, str] | None:
+    """Credenciales para enviar de verdad, o None si los envíos se simulan."""
+    simulate, _ = resolve_simulate_send((await platform_overrides()).whatsapp_simulate_send)
+    return None if simulate else account_credentials()
 
 
 async def send_text(*, from_: str, to: str, text: str) -> SendResult:
@@ -57,7 +72,7 @@ async def _dispatch(
     content_sid: str | None = None,
     content_variables: dict[str, str] | None = None,
 ) -> SendResult:
-    account = credentials()
+    account = await credentials()
     if not account:
         wamid = f"SM_sim_{int(time.time() * 1000)}"
         logger.info(

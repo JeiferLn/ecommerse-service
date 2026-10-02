@@ -10,6 +10,7 @@ from app.modules.knowledge.router import router as knowledge_router
 from app.modules.orders.checkout_router import router as checkout_router
 from app.modules.orders.router import router as orders_router
 from app.modules.payments.router import router as payments_router
+from app.modules.platform.router import router as platform_router
 from app.modules.products.router import router as products_router
 from app.modules.whatsapp.router import admin_router as admin_whatsapp_router
 from app.modules.whatsapp.router import inbox_router as whatsapp_inbox_router
@@ -32,4 +33,5 @@ routers: list[APIRouter] = [
     whatsapp_inbox_router,
     playground_router,
     admin_whatsapp_router,
+    platform_router,
 ]

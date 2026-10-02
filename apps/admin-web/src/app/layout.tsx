@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Instrument_Serif, Inter } from "next/font/google";
 
+import { ConfirmProvider } from "@/providers/confirm-provider";
 import { QueryProvider } from "@/providers/query-provider";
 import { SessionProvider } from "@/providers/session-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -49,7 +50,9 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <QueryProvider>
-            <SessionProvider>{children}</SessionProvider>
+            <SessionProvider>
+              <ConfirmProvider>{children}</ConfirmProvider>
+            </SessionProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

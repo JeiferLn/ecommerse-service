@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/table";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useStaggerOnce } from "@/lib/use-stagger-once";
+import { useConfirm } from "@/providers/confirm-provider";
 import { useSession } from "@/providers/session-provider";
 
 function initials(name: string): string {
@@ -64,6 +65,7 @@ function initials(name: string): string {
 export function MembersSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [email, setEmail] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -160,10 +162,13 @@ export function MembersSection() {
     inviteMutation.mutate(email.trim());
   }
 
-  function handleRemove(member: CompanyMember) {
-    const confirmed = window.confirm(
-      `¿Eliminar a ${member.name} (${member.email}) de la empresa? Perderá el acceso de inmediato.`,
-    );
+  async function handleRemove(member: CompanyMember) {
+    const confirmed = await confirm({
+      title: `¿Eliminar a ${member.name} de la empresa?`,
+      description: `${member.email} perderá el acceso de inmediato.`,
+      confirmLabel: "Eliminar",
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

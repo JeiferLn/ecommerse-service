@@ -4,7 +4,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from app.core.config import get_settings
@@ -14,6 +14,7 @@ logger = logging.getLogger("app.storage")
 
 _LOCAL_UPLOAD_RE = re.compile(r"^https?://[^/]+/uploads/(.+)$", re.IGNORECASE)
 _DISABLED_MESSAGE = "Almacenamiento no disponible en production sin R2. Configura las variables R2_*."
+_IMAGE_EXTENSIONS = {"image/webp": ".webp", "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif"}
 
 
 @dataclass(frozen=True)
@@ -81,11 +82,11 @@ class StorageService:
         return f"{base}/uploads/{match.group(1)}" if match else url
 
     async def upload_product_image(
-        self, *, company_id: str, product_id: str, file_name: str, content_type: str, body: bytes
+        self, *, company_id: str, product_id: str, content_type: str, body: bytes
     ) -> UploadedObject:
         if self.mode == "disabled":
             raise service_unavailable(_DISABLED_MESSAGE)
-        extension = PurePosixPath(file_name).suffix.lower() or ".bin"
+        extension = _IMAGE_EXTENSIONS.get(content_type, ".bin")
         key = f"companies/{company_id}/products/{product_id}/{uuid.uuid4()}{extension}"
         return await self._put_object(key=key, body=body, content_type=content_type)
 

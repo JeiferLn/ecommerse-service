@@ -22,38 +22,51 @@ from app.models import (
 from app.modules.billing.service import BillingService
 from app.modules.companies.service import is_company_commerce_configured
 from app.modules.payments.connection_service import is_company_payments_configured
+from app.modules.platform.overrides import platform_overrides
 from app.modules.whatsapp.phone import normalize_whatsapp_e164
-from app.modules.whatsapp.store_code import build_wa_me_link, slugify_store_code
+from app.modules.whatsapp.store_code import build_store_link, build_wa_me_link, slugify_store_code
 
 E164 = re.compile(r"^\+[1-9]\d{7,14}$", re.ASCII)
 
 
-def shared_number() -> str | None:
-    """Número de la plataforma que comparten las tiendas sin número propio, o None si no está configurado."""
-    raw = (get_settings().TWILIO_SHARED_WHATSAPP_NUMBER or "").strip()
-    if not raw:
+def normalize_shared_number(raw: str | None) -> str | None:
+    value = (raw or "").strip()
+    if not value:
         return None
-    normalized = normalize_whatsapp_e164(raw)
+    normalized = normalize_whatsapp_e164(value)
     return normalized if E164.match(normalized) else None
 
 
-def connection_dto(connection: WhatsAppConnection, store_name: str | None = None) -> dict[str, Any]:
-    shared = connection.mode == "shared"
+async def shared_number() -> str | None:
+    """Número que comparten las tiendas sin número propio: el del panel de plataforma o, si no hay,
+    el del `.env`. None si no está configurado."""
+    saved = (await platform_overrides()).shared_whatsapp_number
+    return normalize_shared_number(saved) or normalize_shared_number(
+        get_settings().TWILIO_SHARED_WHATSAPP_NUMBER
+    )
+
+
+def connection_dto(
+    connection: WhatsAppConnection, store_name: str | None = None, *, expose_shared_number: bool = False
+) -> dict[str, Any]:
+    """`expose_shared_number` solo para el panel de plataforma: las tiendas no ven el número compartido."""
+    shared = connection.mode == "shared" and bool(connection.store_code)
+    link: str | None
+    if shared:
+        link = build_store_link(get_settings().FRONTEND_URL, connection.store_code or "")
+    else:
+        link = build_wa_me_link(number=connection.display_phone_number or connection.twilio_whatsapp_number)
     return {
         "id": connection.id,
         "companyId": connection.company_id,
-        "twilioWhatsAppNumber": connection.twilio_whatsapp_number,
+        "twilioWhatsAppNumber": None
+        if shared and not expose_shared_number
+        else connection.twilio_whatsapp_number,
         "displayPhoneNumber": connection.display_phone_number,
         "mode": connection.mode,
         "storeCode": connection.store_code,
         "isActive": connection.is_active,
-        "waMeLink": build_wa_me_link(
-            number=connection.twilio_whatsapp_number
-            if shared
-            else connection.display_phone_number or connection.twilio_whatsapp_number,
-            store_code=connection.store_code if shared else None,
-            store_name=store_name,
-        ),
+        "waMeLink": link,
         "createdAt": iso(connection.created_at),
         "updatedAt": iso(connection.updated_at),
     }
@@ -121,7 +134,7 @@ class WhatsAppConnectionService:
             return connection_dto(existing, existing.company.name)
 
         await self.assert_whatsapp_prerequisites(scoped)
-        number = shared_number()
+        number = await shared_number()
         if not number:
             raise bad_request(
                 "El número compartido de la plataforma no está configurado. Escríbenos para activar tu canal."
@@ -167,7 +180,7 @@ class WhatsAppConnectionService:
         number = normalize_whatsapp_e164(twilio_whatsapp_number)
         if not E164.match(number):
             raise bad_request("Usa formato E.164 con +: +14155238886")
-        if number == shared_number():
+        if number == await shared_number():
             raise bad_request(
                 "Ese es el número compartido de la plataforma; asígnale a la tienda un número propio."
             )
@@ -194,7 +207,28 @@ class WhatsAppConnectionService:
                 raise conflict("Ese número de WhatsApp ya está asignado a otra empresa") from error
             raise
         store_name = await self.session.scalar(select(Company.name).where(Company.id == scoped))
-        return connection_dto(connection, store_name)
+        return connection_dto(connection, store_name, expose_shared_number=True)
+
+    async def resolve_store_link(self, store_code: str) -> str:
+        """URL de wa.me para el enlace público `/w/<código>`, con el número compartido vigente."""
+        row = (
+            await self.session.execute(
+                select(WhatsAppConnection.twilio_whatsapp_number, Company.name)
+                .join(Company, Company.id == WhatsAppConnection.company_id)
+                .where(
+                    WhatsAppConnection.store_code == store_code.strip().lower(),
+                    WhatsAppConnection.mode == "shared",
+                )
+            )
+        ).first()
+        link = (
+            build_wa_me_link(number=row[0], store_code=store_code.strip().lower(), store_name=row[1])
+            if row
+            else None
+        )
+        if not link:
+            raise not_found("Este enlace de WhatsApp no existe o ya no está disponible")
+        return link
 
     async def remove(self, company_id: str | None) -> None:
         scoped = _require_company(company_id)
@@ -280,7 +314,9 @@ class WhatsAppConnectionService:
                     "subscriptionStatus": subscription.status if subscription else None,
                     "requirements": requirements,
                     "awaitingNumber": all(requirements.values()) and not whatsapp,
-                    "whatsapp": connection_dto(whatsapp, company.name) if whatsapp else None,
+                    "whatsapp": connection_dto(whatsapp, company.name, expose_shared_number=True)
+                    if whatsapp
+                    else None,
                 }
             )
         return rows

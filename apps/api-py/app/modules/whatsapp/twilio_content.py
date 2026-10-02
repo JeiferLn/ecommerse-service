@@ -92,7 +92,7 @@ class TwilioContentService:
         return ResolvedContent(content_sid, variables)
 
     async def _get_or_create(self, digest: str, kind: str, types: dict[str, Any]) -> str:
-        account = twilio_client.credentials()
+        account = await twilio_client.credentials()
         if not account:
             return f"HX_sim_{digest[:24]}"
 

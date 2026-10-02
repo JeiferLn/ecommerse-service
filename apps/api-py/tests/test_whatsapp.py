@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -7,7 +8,9 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.modules.whatsapp import twilio_client
+from app.models import WhatsAppConnection
+from app.modules.platform.overrides import PlatformOverrides
+from app.modules.whatsapp import connection_service, twilio_client
 from app.modules.whatsapp.conversation_handler import (
     detects_bot_choice,
     detects_human_request,
@@ -25,7 +28,7 @@ from app.modules.whatsapp.interactive import (
     render_as_fallback_text,
     resolve_typed_action,
 )
-from app.modules.whatsapp.store_code import extract_store_code
+from app.modules.whatsapp.store_code import build_wa_me_link, extract_store_code
 from app.modules.whatsapp.twilio_content import TwilioContentService
 from app.modules.whatsapp.webhook_service import assert_twilio_signature, is_only_greeting, twilio_signature
 
@@ -211,7 +214,11 @@ def content_api(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
         return real_client(*args, transport=httpx.MockTransport(handler), **kwargs)
 
     monkeypatch.setattr(httpx, "AsyncClient", client_factory)
-    monkeypatch.setattr(twilio_client, "credentials", lambda: ("AC1", "tok"))
+
+    async def real_credentials() -> tuple[str, str]:
+        return ("AC1", "tok")
+
+    monkeypatch.setattr(twilio_client, "credentials", real_credentials)
     monkeypatch.setattr(get_settings(), "TWILIO_CHECKOUT_CONTENT_SID", None)
     return requests
 
@@ -251,7 +258,10 @@ async def test_content_reuses_cache(content_api: list[httpx.Request]) -> None:
 async def test_content_simulated_without_credentials(
     content_api: list[httpx.Request], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(twilio_client, "credentials", lambda: None)
+    async def no_credentials() -> None:
+        return None
+
+    monkeypatch.setattr(twilio_client, "credentials", no_credentials)
     session = _FakeSession()
     result = await _content_service(session).resolve(cart_action_buttons(), "Hola")
     assert result is not None
@@ -309,3 +319,79 @@ def test_twilio_signature_requires_configuration(
     with pytest.raises(ApiError) as error:
         assert_twilio_signature("x", {})
     assert error.value.message == "TWILIO_WEBHOOK_URL no configurado"
+
+
+@pytest.fixture
+def panel_overrides(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    saved: dict[str, Any] = {"shared_whatsapp_number": None, "whatsapp_simulate_send": None}
+
+    async def fake_overrides() -> PlatformOverrides:
+        return PlatformOverrides(**saved)
+
+    monkeypatch.setattr(connection_service, "platform_overrides", fake_overrides)
+    monkeypatch.setattr(twilio_client, "platform_overrides", fake_overrides)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "TWILIO_SHARED_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+    monkeypatch.setattr(settings, "TWILIO_ACCOUNT_SID", "AC1")
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "tok")
+    monkeypatch.setattr(settings, "WHATSAPP_SIMULATE_SEND", True)
+    return saved
+
+
+async def test_shared_number_prefers_panel_over_env(panel_overrides: dict[str, Any]) -> None:
+    assert await connection_service.shared_number() == "+14155238886"
+    panel_overrides["shared_whatsapp_number"] = "+15554447456"
+    assert await connection_service.shared_number() == "+15554447456"
+
+
+async def test_simulate_send_from_panel_except_in_production(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert await twilio_client.credentials() is None
+    panel_overrides["whatsapp_simulate_send"] = False
+    assert await twilio_client.credentials() == ("AC1", "tok")
+    monkeypatch.setattr(get_settings(), "NODE_ENV", "production")
+    assert await twilio_client.credentials() is None
+    assert twilio_client.resolve_simulate_send(False) == (True, "env")
+
+
+def _connection(**overrides: Any) -> WhatsAppConnection:
+    values: dict[str, Any] = {
+        "id": "wc1",
+        "company_id": "c1",
+        "twilio_whatsapp_number": "+15554447456",
+        "display_phone_number": None,
+        "mode": "shared",
+        "store_code": "sentix",
+        "is_active": True,
+        "created_at": datetime(2026, 10, 2, tzinfo=UTC),
+        "updated_at": datetime(2026, 10, 2, tzinfo=UTC),
+    }
+    return WhatsAppConnection(**{**values, **overrides})
+
+
+def test_shared_connection_hides_number_from_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "FRONTEND_URL", "https://app.example.com/")
+
+    store_view = connection_service.connection_dto(_connection(), "Sentix")
+    admin_view = connection_service.connection_dto(_connection(), "Sentix", expose_shared_number=True)
+
+    assert store_view["twilioWhatsAppNumber"] is None
+    assert store_view["waMeLink"] == "https://app.example.com/w/sentix"
+    assert "5554447456" not in json.dumps(store_view)
+    assert admin_view["twilioWhatsAppNumber"] == "+15554447456"
+
+
+def test_dedicated_connection_keeps_its_own_number() -> None:
+    dto = connection_service.connection_dto(
+        _connection(mode="dedicated", store_code=None, display_phone_number="+573001112233"), "Sentix"
+    )
+
+    assert dto["twilioWhatsAppNumber"] == "+15554447456"
+    assert dto["waMeLink"] == "https://wa.me/573001112233"
+
+
+def test_store_link_redirects_to_current_shared_number() -> None:
+    assert build_wa_me_link(number="+15554447456", store_code="sentix", store_name="Sentix") == (
+        "https://wa.me/15554447456?text=Hola%20Sentix%20%23sentix"
+    )

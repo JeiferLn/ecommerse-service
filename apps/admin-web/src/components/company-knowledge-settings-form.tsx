@@ -15,6 +15,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useStaggerOnce } from "@/lib/use-stagger-once";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/providers/confirm-provider";
 import { useSession } from "@/providers/session-provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -22,6 +23,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export function CompanyKnowledgeSettingsForm() {
   const { user } = useSession();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const canManage = Boolean(user && canManageKnowledge(user.role));
   const [message, setMessage] = useState<string | null>(null);
   const [uploadingType, setUploadingType] = useState<string | null>(null);
@@ -176,10 +178,14 @@ export function CompanyKnowledgeSettingsForm() {
                       className="text-muted-foreground hover:text-destructive"
                       aria-label={`Quitar ${KNOWLEDGE_DOCUMENT_TYPE_LABELS[slot.type]}`}
                       disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (
-                          window.confirm(`¿Eliminar ${KNOWLEDGE_DOCUMENT_TYPE_LABELS[slot.type]}?`)
-                        ) {
+                      onClick={async () => {
+                        const confirmed = await confirm({
+                          title: `¿Eliminar ${KNOWLEDGE_DOCUMENT_TYPE_LABELS[slot.type]}?`,
+                          description: "El asistente dejará de usar este documento para responder.",
+                          confirmLabel: "Eliminar",
+                          destructive: true,
+                        });
+                        if (confirmed) {
                           deleteMutation.mutate(slot.type);
                         }
                       }}

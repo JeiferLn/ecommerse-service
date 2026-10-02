@@ -20,7 +20,7 @@
 ## Rutas
 
 - **Tienda (sin prefijo):** `/` (overview; con sesión el middleware reescribe a `/overview`), `/products`, `/products/new`, `/products/[id]`, `/categories`, `/orders`, `/sales`, `/whatsapp`, `/whatsapp/inbox`, `/assistant/playground`, `/knowledge`, `/settings`, `/settings/payments`, `/settings/shipping`, `/members`, `/billing`.
-- **Plataforma:** `/admin`, `/admin/companies`.
+- **Plataforma:** `/admin`, `/admin/companies`, `/admin/settings`.
 - Las URLs antiguas `/dashboard/**` redirigen a la ruta sin prefijo; no crear rutas nuevas bajo `/dashboard`.
 - Toda ruta nueva de la tienda se agrega a `COMPANY_ROUTES` en `middleware.ts`.
 - Post-login: `admin` → `/admin`; resto → `/`. El middleware verifica el JWT (`JWT_SECRET` server-only) y redirige por rol (`/admin` ↔ rutas de la tienda).

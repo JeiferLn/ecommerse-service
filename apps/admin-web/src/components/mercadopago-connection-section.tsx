@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { SkeletonText } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { apiFetch, ApiClientError } from "@/lib/api";
+import { useConfirm } from "@/providers/confirm-provider";
 import { useSession } from "@/providers/session-provider";
 
 const manualSchema = z.object({
@@ -43,6 +44,7 @@ export function MercadoPagoConnectionSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const canEdit = Boolean(user && canEditCompany(user.role));
   const [showManual, setShowManual] = useState(false);
   const [banner, setBanner] = useState<"connected" | "error" | null>(null);
@@ -197,12 +199,15 @@ export function MercadoPagoConnectionSection() {
               variant="outline"
               className="w-fit"
               disabled={disconnectMutation.isPending}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "¿Desconectar Mercado Pago? Tus clientes no podrán pagar y el asistente de WhatsApp quedará en pausa hasta que vuelvas a conectarlo.",
-                  )
-                ) {
+              onClick={async () => {
+                const confirmed = await confirm({
+                  title: "¿Desconectar Mercado Pago?",
+                  description:
+                    "Tus clientes no podrán pagar y el asistente de WhatsApp quedará en pausa hasta que vuelvas a conectarlo.",
+                  confirmLabel: "Desconectar",
+                  destructive: true,
+                });
+                if (confirmed) {
                   disconnectMutation.mutate();
                 }
               }}

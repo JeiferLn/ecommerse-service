@@ -266,7 +266,7 @@ class WhatsAppWebhookService:
             message.twilio_whatsapp_number, message.from_, message.text
         )
         if not resolved:
-            if message.twilio_whatsapp_number == shared_number():
+            if message.twilio_whatsapp_number == await shared_number():
                 await self._reply_unrouted_shared_message(message.twilio_whatsapp_number, message.from_)
                 return None
             logger.warning(
@@ -286,7 +286,7 @@ class WhatsAppWebhookService:
         if dedicated:
             return ResolvedInbound(connection=dedicated, text=text)
 
-        number = shared_number()
+        number = await shared_number()
         if not number or number != to:
             return None
 

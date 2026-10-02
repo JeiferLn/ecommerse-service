@@ -2,11 +2,12 @@ import json
 import re
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Path, Query, Request, Response
 from pydantic import Field
 
 from app.core.db import DbSession
 from app.core.errors import ApiError, unauthorized
+from app.core.rate_limit import limiter
 from app.core.responses import ok
 from app.core.schemas import QueryModel, RequestModel
 from app.core.security import CurrentUser, require_roles
@@ -32,6 +33,7 @@ playground_router = APIRouter(
 admin_router = APIRouter(prefix="/admin/companies", tags=["admin"], dependencies=[require_roles("admin")])
 
 OwnerOrManager = [require_roles("owner", "manager")]
+STORE_CODE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9-]{1,28}[A-Za-z0-9]$"
 
 MessageText = Annotated[
     str, string("text must be a string"), length(min_len=1, min_msg="El mensaje no puede estar vacío")
@@ -142,6 +144,16 @@ async def simulate_inbound(body: SimulateInboundBody, user: CurrentUser, session
         user.company_id, from_=body.from_, text=body.text, customer_name=body.customer_name
     )
     return ok(data, "Mensaje simulado")
+
+
+@router.get("/store-links/{store_code}")
+@limiter.exempt
+async def resolve_store_link(
+    store_code: Annotated[str, Path(pattern=STORE_CODE_PATTERN)], session: DbSession
+) -> Any:
+    """Público: destino de `/w/<código>` del panel. Sin límite por IP porque llega desde el servidor
+    de Next, que comparte una sola IP para todos los visitantes."""
+    return ok({"url": await WhatsAppConnectionService(session).resolve_store_link(store_code)})
 
 
 @router.get("/connection", dependencies=OwnerOrManager)

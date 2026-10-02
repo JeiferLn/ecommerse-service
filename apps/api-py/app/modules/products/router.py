@@ -203,9 +203,7 @@ async def add_image(
     body = await file.read(MAX_IMAGE_BYTES + 1) if file else None
     if body and len(body) > MAX_IMAGE_BYTES:
         raise ApiError(413, "File too large")
-    image = await ProductsService(session).add_image(
-        user.company_id, product_id, file_name=file.filename if file else None, body=body, alt=alt
-    )
+    image = await ProductsService(session).add_image(user.company_id, product_id, body=body, alt=alt)
     return ok(image)
 
 

@@ -22,6 +22,12 @@ def extract_store_code(text: str) -> tuple[str | None, str]:
     return match.group(1).lower(), rest
 
 
+def build_store_link(frontend_url: str, store_code: str) -> str:
+    """Enlace público de la tienda en el número compartido: el panel redirige a wa.me con el número
+    vigente, así la tienda no ve el número y sus enlaces sobreviven a un cambio de número."""
+    return f"{frontend_url.rstrip('/')}/w/{store_code}"
+
+
 def build_wa_me_link(
     *, number: str, store_code: str | None = None, store_name: str | None = None
 ) -> str | None:

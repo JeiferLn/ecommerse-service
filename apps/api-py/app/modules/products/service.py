@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import math
 from decimal import Decimal
@@ -10,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.errors import bad_request, conflict, not_found
 from app.core.ids import iso
+from app.core.images import WEBP_CONTENT_TYPE, InvalidImageError, to_webp
 from app.core.numbers import num, num_or_none
 from app.core.storage import get_storage
 from app.core.text import detect_image_mime
@@ -275,7 +277,6 @@ class ProductsService:
         company_id: str | None,
         product_id: str,
         *,
-        file_name: str | None,
         body: bytes | None,
         alt: str | None,
     ) -> dict[str, Any]:
@@ -288,8 +289,12 @@ class ProductsService:
             raise bad_request(
                 "Formato de imagen no soportado o archivo inválido (se requiere JPEG, PNG, WebP o GIF)"
             )
+        try:
+            optimized = await asyncio.to_thread(to_webp, body)
+        except InvalidImageError as exc:
+            raise bad_request(str(exc)) from exc
         uploaded = await get_storage().upload_product_image(
-            company_id=scoped, product_id=product_id, file_name=file_name or "", content_type=mime, body=body
+            company_id=scoped, product_id=product_id, content_type=WEBP_CONTENT_TYPE, body=optimized
         )
         max_order = max((image.sort_order for image in product.images), default=-1)
         image = ProductImage(

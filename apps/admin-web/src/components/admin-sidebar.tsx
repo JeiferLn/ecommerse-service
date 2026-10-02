@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LayoutDashboard } from "lucide-react";
+import { Building2, LayoutDashboard, Settings } from "lucide-react";
 
 import {
   NAV_ITEM_ACTIVE,
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/admin", label: "Resumen", icon: LayoutDashboard },
   { href: "/admin/companies", label: "Empresas", icon: Building2 },
+  { href: "/admin/settings", label: "Configuración", icon: Settings },
 ] as const;
 
 export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
@@ -22,7 +23,11 @@ export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
   const { navRef, indicator } = useActiveIndicator(pathname);
 
   return (
-    <nav ref={navRef} aria-label="Navegación de plataforma" className="relative flex flex-col gap-0.5">
+    <nav
+      ref={navRef}
+      aria-label="Navegación de plataforma"
+      className="relative flex flex-col gap-0.5"
+    >
       {indicator}
       <p className="px-3 pb-1 text-xs text-muted-foreground">Plataforma</p>
       {NAV_ITEMS.map((item) => {
