@@ -23,5 +23,5 @@ pnpm typecheck  # tsc --noEmit
 
 | Variable | Uso |
 | --- | --- |
-| `NEXT_PUBLIC_API_URL` | URL base del backend. |
+| `NEXT_PUBLIC_API_URL` | URL base del backend FastAPI (`apps/api-py`), sin `/api/v1`. |
 | `NEXT_PUBLIC_ENABLE_DEV_TOOLS` | `"true"` muestra herramientas solo para desarrollo, como pegar un Access Token de Mercado Pago a mano en Configuración → Pagos. Déjala sin definir en producción. |

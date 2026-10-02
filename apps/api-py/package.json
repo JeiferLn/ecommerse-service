@@ -1,0 +1,17 @@
+{
+  "name": "@commerce-ai/api-py",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Backend FastAPI de Commerce AI SaaS (scripts para turbo; dependencias con uv)",
+  "scripts": {
+    "dev": "uv run uvicorn app.main:app --reload --port 4000",
+    "start": "uv run uvicorn app.main:app --host 0.0.0.0 --port 4000",
+    "test": "uv run pytest",
+    "lint": "uv run ruff check app tests",
+    "format": "uv run ruff format app tests",
+    "typecheck": "uv run mypy app",
+    "db:migrate": "uv run alembic upgrade head",
+    "db:revision": "uv run alembic revision --autogenerate -m",
+    "db:seed": "uv run python -m app.seed"
+  }
+}

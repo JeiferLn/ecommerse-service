@@ -237,7 +237,7 @@ export function MercadoPagoConnectionSection() {
                   El botón para conectar aparece cuando el backend tiene la app de Mercado Pago:
                   define <code className="font-data text-[13px]">MP_CLIENT_ID</code> y{" "}
                   <code className="font-data text-[13px]">MP_CLIENT_SECRET</code> en{" "}
-                  <code className="font-data text-[13px]">apps/backend/.env</code>, más{" "}
+                  <code className="font-data text-[13px]">apps/api-py/.env</code>, más{" "}
                   <code className="font-data text-[13px]">API_PUBLIC_URL</code> o{" "}
                   <code className="font-data text-[13px]">MP_REDIRECT_URI</code>, y reinicia el
                   backend. Solo se ve en desarrollo.

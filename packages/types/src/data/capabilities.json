@@ -1,0 +1,44 @@
+{
+  "owner": {
+    "editCompany": true,
+    "manageMembers": true,
+    "viewMembers": true,
+    "manageCatalog": true,
+    "viewCatalog": true,
+    "viewDashboard": true,
+    "manageOrders": true,
+    "operateOrders": true,
+    "manageWhatsapp": true,
+    "viewWhatsapp": true,
+    "manageKnowledge": true,
+    "manageBilling": true
+  },
+  "manager": {
+    "editCompany": false,
+    "manageMembers": false,
+    "viewMembers": true,
+    "manageCatalog": true,
+    "viewCatalog": true,
+    "viewDashboard": true,
+    "manageOrders": true,
+    "operateOrders": true,
+    "manageWhatsapp": true,
+    "viewWhatsapp": true,
+    "manageKnowledge": true,
+    "manageBilling": false
+  },
+  "user": {
+    "editCompany": false,
+    "manageMembers": false,
+    "viewMembers": true,
+    "manageCatalog": false,
+    "viewCatalog": true,
+    "viewDashboard": true,
+    "manageOrders": false,
+    "operateOrders": true,
+    "manageWhatsapp": false,
+    "viewWhatsapp": true,
+    "manageKnowledge": false,
+    "manageBilling": false
+  }
+}

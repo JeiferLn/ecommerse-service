@@ -54,9 +54,11 @@ Cada empresa paga una suscripción mensual para utilizar el servicio.
 
 ## Backend
 
-- NestJS
-- TypeScript
-- Prisma ORM
+- Python 3.12 + FastAPI
+- Pydantic v2 (validación y configuración)
+- SQLAlchemy 2 (async, asyncpg)
+- Alembic (migraciones)
+- uv (dependencias y entorno)
 - PostgreSQL
 
 ---
@@ -84,7 +86,7 @@ Cada empresa paga una suscripción mensual para utilizar el servicio.
 
 ## ORM
 
-- Prisma
+- SQLAlchemy 2 + Alembic
 
 ---
 
@@ -136,7 +138,7 @@ Cada empresa paga una suscripción mensual para utilizar el servicio.
 
                        │
 
-                  NestJS
+                  FastAPI
 
  ┌────────────┬────────────┬────────────┐
  │            │            │            │
@@ -144,9 +146,9 @@ Auth     Products      AI       Payments
  │            │            │            │
  └────────────┴────────────┴────────────┘
                        │
-                  PostgreSQL
+                  SQLAlchemy
                        │
-                    Prisma
+                  PostgreSQL
 ```
 
 ---
@@ -158,9 +160,9 @@ commerce-ai/
 
 apps/
 
-    admin-web/
+    admin-web/    # Next.js
 
-    backend/
+    api-py/       # FastAPI
 
 packages/
 
@@ -207,9 +209,9 @@ Incluye:
 
 - Monorepo
 - Next.js
-- NestJS
+- Backend API (NestJS al inicio; hoy FastAPI, ver "Migración a Python")
 - PostgreSQL
-- Prisma
+- ORM (Prisma al inicio; hoy SQLAlchemy + Alembic)
 - Docker
 - Variables de entorno
 - Git
@@ -329,14 +331,14 @@ Webhook real (móvil):
 
 Número compartido de la plataforma (plan Free, sin esperar número propio):
 
-1. En `apps/backend/.env`: `TWILIO_SHARED_WHATSAPP_NUMBER=+1…` (el sender de Twilio). Ese número no puede estar asignado como número propio de ninguna tienda.
-2. `bunx prisma migrate deploy` y reiniciar el backend
+1. En `apps/api-py/.env`: `TWILIO_SHARED_WHATSAPP_NUMBER=+1…` (el sender de Twilio). Ese número no puede estar asignado como número propio de ninguna tienda.
+2. Reiniciar el backend
 3. Con productos, envíos y Mercado Pago listos, el dueño pulsa **Activar canal** en `/whatsapp` y copia su enlace (`…?text=Hola <Tienda> #codigo`)
 4. Abrir el enlace en el celular y enviar el mensaje: el bot responde "Estás hablando con _Tienda_." y sigue el flujo normal. Escribir al compartido sin código y sin sesión previa devuelve un mensaje genérico.
 
 Mensajes interactivos (botones, listas, tarjeta de producto y botón de pago):
 
-1. `bunx prisma migrate deploy` y reiniciar el backend. Con `WHATSAPP_INTERACTIVE_ENABLED=true` (por defecto) los botones y listas se crean solos en la Content API de Twilio la primera vez que se usan y quedan cacheados; no requieren aprobación porque van dentro de la ventana de 24 h.
+1. Con `WHATSAPP_INTERACTIVE_ENABLED=true` (por defecto) los botones y listas se crean solos en la Content API de Twilio la primera vez que se usan y quedan cacheados; no requieren aprobación porque van dentro de la ventana de 24 h.
 2. Botón **Pagar pedido** (opcional): en Twilio Console → Content Template Builder, crea una plantilla _Call to action_ con un cuerpo fijo (ej. "Tu pedido está listo. Completa tus datos de envío y paga aquí:"), un botón URL "Pagar pedido" con la URL `https://<FRONTEND_URL>/checkout/{{1}}` (dominio fijo y `{{1}}` solo al final) y envíala a aprobación de WhatsApp. Cuando esté aprobada, pon su SID en `TWILIO_CHECKOUT_CONTENT_SID=HX…`. Sin ella, el cliente recibe el enlace como texto.
 3. Para apagar los interactivos y volver a texto con opciones numeradas: `WHATSAPP_INTERACTIVE_ENABLED=false`.
 4. En **Prueba tu asistente** los botones y listas se pueden tocar; en **Conversaciones** se ven tal como le llegaron al cliente, junto con la opción que eligió.
@@ -364,7 +366,7 @@ Incluye (implementado):
 
 Configuración (development / demo):
 
-1. Key en [openrouter.ai](https://openrouter.ai) → `OPENROUTER_API_KEY` en `apps/backend/.env`
+1. Key en [openrouter.ai](https://openrouter.ai) → `OPENROUTER_API_KEY` en `apps/api-py/.env`
 2. Modelo típico de demo: `AI_MODEL=openrouter/free` (variable; calidad no garantizada)
 3. Productos **activos** + envíos/conocimiento en Configuración
 4. Simular en `/whatsapp` o escribir desde el celular
@@ -584,7 +586,7 @@ Menos saltos en texto; el cliente puede mandar una foto y el bot intenta relacio
 
 **Estado:** pendiente. Depende de Fases 12 (diseño) y 13 (bot + imágenes).
 
-Hoy: Redis corre en Docker **pero la app no lo usa**. No hay BullMQ, Helmet, Sentry, Dockerfiles, CI ni `admin-web/.env.example`. Sí hay CORS, throttler in-memory (120/min), cookies seguras, validación de env en production, health de Postgres (siempre `ok` aunque la DB esté down) y R2 obligatorio en prod.
+Hoy: Redis corre en Docker **pero la app no lo usa**. No hay BullMQ, Helmet, Sentry, Dockerfiles, CI ni `admin-web/.env.example`. Sí hay CORS, rate limit in-memory (slowapi, 120/min), cookies seguras, validación de env en production, health de Postgres (siempre `ok` aunque la DB esté down) y R2 obligatorio en prod.
 
 Objetivo:
 
@@ -592,8 +594,8 @@ Primer **despliegue piloto** usable (dominio + WhatsApp real + pagos), no un rew
 
 Incluye (bloquea el piloto):
 
-- Dockerfiles + arranque prod (`admin-web` + `backend` + Postgres pgvector + Redis)
-- Arreglar `lint` (hoy falla en backend y admin-web) y montar CI: lint / typecheck / test / build + `prisma migrate deploy`
+- Dockerfiles + arranque prod (`admin-web` + `api-py` + Postgres pgvector + Redis)
+- Arreglar `lint` de admin-web y montar CI: lint / typecheck / test / build (ruff, mypy y pytest en api-py) + `alembic upgrade head`
 - `apps/admin-web/.env.example`; health que falle si la DB está down
 - Helmet, `trust proxy`, `SkipThrottle` en `/health` y webhooks (Twilio/MP)
 - Checklist env: Twilio firma + URL fija (sin ngrok), R2, SMTP, MP, JWT, `FRONTEND_URL` / CORS
@@ -618,7 +620,7 @@ Piloto desplegable con observabilidad básica y sin ngrok.
 - Auth
 - Users
 - Companies
-- Roles (matriz `ROLE_CAPABILITIES` en `@commerce-ai/types`; sin tabla Permission)
+- Roles (matriz en `packages/types/src/data/capabilities.json`, la misma para admin-web y api-py; sin tabla Permission)
 - Dashboard (stats empresa + plataforma)
 - Products / Categories / Inventory (stock en variantes)
 - Storage (R2 o local en desarrollo)
@@ -680,29 +682,51 @@ Construir una plataforma SaaS profesional que permita a cualquier empresa vender
 
 ---
 
+# Migración a Python ✅
+
+El backend NestJS se portó a **FastAPI + SQLAlchemy 2 (async)** en `apps/api-py`, módulo por módulo y sin cambiar el contrato: mismo prefijo `/api/v1`, mismas rutas (86), mismas respuestas `{ status, data, message }` y mensajes de error (si falta un campo obligatorio se informa un mensaje en vez de todos), mismas cookies de sesión (JWT HS256, bcrypt) y la misma base de datos. Cada módulo se comparó contra Nest con la misma sesión antes del corte.
+
+En el corte (octubre 2026):
+
+- Se eliminó `apps/backend` (NestJS + Prisma); el backend vuelve a correr en `:4000`.
+- El esquema pasó a Alembic: la migración base (`apps/api-py/alembic/baseline.sql`) es el historial SQL de Prisma, y los modelos de `app/models.py` coinciden con la base (`alembic check` sin diferencias), así que `--autogenerate` ya es fiable.
+- Una base creada antes del corte se marca una sola vez con `uv run alembic stamp head`; una base nueva se crea con `uv run alembic upgrade head`.
+- La tabla `_prisma_migrations` queda como histórico y Alembic la ignora.
+- El seed (`uv run python -m app.seed`) crea el admin de plataforma y los planes, igual que el de Prisma.
+- Webhooks: el túnel (ngrok) de `TWILIO_WEBHOOK_URL`, `MP_WEBHOOK_URL` y `API_PUBLIC_URL` apunta a `:4000`.
+
+---
+
 # Puesta en Marcha
 
-Requisitos: Node.js 20+, Bun 1.4+, Docker.
+Requisitos: Node.js 20+, Bun 1.4+, Python 3.12+, [uv](https://docs.astral.sh/uv/getting-started/installation/) en el `PATH`, Docker.
 
 ```bash
-bun install                                   # instalar dependencias del monorepo
-bun run docker:up                             # levantar PostgreSQL (pgvector) + Redis
+bun install                                   # dependencias del monorepo (admin-web y paquetes)
+bun run docker:up                             # PostgreSQL (pgvector) + Redis
 cd packages/types && bun run build && cd -    # compilar los tipos compartidos
-cd apps/backend && bunx prisma migrate deploy && bun run prisma:seed && cd -
-bun run dev                                   # backend en :4000 y admin-web en :3000
+cp apps/api-py/.env.example apps/api-py/.env  # y completar los valores
+cd apps/api-py && uv sync && uv run alembic upgrade head && uv run python -m app.seed && cd -
+bun run dev                                   # api-py en :4000 y admin-web en :3000
 ```
 
 Otros comandos:
 
 ```bash
 bun run build       # build de producción (turborepo, en orden de dependencias)
-bun run typecheck   # tsc --noEmit en todas las apps
-bun run test        # unit tests del backend
-bun run lint        # eslint (hoy falla; ver Fase 14)
+bun run typecheck   # tsc --noEmit en admin-web y mypy en api-py
+bun run test        # pytest en api-py
+bun run lint        # eslint en admin-web (hoy falla; ver Fase 14) y ruff en api-py
 bun run format      # prettier --write
 ```
 
-Si `prisma generate` da `EPERM` en Windows, detén el backend (bloquea el motor de Prisma) y vuelve a ejecutarlo.
+Base de datos (desde `apps/api-py`):
+
+```bash
+uv run alembic revision --autogenerate -m "describe el cambio"   # tras editar app/models.py; revisar el archivo generado
+uv run alembic upgrade head                                      # aplicar migraciones
+uv run python -m app.seed                                        # admin de plataforma + planes (idempotente)
+```
 
 Endpoints disponibles:
 

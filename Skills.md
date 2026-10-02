@@ -47,8 +47,9 @@ Frontend
 
 Backend
 
-- NestJS
-- Prisma
+- Python 3.12 + FastAPI
+- Pydantic v2
+- SQLAlchemy 2 (async) + Alembic
 - PostgreSQL
 - Redis
 - BullMQ
@@ -85,7 +86,7 @@ Never tightly couple modules together.
 
 Business logic belongs inside Services.
 
-Controllers should remain thin.
+Routers (controllers) should remain thin.
 
 Database access belongs only to the data layer.
 
@@ -113,7 +114,7 @@ Never generate code blindly.
 
 Always:
 
-- Write strongly typed TypeScript.
+- Write strongly typed TypeScript and fully type-hinted Python (mypy clean).
 - Keep functions focused.
 - Keep files reasonably small.
 - Prefer composition over inheritance.
@@ -125,11 +126,11 @@ Always:
 
 Never:
 
-- Use "any" unless absolutely necessary.
-- Ignore TypeScript errors.
+- Use "any" / `Any` unless absolutely necessary.
+- Ignore TypeScript or mypy errors.
 - Leave TODOs.
 - Leave debugging code.
-- Leave console.log statements.
+- Leave console.log / print statements.
 - Introduce duplicated logic.
 
 ---
@@ -138,18 +139,18 @@ Never:
 
 Always:
 
-- Validate DTOs.
+- Validate input with Pydantic request models.
 - Handle errors correctly.
 - Return consistent responses.
-- Use dependency injection.
+- Use FastAPI dependencies (session, current user, roles).
 - Respect module boundaries.
 - Use transactions when needed.
-- Follow NestJS best practices.
+- Follow FastAPI and SQLAlchemy async best practices.
 
 Never:
 
-- Put business logic inside controllers.
-- Access Prisma directly from controllers.
+- Put business logic inside routers.
+- Query the database directly from routers.
 - Mix infrastructure with business logic.
 
 ---
@@ -180,7 +181,7 @@ Always:
 
 - Design normalized schemas.
 - Add indexes when appropriate.
-- Use Prisma best practices.
+- Change the schema only through Alembic migrations (autogenerate + review).
 - Consider future scalability.
 - Preserve migration history.
 

@@ -1,3 +1,6 @@
+import capabilities from "./data/capabilities.json";
+import companyCountries from "./data/countries.json";
+
 export interface ApiResponse<T> {
   status: "success" | "error";
   data: T;
@@ -38,50 +41,11 @@ export type CompanyCapability =
 
 type CompanyRole = Exclude<UserRole, "admin">;
 
-export const ROLE_CAPABILITIES: Record<CompanyRole, Record<CompanyCapability, boolean>> = {
-  owner: {
-    editCompany: true,
-    manageMembers: true,
-    viewMembers: true,
-    manageCatalog: true,
-    viewCatalog: true,
-    viewDashboard: true,
-    manageOrders: true,
-    operateOrders: true,
-    manageWhatsapp: true,
-    viewWhatsapp: true,
-    manageKnowledge: true,
-    manageBilling: true,
-  },
-  manager: {
-    editCompany: false,
-    manageMembers: false,
-    viewMembers: true,
-    manageCatalog: true,
-    viewCatalog: true,
-    viewDashboard: true,
-    manageOrders: true,
-    operateOrders: true,
-    manageWhatsapp: true,
-    viewWhatsapp: true,
-    manageKnowledge: true,
-    manageBilling: false,
-  },
-  user: {
-    editCompany: false,
-    manageMembers: false,
-    viewMembers: true,
-    manageCatalog: false,
-    viewCatalog: true,
-    viewDashboard: true,
-    manageOrders: false,
-    operateOrders: true,
-    manageWhatsapp: false,
-    viewWhatsapp: true,
-    manageKnowledge: false,
-    manageBilling: false,
-  },
-};
+/** Fuente única en `data/capabilities.json` (también la lee el backend Python). */
+export const ROLE_CAPABILITIES: Record<
+  CompanyRole,
+  Record<CompanyCapability, boolean>
+> = capabilities;
 
 export function hasCapability(role: UserRole, capability: CompanyCapability): boolean {
   if (role === "admin") {
@@ -203,15 +167,7 @@ export type PaymentMethod = "debit_card" | "credit_card" | "bank_transfer" | "ca
  * Alineado con la cobertura actual de Mercado Pago (LatAm).
  * Más adelante se podrán sumar otros proveedores / países.
  */
-export const COMPANY_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = [
-  { code: "AR", name: "Argentina" },
-  { code: "BR", name: "Brasil" },
-  { code: "CL", name: "Chile" },
-  { code: "CO", name: "Colombia" },
-  { code: "MX", name: "México" },
-  { code: "PE", name: "Perú" },
-  { code: "UY", name: "Uruguay" },
-];
+export const COMPANY_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = companyCountries;
 
 export const COMPANY_COUNTRY_CODES = COMPANY_COUNTRIES.map((country) => country.code);
 
