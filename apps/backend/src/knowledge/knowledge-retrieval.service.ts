@@ -23,7 +23,10 @@ export class KnowledgeRetrievalService {
     private readonly embeddingFactory: EmbeddingProviderFactory,
   ) {}
 
-  async retrieve(companyId: string, query: string): Promise<{
+  async retrieve(
+    companyId: string,
+    query: string,
+  ): Promise<{
     ragBlock: string;
     chunks: RetrievedChunk[];
   }> {

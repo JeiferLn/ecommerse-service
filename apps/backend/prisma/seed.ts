@@ -16,7 +16,7 @@ const PLANS = [
     maxVariants: 80,
     maxWaMessagesMonth: 100,
     maxAiRepliesMonth: 50,
-    maxKnowledgeDocs: 1,
+    maxKnowledgeDocs: 4,
     sortOrder: 0,
   },
   {
@@ -28,7 +28,7 @@ const PLANS = [
     maxVariants: 1000,
     maxWaMessagesMonth: 2000,
     maxAiRepliesMonth: 1500,
-    maxKnowledgeDocs: 5,
+    maxKnowledgeDocs: 4,
     sortOrder: 1,
   },
   {
@@ -40,7 +40,7 @@ const PLANS = [
     maxVariants: 8000,
     maxWaMessagesMonth: 10000,
     maxAiRepliesMonth: 8000,
-    maxKnowledgeDocs: 20,
+    maxKnowledgeDocs: 4,
     sortOrder: 2,
   },
 ] as const;

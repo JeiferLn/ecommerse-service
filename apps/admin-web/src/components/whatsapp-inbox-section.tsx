@@ -24,9 +24,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
+import { ChatSurface } from "@/components/chat-interactive";
 import { ChatMessageBubble } from "@/components/chat-message-bubble";
-import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
-import { WhatsAppKnowledgeRequiredGate } from "@/components/whatsapp-knowledge-required-gate";
+import {
+  getSetupItems,
+  missingRequiredItems,
+  SetupRequirements,
+} from "@/components/setup-requirements";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -129,10 +133,11 @@ export function WhatsAppInboxSection() {
     queryFn: () => apiFetch<CompanyDetails>("/company"),
     enabled: Boolean(user?.companyId),
   });
-  const commerceReady = Boolean(company?.commerce.isConfigured);
-  const knowledgeReady = Boolean(company?.knowledge.isConfigured);
-  const missingKnowledge = company?.knowledge.missingTypes ?? [];
-  const whatsappReady = commerceReady && knowledgeReady;
+  const whatsappReady = Boolean(
+    company &&
+    missingRequiredItems(getSetupItems(company, user?.role, { requirePayments: true })).length ===
+      0,
+  );
 
   const {
     data: conversations,
@@ -181,7 +186,12 @@ export function WhatsAppInboxSection() {
 
   const items = useMemo(() => conversations?.items ?? [], [conversations]);
   const counts = useMemo(() => {
-    const result: Record<HandlerFilter, number> = { all: items.length, human: 0, bot: 0, pending: 0 };
+    const result: Record<HandlerFilter, number> = {
+      all: items.length,
+      human: 0,
+      bot: 0,
+      pending: 0,
+    };
     for (const item of items) {
       result[item.handler] += 1;
     }
@@ -228,12 +238,14 @@ export function WhatsAppInboxSection() {
     return <Skeleton className="h-120 w-full rounded-lg" />;
   }
 
-  if (!commerceReady) {
-    return <WhatsAppCommerceRequiredGate />;
-  }
-
-  if (!knowledgeReady) {
-    return <WhatsAppKnowledgeRequiredGate missingTypes={missingKnowledge} />;
+  if (!whatsappReady) {
+    return (
+      <SetupRequirements
+        company={company}
+        requirePayments
+        purpose="recibir conversaciones por WhatsApp"
+      />
+    );
   }
 
   const actionError =
@@ -371,7 +383,7 @@ export function WhatsAppInboxSection() {
             className="flex-1"
           />
         ) : (
-          <div key={selected.id} className="fade-swap flex min-h-0 flex-1 flex-col">
+          <ChatSurface key={selected.id} className="fade-swap flex min-h-0 flex-1 flex-col">
             <header className="flex items-center gap-3 border-b border-border px-3 py-3 sm:px-4">
               <Button
                 type="button"
@@ -439,7 +451,9 @@ export function WhatsAppInboxSection() {
               {messagesLoading ? (
                 <SkeletonText lines={4} className="max-w-sm" />
               ) : messageCount === 0 ? (
-                <p className="text-center text-sm text-muted-foreground">Sin mensajes en este chat.</p>
+                <p className="text-center text-sm text-muted-foreground">
+                  Sin mensajes en este chat.
+                </p>
               ) : (
                 <div className="flex flex-col gap-2">
                   {(messages ?? []).map((message, index, list) => {
@@ -506,7 +520,7 @@ export function WhatsAppInboxSection() {
               )}
               {actionError ? <p className="mt-2 text-sm text-destructive">{actionError}</p> : null}
             </div>
-          </div>
+          </ChatSurface>
         )}
       </section>
     </div>

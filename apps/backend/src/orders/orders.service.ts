@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type {
   CartView,
@@ -29,6 +24,7 @@ import { randomBytes } from "node:crypto";
 import type { Env } from "../config/env.validation";
 import { MercadoPagoService } from "../payments/mercadopago.service";
 import { PrismaService } from "../prisma/prisma.service";
+import type { SuggestedProduct } from "../whatsapp/interactive-message.util";
 import { TwilioWhatsAppClient } from "../whatsapp/twilio-whatsapp.client";
 import type { CheckoutCartDto } from "./dto/cart.dto";
 import type { CreateInStoreSaleDto } from "./dto/create-in-store-sale.dto";
@@ -50,12 +46,7 @@ const OPEN_ORDER_STATUSES: PrismaOrderStatus[] = [
   "shipped",
 ];
 
-const POST_PAYMENT_STATUSES: PrismaOrderStatus[] = [
-  "paid",
-  "preparing",
-  "shipped",
-  "delivered",
-];
+const POST_PAYMENT_STATUSES: PrismaOrderStatus[] = ["paid", "preparing", "shipped", "delivered"];
 
 const CHECKOUT_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 
@@ -196,7 +187,7 @@ export class OrdersService {
   async beginCheckout(
     companyId: string | null,
     conversationId: string,
-  ): Promise<{ cart: CartView; message: string }> {
+  ): Promise<{ cart: CartView; message: string; summary: string; checkoutUrl: string | null }> {
     const cart = await this.getCartForConversation(companyId, conversationId);
     if (cart.items.length === 0) {
       throw new BadRequestException("El carrito está vacío");
@@ -205,7 +196,59 @@ export class OrdersService {
     return {
       cart: await this.getCartForConversation(companyId, conversationId),
       message: this.formatOrderConfirmationMessage(order),
+      summary: this.formatOrderConfirmationMessage(order, { includeLink: false }),
+      checkoutUrl: order.checkoutUrl ?? null,
     };
+  }
+
+  /**
+   * Productos activos con variantes y foto principal, para listas y tarjetas del chat.
+   * Con `productIds` respeta ese orden; sin ellos, los más recientes.
+   */
+  async getSuggestedProducts(
+    companyId: string,
+    options: { productIds?: string[]; limit?: number } = {},
+  ): Promise<SuggestedProduct[]> {
+    const limit = options.limit ?? 10;
+    if (options.productIds && options.productIds.length === 0) {
+      return [];
+    }
+    const [company, products] = await Promise.all([
+      this.prisma.company.findUnique({ where: { id: companyId }, select: { countryCode: true } }),
+      this.prisma.product.findMany({
+        where: {
+          companyId,
+          status: "active",
+          ...(options.productIds ? { id: { in: options.productIds } } : {}),
+        },
+        include: {
+          variants: {
+            select: { id: true, name: true, price: true, stock: true },
+            orderBy: { createdAt: "asc" },
+          },
+          images: { select: { url: true }, orderBy: { sortOrder: "asc" }, take: 1 },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: options.productIds ? options.productIds.length : limit,
+      }),
+    ]);
+    const currency = this.currencyForCountry(company?.countryCode);
+    const order = options.productIds ?? [];
+    return products
+      .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+      .slice(0, limit)
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        imageUrl: product.images[0]?.url ?? null,
+        currency,
+        variants: product.variants.map((variant) => ({
+          id: variant.id,
+          name: variant.name,
+          price: Number(variant.price),
+          stock: variant.stock,
+        })),
+      }));
   }
 
   async getPublicCheckout(token: string): Promise<CheckoutOrderView> {
@@ -220,10 +263,7 @@ export class OrdersService {
    * Marca el pedido como pagado desde un webhook de Mercado Pago (idempotente).
    * @returns newlyPaid=true solo la primera vez que pasa a paid.
    */
-  async markPaidFromMercadoPago(params: {
-    orderId: string;
-    mpPaymentId: string;
-  }): Promise<{
+  async markPaidFromMercadoPago(params: { orderId: string; mpPaymentId: string }): Promise<{
     newlyPaid: boolean;
     order: {
       id: string;
@@ -308,8 +348,7 @@ export class OrdersService {
     total: Decimal | number;
     items: { productName: string; variantName: string; quantity: number }[];
   }): string {
-    const total =
-      typeof order.total === "number" ? order.total : Number(order.total);
+    const total = typeof order.total === "number" ? order.total : Number(order.total);
     const lines = order.items.map(
       (item) => `• ${item.productName} (${item.variantName}) x${item.quantity}`,
     );
@@ -438,8 +477,7 @@ export class OrdersService {
     }
 
     const preferenceId = preference.id;
-    const paymentUrl =
-      preference.sandbox_init_point || preference.init_point || null;
+    const paymentUrl = preference.sandbox_init_point || preference.init_point || null;
     if (!preferenceId || !paymentUrl) {
       throw new BadRequestException(
         "Mercado Pago no devolvió un enlace de pago. Revisa las credenciales.",
@@ -631,9 +669,7 @@ export class OrdersService {
     for (const variant of variants) {
       const quantity = qtyByVariant.get(variant.id) ?? 0;
       if (variant.product.status !== "active") {
-        throw new BadRequestException(
-          `El producto "${variant.product.name}" ya no está activo`,
-        );
+        throw new BadRequestException(`El producto "${variant.product.name}" ya no está activo`);
       }
       if (variant.stock < quantity) {
         throw new BadRequestException(
@@ -779,14 +815,12 @@ export class OrdersService {
       );
     }
     const allowed = STATUS_TRANSITIONS[order.status];
-    if (!allowed.includes(status as PrismaOrderStatus)) {
-      throw new BadRequestException(
-        `No se puede pasar de ${order.status} a ${status}`,
-      );
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(`No se puede pasar de ${order.status} a ${status}`);
     }
     const updated = await this.prisma.order.update({
       where: { id: order.id },
-      data: { status: status as PrismaOrderStatus },
+      data: { status: status },
       include: { items: true },
     });
     const details = this.toOrderDetails(updated);
@@ -841,7 +875,8 @@ export class OrdersService {
     return details;
   }
 
-  formatCartMessage(cart: CartView): string {
+  /** Con `withInstructions: false` omite cómo confirmar o vaciar (van como botones). */
+  formatCartMessage(cart: CartView, options: { withInstructions?: boolean } = {}): string {
     if (cart.items.length === 0) {
       return "Tu carrito está vacío. Dime qué producto quieres agregar.";
     }
@@ -853,16 +888,24 @@ export class OrdersService {
       "Tu carrito:",
       ...lines,
       `Subtotal: $${cart.subtotal.toFixed(2)} ${cart.currency}`,
-      'Para confirmar escribe "confirmar pedido". Para vaciar: "vaciar carrito".',
+      ...(options.withInstructions === false
+        ? []
+        : ['Para confirmar escribe "confirmar pedido". Para vaciar: "vaciar carrito".']),
     ].join("\n");
   }
 
-  formatOrderConfirmationMessage(order: OrderDetails): string {
+  /** Con `includeLink: false` el enlace va aparte (botón "Pagar pedido"). */
+  formatOrderConfirmationMessage(
+    order: OrderDetails,
+    options: { includeLink?: boolean } = {},
+  ): string {
     const lines = order.items.map(
       (item) => `• ${item.productName} (${item.variantName}) x${item.quantity}`,
     );
     const checkoutLine = order.checkoutUrl
-      ? `Completa tus datos de envío y el pago aquí:\n${order.checkoutUrl}`
+      ? options.includeLink === false
+        ? "Completa tus datos de envío y paga desde el botón."
+        : `Completa tus datos de envío y el pago aquí:\n${order.checkoutUrl}`
       : "Un asesor te enviará el enlace de pago y envío.";
     return [
       `Pedido ${order.number} registrado.`,
@@ -1294,9 +1337,9 @@ export class OrdersService {
       companyId: order.companyId,
       conversationId: order.conversationId,
       customerWaId: order.customerWaId,
-      channel: order.channel as OrderChannel,
-      inStorePaymentMethod: order.inStorePaymentMethod as InStorePaymentMethod | null,
-      status: order.status as OrderStatus,
+      channel: order.channel,
+      inStorePaymentMethod: order.inStorePaymentMethod,
+      status: order.status,
       currency: order.currency,
       subtotal: Number(order.subtotal),
       shippingCost: Number(order.shippingCost),
@@ -1346,11 +1389,9 @@ export class OrdersService {
       throw new NotFoundException("Checkout no encontrado o ya utilizado");
     }
     const expired =
-      Boolean(order.checkoutExpiresAt) &&
-      order.checkoutExpiresAt!.getTime() < Date.now();
+      Boolean(order.checkoutExpiresAt) && order.checkoutExpiresAt!.getTime() < Date.now();
     if (expired) {
-      const allowPaid =
-        options?.allowExpiredIfPaid && POST_PAYMENT_STATUSES.includes(order.status);
+      const allowPaid = options?.allowExpiredIfPaid && POST_PAYMENT_STATUSES.includes(order.status);
       if (!allowPaid) {
         throw new BadRequestException(
           "Este enlace de checkout expiró. Pide uno nuevo por WhatsApp.",
@@ -1395,7 +1436,7 @@ export class OrdersService {
     const scopes = order.company.shippingScopes as ShippingScope[];
     return {
       number: order.number,
-      status: order.status as OrderStatus,
+      status: order.status,
       currency: order.currency,
       subtotal: Number(order.subtotal),
       shippingCost: Number(order.shippingCost),
@@ -1474,9 +1515,9 @@ export class OrdersService {
       companyId: order.companyId,
       conversationId: order.conversationId,
       customerWaId: order.customerWaId,
-      channel: order.channel as OrderChannel,
-      inStorePaymentMethod: order.inStorePaymentMethod as InStorePaymentMethod | null,
-      status: order.status as OrderStatus,
+      channel: order.channel,
+      inStorePaymentMethod: order.inStorePaymentMethod,
+      status: order.status,
       currency: order.currency,
       subtotal: Number(order.subtotal),
       shippingCost: Number(order.shippingCost),

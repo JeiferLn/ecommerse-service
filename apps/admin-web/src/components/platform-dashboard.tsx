@@ -1,13 +1,8 @@
 "use client";
 
-import {
-  COMPANY_TYPE_LABELS,
-  type AdminCompanyRow,
-  type PlatformDashboardStats,
-} from "@commerce-ai/types";
+import { COMPANY_TYPE_LABELS, type PlatformDashboardStats } from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, Package, Phone, UserRound, Users } from "lucide-react";
-import Link from "next/link";
+import { Building2, Package, UserRound, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
@@ -67,14 +62,6 @@ export function PlatformDashboard() {
     queryFn: () => apiFetch<PlatformDashboardStats>("/admin/stats"),
     enabled: user?.role === "admin",
   });
-
-  const { data: companies } = useQuery({
-    queryKey: ["admin-companies"],
-    queryFn: () => apiFetch<AdminCompanyRow[]>("/admin/companies"),
-    enabled: user?.role === "admin",
-  });
-  const awaitingNumber = companies?.filter((company) => company.awaitingNumber).length ?? 0;
-
   if (sessionLoading || (user && user.role !== "admin")) {
     return <p className="text-sm text-muted-foreground">Cargando panel de plataforma…</p>;
   }
@@ -94,39 +81,17 @@ export function PlatformDashboard() {
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
-            Resumen
-          </h1>
+          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Resumen</h1>
           <p className="text-muted-foreground">Métricas globales de la plataforma.</p>
         </div>
         <SessionRoleBadge />
       </div>
 
-      {awaitingNumber > 0 ? (
-        <Link
-          href="/admin/companies"
-          className="flex items-center gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Phone className="size-4" aria-hidden />
-          </span>
-          <span className="flex-1">
-            <span className="block font-medium">
-              {awaitingNumber === 1
-                ? "1 tienda está esperando su número de WhatsApp"
-                : `${awaitingNumber} tiendas están esperando su número de WhatsApp`}
-            </span>
-            <span className="block text-sm text-muted-foreground">
-              Ya completaron productos, envíos, documentos y pagos.
-            </span>
-          </span>
-          <ArrowRight className="size-4 text-muted-foreground" aria-hidden />
-        </Link>
-      ) : null}
-
       {isLoading && <p className="text-sm text-muted-foreground">Cargando métricas…</p>}
       {isError && (
-        <p className="text-sm text-destructive">No se pudieron cargar las métricas de plataforma.</p>
+        <p className="text-sm text-destructive">
+          No se pudieron cargar las métricas de plataforma.
+        </p>
       )}
 
       {data && (

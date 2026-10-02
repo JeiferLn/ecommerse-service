@@ -119,10 +119,7 @@ describe("CatalogContextService", () => {
       },
     ]);
 
-    const result = await service.buildForCompany(
-      "company-a",
-      "que productos tienen en stock?",
-    );
+    const result = await service.buildForCompany("company-a", "que productos tienen en stock?");
 
     expect(result.catalogBlock).toContain("Camiseta");
     expect(result.catalogBlock).not.toContain("ningún producto ACTIVO coincide");

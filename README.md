@@ -281,9 +281,9 @@ Mostrar información del negocio (empresa) y de la plataforma (staff).
 
 Incluye:
 
-- Dashboard empresa (`/`): KPIs de catálogo, stock, miembros y gráficas
-- Dashboard plataforma (`/admin`): KPIs globales, altas y empresas recientes
-- Placeholders de ventas/clientes/conversaciones hasta Fases 5 / 8
+- Dashboard empresa (`/`): checklist de primeros pasos, ingresos por canal (WhatsApp / tienda), pedidos, catálogo, stock y miembros
+- Dashboard plataforma (`/admin`): KPIs globales, altas y empresas recientes; listado en `/admin/companies`
+- Pendiente: entidad Customer (métricas de clientes)
 
 ---
 
@@ -304,7 +304,7 @@ Incluye (implementado):
 - Inbox: listar conversaciones, hilo y envío manual de texto
 - `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin llamadas reales (sin gastar mensajes)
 - Auto-reply configurable; con `AI_ENABLED=true` responde la IA (Fase 6)
-- Admin: `/whatsapp` (conexión + simular) e `/whatsapp/inbox`
+- Admin: `/whatsapp` (conexión + simular), `/whatsapp/inbox` (Conversaciones) y `/assistant/playground` (Prueba tu asistente, sin WhatsApp ni Twilio)
 - **Validación punta a punta en celular** con sender aprobado + ngrok → backend `:4000`
 
 Pendiente solo para endurecer producción (fuera del cierre MVP):
@@ -327,6 +327,20 @@ Webhook real (móvil):
 3. `TWILIO_WEBHOOK_URL` igual a esa URL; `WHATSAPP_SIMULATE_SEND=false`
 4. Escribir desde el celular al número de la tienda
 
+Número compartido de la plataforma (plan Free, sin esperar número propio):
+
+1. En `apps/backend/.env`: `TWILIO_SHARED_WHATSAPP_NUMBER=+1…` (el sender de Twilio). Ese número no puede estar asignado como número propio de ninguna tienda.
+2. `bunx prisma migrate deploy` y reiniciar el backend
+3. Con productos, envíos y Mercado Pago listos, el dueño pulsa **Activar canal** en `/whatsapp` y copia su enlace (`…?text=Hola <Tienda> #codigo`)
+4. Abrir el enlace en el celular y enviar el mensaje: el bot responde "Estás hablando con _Tienda_." y sigue el flujo normal. Escribir al compartido sin código y sin sesión previa devuelve un mensaje genérico.
+
+Mensajes interactivos (botones, listas, tarjeta de producto y botón de pago):
+
+1. `bunx prisma migrate deploy` y reiniciar el backend. Con `WHATSAPP_INTERACTIVE_ENABLED=true` (por defecto) los botones y listas se crean solos en la Content API de Twilio la primera vez que se usan y quedan cacheados; no requieren aprobación porque van dentro de la ventana de 24 h.
+2. Botón **Pagar pedido** (opcional): en Twilio Console → Content Template Builder, crea una plantilla _Call to action_ con un cuerpo fijo (ej. "Tu pedido está listo. Completa tus datos de envío y paga aquí:"), un botón URL "Pagar pedido" con la URL `https://<FRONTEND_URL>/checkout/{{1}}` (dominio fijo y `{{1}}` solo al final) y envíala a aprobación de WhatsApp. Cuando esté aprobada, pon su SID en `TWILIO_CHECKOUT_CONTENT_SID=HX…`. Sin ella, el cliente recibe el enlace como texto.
+3. Para apagar los interactivos y volver a texto con opciones numeradas: `WHATSAPP_INTERACTIVE_ENABLED=false`.
+4. En **Prueba tu asistente** los botones y listas se pueden tocar; en **Conversaciones** se ven tal como le llegaron al cliente, junto con la opción que eligió.
+
 ---
 
 # Fase 6 — Inteligencia Artificial ✅ (prototipo cerrado)
@@ -344,7 +358,8 @@ Incluye (implementado):
 - Enganche en auto-reply de WhatsApp cuando `AI_ENABLED=true`
 - Fallback fijo (`AI_FALLBACK_TEXT`) si la IA falla, basura/CoT, o pide humano (`[HANDOFF]`)
 - Routing bot / asesor (`pending` → `bot` | `human`) + reactivación desde inbox
-- Envíos configurables en `/settings` (país, alcance, transportadoras, ubicación) inyectados al prompt
+- Envíos configurables en `/settings/shipping` (país, alcance, transportadoras, ubicación) inyectados al prompt
+- La IA puede sugerir productos (`suggestedProductIds`) que el bot muestra como lista o tarjeta interactiva
 - Tests unitarios de provider, catálogo y reply
 
 Configuración (development / demo):
@@ -373,7 +388,7 @@ Fuera de alcance de Fase 6: RAG/documentos (Fase 7), settings de IA por empresa,
 
 # Fase 7 — RAG ✅
 
-**Estado:** MVP completo (4 PDFs obligatorios). Listo para uso en simulate y WhatsApp real.
+**Estado:** MVP completo (4 PDFs opcionales que mejoran las respuestas). Listo para uso en simulate y WhatsApp real.
 
 Objetivo:
 
@@ -386,12 +401,12 @@ Incluye (implementado):
 - Subida PDF → extracción de texto → chunk → embedding (OpenRouter o mock) → DB
 - Retrieval top-k por similitud coseno (fallback léxico) inyectado en `AiReplyService`
 - API `GET /api/v1/knowledge`, `PUT /api/v1/knowledge/:type/file`, `DELETE /api/v1/knowledge/:type` (`owner`/`manager`, capability `manageKnowledge`)
-- Admin: sección **Conocimiento** en `/settings#conocimiento` (sin nav lateral)
-- **Prerequisito WhatsApp:** envíos configurados **y** los 4 PDFs activos con `fileKey`
+- Admin: página **Conocimiento** en `/knowledge` (en el menú lateral)
+- **Prerequisitos WhatsApp:** al menos un producto activo, envíos configurados y Mercado Pago conectado ("Prueba tu asistente" no exige Mercado Pago). Los documentos son opcionales y todos los planes pueden subir los 4.
 
 Cómo probar:
 
-1. En Configuración → Conocimiento, subir los 4 PDFs (texto seleccionable, no escaneados)
+1. En Conocimiento, subir uno o más PDFs (texto seleccionable, no escaneados)
 2. Configurar envíos si aún no lo están
 3. Simular o WhatsApp real: “¿puedo devolver a los 10 días?”
 4. El bot debe basarse en el texto indexado; preguntas de producto siguen usando el catálogo
@@ -416,7 +431,7 @@ Incluye (implementado):
 - Estados: `draft` → `confirmed` → `awaiting_payment` → `paid` → `preparing` → `shipped` → `delivered` | `cancelled`
 - Checkout descuenta stock; cancelar repone si el stock se había descontado
 - API: listado/detalle/estado/cancelar + carrito/checkout por `conversationId`
-- Intenciones en bot: `agregar…`, `quiero 2`, `pedir una` (con historial), confirmación `sí` tras oferta, `ver carrito`, `vaciar carrito`, `confirmar pedido`
+- Bot con botones (agregar, elegir variante, ver/vaciar carrito, confirmar, pagar) y, si el cliente escribe, intenciones `agregar…`, `quiero 2`, `pedir una` (con historial), confirmación `sí` tras oferta, `ver carrito`, `vaciar carrito`, `confirmar pedido`
 - Tras `confirmar pedido`: orden `awaiting_payment` + `checkoutToken` + link `{FRONTEND_URL}/checkout/{token}`
 - Página pública `/checkout/[token]`: resumen + país/depto/municipio (selects) + dirección + **Pagar** (Mercado Pago Checkout Pro)
 - Validación de cobertura (local vs nacional vs internacional) contra ubicación base de la tienda
@@ -511,38 +526,37 @@ Incluye (implementado):
 
 ---
 
-# Fase 12 — Diseño y organización del admin
+# Fase 12 — Diseño y organización del admin (casi cerrada)
 
-**Estado:** pendiente. El producto ya es útil; el admin se ve básico y poco organizado.
+**Estado:** rediseño aplicado; quedan detalles de pulido. Reglas en `docs/CONVENTIONS.md` → "Diseño del admin".
 
-Hoy: tokens cobalt + shadcn (9 primitivas) y landing pulida; el backoffice es CRUD de Cards, sidebars ad-hoc, loading “Cargando…”, `window.confirm`, y un árbol muerto `/dashboard` que el middleware redirige. Pedidos, inbox y settings son las pantallas más débiles.
+Hecho:
 
-Objetivo:
+- App shell único: layout `(company)` con sidebar en desktop y `MobileNav` en móvil, `PageHeader` en todas las páginas
+- Rutas sin `/dashboard` (el prefijo viejo redirige); cada sección tiene su ruta: `/products`, `/categories`, `/orders`, `/sales`, `/whatsapp`, `/whatsapp/inbox`, `/assistant/playground`, `/knowledge`, `/settings`, `/settings/payments`, `/settings/shipping`, `/members`, `/billing`
+- Primitivas: Table, Sheet, Dialog, Dropdown, Select, Segmented, Skeleton, EmptyState, StatusPill (sin `<select>` nativo)
+- Pedidos con panel lateral, Conversaciones tipo chat a alto de viewport, Prueba tu asistente con botones y listas tocables
+- Checklist de primeros pasos y `SetupRequirements` con todos los requisitos pendientes juntos
+- Revisado en móvil (390 px)
 
-Elevar el admin de “funciona” a una UI clara, consistente y fácil de operar (dueño / manager), sin cambiar el modelo de negocio.
+Pendiente de pulir:
 
-Incluye:
+- `window.confirm` en billing, categorías, conocimiento, miembros, Mercado Pago y editor de producto → diálogo de confirmación
+- No hay toasts para confirmar acciones guardadas
+- Algunos "Cargando…" que deberían ser `Skeleton`
+- Montos del bot con `toFixed(2)` en vez del formato de moneda del admin
 
-- Unificar **app shell** (header + sidebar empresa/admin, anchos, PageHeader compartido)
-- Quitar duplicado `/dashboard/**`; inbox y anclas de configuración más visibles
-- Completar primitivas: Table, Tabs, Skeleton, Toast, Sheet/Dropdown; dejar de mezclar `<select>` nativo con shadcn
-- Pedidos (master-detail real), inbox tipo chat (altura viewport), settings con Tabs/anchors
-- Empty/error/loading coherentes; badges y `formatMoney` alineados a la paleta
-- Microcopy: títulos, ayudas y CTAs más claros
-
-Fuera de alcance: rebranding de marketing/landing, dark mode obligatorio, app móvil, rediseño profundo del checkout público (solo consistencia mínima).
-
-Resultado esperado:
-
-Admin profesional y ordenado, listo para mostrar a clientes piloto.
+Fuera de alcance: rebranding de marketing/landing, dark mode obligatorio, app móvil, rediseño del checkout público.
 
 ---
 
 # Fase 13 — Entrenamiento del bot y visión (imágenes)
 
-**Estado:** pendiente. El bot vende, pero a veces se salta intenciones o malinterpreta mensajes.
+**Estado:** parcial. Los botones y listas interactivos ya resuelven las acciones de compra sin pasar por el modelo; falta visión y la batería de casos.
 
-Hoy: inbound **solo texto** (foto sin `Body` se descarta). El bot **sí envía** fotos del catálogo (Twilio `MediaUrl`). Matching de producto es léxico (tokens/sinónimos), no visión. Heurísticas frágiles: carrito vs “quiero ver”, handoff “humano/asesor”, catálogo sesgado a ropa, `maxTokens: 220`.
+Hecho: acciones por botón con IDs deterministas (`cart:*`, `variant:<id>`, `product:<id>`), sugerencias de productos desde la IA y Prueba tu asistente para probar el flujo sin WhatsApp.
+
+Hoy: inbound **solo texto** (foto sin `Body` se descarta; no se lee `NumMedia`). El bot **sí envía** fotos del catálogo (Twilio `MediaUrl`). Matching de producto es léxico (tokens/sinónimos), no visión. Cuando el cliente escribe en vez de tocar, siguen las heurísticas frágiles: carrito vs “quiero ver”, handoff “humano/asesor”, catálogo sesgado a ropa, `maxTokens: 220`.
 
 Objetivo:
 
@@ -579,7 +593,7 @@ Primer **despliegue piloto** usable (dominio + WhatsApp real + pagos), no un rew
 Incluye (bloquea el piloto):
 
 - Dockerfiles + arranque prod (`admin-web` + `backend` + Postgres pgvector + Redis)
-- CI: lint / typecheck / test / build + `prisma migrate deploy`
+- Arreglar `lint` (hoy falla en backend y admin-web) y montar CI: lint / typecheck / test / build + `prisma migrate deploy`
 - `apps/admin-web/.env.example`; health que falle si la DB está down
 - Helmet, `trust proxy`, `SkipThrottle` en `/health` y webhooks (Twilio/MP)
 - Checklist env: Twilio firma + URL fija (sin ngrok), R2, SMTP, MP, JWT, `FRONTEND_URL` / CORS
@@ -608,7 +622,7 @@ Piloto desplegable con observabilidad básica y sin ngrok.
 - Dashboard (stats empresa + plataforma)
 - Products / Categories / Inventory (stock en variantes)
 - Storage (R2 o local en desarrollo)
-- Customers *(roadmap)*
+- Customers _(roadmap)_
 - Conversations / Messages (WhatsApp)
 - AI / Knowledge (RAG)
 - Orders (carrito + pedidos WhatsApp; ventas `in_store` en Fase 10; Payments en Fase 9)
@@ -668,23 +682,27 @@ Construir una plataforma SaaS profesional que permita a cualquier empresa vender
 
 # Puesta en Marcha
 
-Requisitos: Node.js 20+, pnpm 9+, Docker.
+Requisitos: Node.js 20+, Bun 1.4+, Docker.
 
 ```bash
-pnpm install        # instalar dependencias del monorepo
-pnpm docker:up      # levantar PostgreSQL (pgvector) + Redis
-pnpm dev            # backend en :4000 y admin-web en :3000
+bun install                                   # instalar dependencias del monorepo
+bun run docker:up                             # levantar PostgreSQL (pgvector) + Redis
+cd packages/types && bun run build && cd -    # compilar los tipos compartidos
+cd apps/backend && bunx prisma migrate deploy && bun run prisma:seed && cd -
+bun run dev                                   # backend en :4000 y admin-web en :3000
 ```
 
 Otros comandos:
 
 ```bash
-pnpm build          # build de producción (turborepo, en orden de dependencias)
-pnpm lint           # eslint en todo el monorepo
-pnpm typecheck      # tsc --noEmit en todas las apps
-pnpm test           # unit tests del backend
-pnpm format         # prettier --write
+bun run build       # build de producción (turborepo, en orden de dependencias)
+bun run typecheck   # tsc --noEmit en todas las apps
+bun run test        # unit tests del backend
+bun run lint        # eslint (hoy falla; ver Fase 14)
+bun run format      # prettier --write
 ```
+
+Si `prisma generate` da `EPERM` en Windows, detén el backend (bloquea el motor de Prisma) y vuelve a ejecutarlo.
 
 Endpoints disponibles:
 

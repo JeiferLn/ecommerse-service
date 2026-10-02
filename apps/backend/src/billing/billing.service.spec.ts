@@ -45,7 +45,7 @@ describe("BillingService", () => {
     maxVariants: 80,
     maxWaMessagesMonth: 100,
     maxAiRepliesMonth: 50,
-    maxKnowledgeDocs: 1,
+    maxKnowledgeDocs: 4,
     isPublic: true,
     sortOrder: 0,
   };

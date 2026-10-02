@@ -398,12 +398,7 @@ export function priceYearUsdCents(monthlyUsdCents: number): number {
   return monthlyUsdCents * 10;
 }
 
-export type SubscriptionStatus =
-  | "trialing"
-  | "active"
-  | "past_due"
-  | "trial_expired"
-  | "canceled";
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "trial_expired" | "canceled";
 
 export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
   trialing: "Prueba",
@@ -530,7 +525,7 @@ export type KnowledgeDocumentType = "faq" | "policy" | "warranty" | "guide";
 
 export type KnowledgeDocumentStatus = "draft" | "active" | "archived";
 
-/** Los 4 PDFs obligatorios para habilitar WhatsApp. */
+/** Los 4 PDFs que mejoran las respuestas del asistente (opcionales). */
 export const REQUIRED_KNOWLEDGE_TYPES: readonly KnowledgeDocumentType[] = [
   "guide",
   "faq",
@@ -548,8 +543,7 @@ export const KNOWLEDGE_DOCUMENT_TYPE_LABELS: Record<KnowledgeDocumentType, strin
 export const KNOWLEDGE_DOCUMENT_TYPE_REASONS: Record<KnowledgeDocumentType, string> = {
   guide:
     "Instrucciones para el bot: tono, qué puede y no puede hacer, cuándo escalar a un humano, y cómo presentar productos o precios.",
-  faq:
-    "Preguntas frecuentes ya resueltas (horarios, tallas, stock, medios de pago, tiempos de respuesta). El bot las usa para responder sin inventar.",
+  faq: "Preguntas frecuentes ya resueltas (horarios, tallas, stock, medios de pago, tiempos de respuesta). El bot las usa para responder sin inventar.",
   warranty:
     "Condiciones de garantía: cobertura, plazos, qué sí/no aplica, cómo reclamar y qué datos o evidencia pedir al cliente.",
   policy:
@@ -611,8 +605,7 @@ export function isCompanyKnowledgeConfigured(
 ): boolean {
   return REQUIRED_KNOWLEDGE_TYPES.every((type) =>
     docs.some(
-      (doc) =>
-        doc.type === type && doc.status === "active" && Boolean(doc.fileKey?.trim()),
+      (doc) => doc.type === type && doc.status === "active" && Boolean(doc.fileKey?.trim()),
     ),
   );
 }
@@ -627,8 +620,7 @@ export function getMissingKnowledgeTypes(
   return REQUIRED_KNOWLEDGE_TYPES.filter(
     (type) =>
       !docs.some(
-        (doc) =>
-          doc.type === type && doc.status === "active" && Boolean(doc.fileKey?.trim()),
+        (doc) => doc.type === type && doc.status === "active" && Boolean(doc.fileKey?.trim()),
       ),
   );
 }
@@ -739,7 +731,6 @@ export interface AdminCompanyRow extends PlatformCompanySummary {
   requirements: {
     products: boolean;
     shipping: boolean;
-    knowledge: boolean;
     payments: boolean;
   };
   /** Cumple todos los requisitos y aún no tiene número asignado. */
@@ -769,13 +760,20 @@ export const CONVERSATION_HANDLER_LABELS: Record<ConversationHandler, string> = 
   human: "Asesor",
 };
 
+/** `shared`: número de la plataforma enrutado por código; `dedicated`: número propio de la tienda. */
+export type WhatsAppConnectionMode = "shared" | "dedicated";
+
 export interface WhatsAppConnection {
   id: string;
   companyId: string;
   /** Número WhatsApp E.164 (ej. +14155238886), sin prefijo whatsapp: */
   twilioWhatsAppNumber: string;
   displayPhoneNumber: string | null;
+  mode: WhatsAppConnectionMode;
+  /** Código de la tienda en el número compartido (sin #). */
+  storeCode: string | null;
   isActive: boolean;
+  /** En modo compartido incluye el texto con el código de la tienda. */
   waMeLink: string | null;
   createdAt: string;
   updatedAt: string;
@@ -793,6 +791,33 @@ export interface ConversationSummary {
   updatedAt: string;
 }
 
+/** Opción tocable de un mensaje del bot. `id` es la acción que procesa el backend (ej. `cart:checkout`). */
+export interface InteractiveAction {
+  id: string;
+  title: string;
+}
+
+export interface InteractiveListItem {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/** Elementos interactivos de un mensaje: iguales en WhatsApp, Conversaciones y Prueba tu asistente. */
+export type MessageInteractive =
+  | { kind: "buttons"; actions: InteractiveAction[] }
+  | { kind: "list"; button: string; items: InteractiveListItem[] }
+  | {
+      kind: "product_card";
+      imageUrl: string | null;
+      title: string;
+      subtitle: string;
+      actions: InteractiveAction[];
+    }
+  | { kind: "link_button"; title: string; url: string | null }
+  /** Mensaje del cliente al tocar un botón u opción. */
+  | { kind: "reply"; actionId: string };
+
 export interface WhatsAppMessage {
   id: string;
   conversationId: string;
@@ -801,6 +826,7 @@ export interface WhatsAppMessage {
   type: string;
   body: string;
   status: MessageStatus | null;
+  interactive: MessageInteractive | null;
   createdAt: string;
 }
 

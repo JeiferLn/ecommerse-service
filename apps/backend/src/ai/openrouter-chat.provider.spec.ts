@@ -41,7 +41,7 @@ describe("OpenRouterChatProvider", () => {
         model: "meta-llama/llama-3.2-3b-instruct:free",
         choices: [{ message: { content: "  Hola, el precio es $10  " } }],
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await provider.complete({
       messages: [{ role: "user", content: "precio?" }],
@@ -72,7 +72,7 @@ describe("OpenRouterChatProvider", () => {
       ok: false,
       status: 429,
       text: async () => "rate limit",
-    }) as unknown as typeof fetch;
+    });
 
     await expect(
       provider.complete({ messages: [{ role: "user", content: "hola" }] }),

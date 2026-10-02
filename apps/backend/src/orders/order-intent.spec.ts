@@ -28,9 +28,7 @@ describe("order-intent", () => {
   });
 
   it("no trata consultas de catálogo como agregar al carrito", () => {
-    expect(
-      resolveOrderChatIntent("Quiero una gorra, cuales tienes disponibles?"),
-    ).toBeNull();
+    expect(resolveOrderChatIntent("Quiero una gorra, cuales tienes disponibles?")).toBeNull();
     expect(resolveOrderChatIntent("quiero una gorra cuales tienes")).toBeNull();
     expect(resolveOrderChatIntent("tienen gorras?")).toBeNull();
     expect(resolveOrderChatIntent("me interesa una gorra")).toBeNull();

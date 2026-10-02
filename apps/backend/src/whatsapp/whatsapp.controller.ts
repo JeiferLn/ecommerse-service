@@ -82,7 +82,17 @@ export class WhatsAppController {
     };
   }
 
-  /** El número lo asigna la plataforma; la tienda solo pausa o reactiva su asistente. */
+  /** Activa el canal al instante con el número compartido de la plataforma. */
+  @Roles("owner")
+  @Post("connection/shared")
+  async activateSharedConnection(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponse<WhatsAppConnection>> {
+    const data = await this.connectionService.activateShared(user.companyId);
+    return { status: "success", data, message: "Canal de WhatsApp activado" };
+  }
+
+  /** La tienda pausa o reactiva su asistente; el número propio lo asigna la plataforma. */
   @Roles("owner", "manager")
   @Patch("connection")
   async setConnectionActive(

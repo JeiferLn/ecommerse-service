@@ -16,10 +16,7 @@ export function detectImageMime(buffer: Buffer): string | null {
   if (buffer.subarray(0, 3).equals(GIF)) {
     return "image/gif";
   }
-  if (
-    buffer.toString("ascii", 0, 4) === "RIFF" &&
-    buffer.toString("ascii", 8, 12) === "WEBP"
-  ) {
+  if (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
     return "image/webp";
   }
   return null;

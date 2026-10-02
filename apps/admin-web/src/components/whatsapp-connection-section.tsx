@@ -8,24 +8,28 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
-  Clock,
   Copy,
   ExternalLink,
   FlaskConical,
+  MessageCircle,
   MessageSquareText,
   Pause,
   Play,
+  Power,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { FormSection } from "@/components/form-section";
+import {
+  getSetupItems,
+  KnowledgeHint,
+  missingRequiredItems,
+  SetupRequirements,
+} from "@/components/setup-requirements";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
-import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
-import { WhatsAppKnowledgeRequiredGate } from "@/components/whatsapp-knowledge-required-gate";
-import { WhatsAppPaymentsRequiredGate } from "@/components/whatsapp-payments-required-gate";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
 
@@ -49,6 +53,16 @@ export function WhatsAppConnectionSection() {
     queryKey: ["company", user?.companyId],
     queryFn: () => apiFetch<CompanyDetails>("/company"),
     enabled: Boolean(user?.companyId && canManage),
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<WhatsAppConnection>("/whatsapp/connection/shared", { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["whatsapp-connection", user?.companyId], data);
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-connection"] });
+      void queryClient.invalidateQueries({ queryKey: ["company"] });
+    },
   });
 
   const toggleMutation = useMutation({
@@ -87,42 +101,74 @@ export function WhatsAppConnectionSection() {
     );
   }
 
-  if (!company?.commerce.isConfigured) {
-    return <WhatsAppCommerceRequiredGate />;
+  if (!company) {
+    return <Skeleton className="h-40 w-full max-w-4xl rounded-lg" />;
   }
 
-  if (!company.knowledge.isConfigured) {
-    return <WhatsAppKnowledgeRequiredGate missingTypes={company.knowledge.missingTypes} />;
-  }
-
-  if (!company.payments.isConfigured) {
-    return <WhatsAppPaymentsRequiredGate />;
+  const setupItems = getSetupItems(company, user.role, { requirePayments: true });
+  if (missingRequiredItems(setupItems).length > 0) {
+    return (
+      <SetupRequirements company={company} requirePayments purpose="activar tu canal de WhatsApp" />
+    );
   }
 
   if (!connection) {
+    const isOwner = user.role === "owner";
     return (
-      <div className="flex max-w-4xl flex-col gap-4 rounded-lg border border-border p-5 sm:flex-row sm:items-start">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <Clock className="size-4" aria-hidden />
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="text-sm font-medium">Estamos preparando tu número</h2>
-          <p className="max-w-xl text-sm text-pretty text-muted-foreground">
-            Tu tienda ya tiene todo lo necesario. Nuestro equipo está asignando el número de
-            WhatsApp de tu asistente; te avisaremos cuando esté listo para recibir clientes.
-          </p>
+      <div className="flex max-w-4xl flex-col gap-3">
+        <div className="flex flex-col gap-4 rounded-lg border border-border p-5 sm:flex-row sm:items-start">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <MessageCircle className="size-4" aria-hidden />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <h2 className="text-sm font-medium">Activa tu canal de WhatsApp</h2>
+            <p className="max-w-xl text-sm text-pretty text-muted-foreground">
+              Tu tienda ya tiene todo lo necesario. Al activarlo recibes un enlace de WhatsApp para
+              tus clientes y el asistente empieza a atenderlos al instante.
+            </p>
+            {!isOwner ? (
+              <p className="text-sm text-muted-foreground">
+                Solo el dueño de la tienda puede activar el canal.
+              </p>
+            ) : null}
+            {activateMutation.isError ? (
+              <p className="text-sm text-destructive">
+                {activateMutation.error instanceof ApiClientError
+                  ? activateMutation.error.message
+                  : "No se pudo activar el canal"}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button asChild variant="ghost" size="sm" className="w-fit">
+              <Link href="/assistant/playground">
+                <FlaskConical className="size-4" aria-hidden />
+                Prueba tu asistente
+              </Link>
+            </Button>
+            {isOwner ? (
+              <Button
+                type="button"
+                size="sm"
+                className="w-fit"
+                disabled={activateMutation.isPending}
+                onClick={() => activateMutation.mutate()}
+              >
+                <Power className="size-4" aria-hidden />
+                {activateMutation.isPending ? "Activando…" : "Activar canal"}
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <Button asChild variant="outline" size="sm" className="w-fit shrink-0">
-          <Link href="/assistant/playground">
-            <FlaskConical className="size-4" aria-hidden />
-            Prueba tu asistente
-          </Link>
-        </Button>
+        <KnowledgeHint company={company} />
       </div>
     );
   }
 
-  const phone = connection.displayPhoneNumber || connection.twilioWhatsAppNumber;
+  const isShared = connection.mode === "shared";
+  const phone = isShared
+    ? connection.twilioWhatsAppNumber
+    : connection.displayPhoneNumber || connection.twilioWhatsAppNumber;
   const nextActive = !connection.isActive;
 
   const copyLink = async () => {
@@ -134,22 +180,25 @@ export function WhatsAppConnectionSection() {
     window.setTimeout(() => setCopied(false), 2000);
   };
 
-  const requirements = [
-    { label: "Envíos configurados", href: "/settings/shipping" },
-    { label: "Documentos de conocimiento", href: "/knowledge" },
-    { label: "Mercado Pago conectado", href: "/settings/payments" },
-  ];
+  const requirements = setupItems.filter((item) => !item.optional);
 
   return (
     <div className="flex max-w-4xl flex-col">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-xs text-muted-foreground">Número de tu asistente</span>
+          <span className="text-xs text-muted-foreground">
+            {isShared ? "Número de la plataforma" : "Número de tu asistente"}
+          </span>
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-data text-2xl tracking-tight">{phone}</span>
             <StatusPill tone={connection.isActive ? "positive" : "attention"}>
               {connection.isActive ? "Activo" : "En pausa"}
             </StatusPill>
+            {isShared && connection.storeCode ? (
+              <span className="font-data text-sm text-muted-foreground">
+                #{connection.storeCode}
+              </span>
+            ) : null}
           </div>
           <p key={String(connection.isActive)} className="fade-swap text-sm text-muted-foreground">
             {connection.isActive
@@ -187,7 +236,11 @@ export function WhatsAppConnectionSection() {
       {connection.waMeLink ? (
         <FormSection
           title="Enlace para clientes"
-          description="Compártelo en tu Instagram, tu web o tus anuncios para que te escriban directo."
+          description={
+            isShared
+              ? "Compártelo en tu Instagram, tu web o tus anuncios. Tus clientes deben entrar por este enlace: el código de tu tienda viene en el mensaje y así sabemos que te escriben a ti."
+              : "Compártelo en tu Instagram, tu web o tus anuncios para que te escriban directo."
+          }
         >
           <div className="flex min-w-0 items-center gap-2 rounded-md border border-border py-1 pr-1 pl-3">
             <a
@@ -221,7 +274,7 @@ export function WhatsAppConnectionSection() {
           {requirements.map((item) => (
             <li key={item.href} className="flex items-center gap-3 py-2.5 text-sm">
               <Check className="size-4 text-primary" aria-hidden />
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1">{item.doneLabel}</span>
               <Link
                 href={item.href}
                 className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
@@ -231,6 +284,7 @@ export function WhatsAppConnectionSection() {
             </li>
           ))}
         </ul>
+        <KnowledgeHint company={company} className="mt-3" />
       </FormSection>
 
       <FormSection title="Atajos">

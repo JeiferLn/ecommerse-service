@@ -96,10 +96,7 @@ export class CompaniesService {
     return await this.toCompanyDetails(company);
   }
 
-  async updateCompany(
-    companyId: string | null,
-    dto: UpdateCompanyDto,
-  ): Promise<CompanyDetails> {
+  async updateCompany(companyId: string | null, dto: UpdateCompanyDto): Promise<CompanyDetails> {
     if (!companyId) {
       throw new BadRequestException("No perteneces a una empresa");
     }
@@ -155,17 +152,13 @@ export class CompaniesService {
     if (!countryCode) {
       const incoming = dto.countryCode?.trim() ? dto.countryCode.trim().toUpperCase() : null;
       if (incoming && !isSupportedCompanyCountry(incoming)) {
-        throw new BadRequestException(
-          "Selecciona un país con soporte de Mercado Pago (LatAm)",
-        );
+        throw new BadRequestException("Selecciona un país con soporte de Mercado Pago (LatAm)");
       }
       countryCode = incoming;
     }
 
     if (dto.shippingScopes.length > 0 && shippingCarriers.length === 0) {
-      throw new BadRequestException(
-        "Indica al menos una empresa de transporte / transportadora",
-      );
+      throw new BadRequestException("Indica al menos una empresa de transporte / transportadora");
     }
 
     if (dto.shippingScopes.includes("local") && (!shippingRegion || !shippingCity)) {

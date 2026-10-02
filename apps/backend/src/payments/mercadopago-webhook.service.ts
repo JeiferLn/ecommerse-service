@@ -51,7 +51,9 @@ export class MercadoPagoWebhookService {
     const paymentId = String(paymentIdRaw);
     const platformToken = this.config.get("MP_ACCESS_TOKEN", { infer: true })?.trim();
     if (!platformToken) {
-      this.logger.warn("MP_ACCESS_TOKEN de plataforma no configurado; no se puede validar suscripción");
+      this.logger.warn(
+        "MP_ACCESS_TOKEN de plataforma no configurado; no se puede validar suscripción",
+      );
       return;
     }
 
@@ -95,8 +97,7 @@ export class MercadoPagoWebhookService {
 
     let companyId = metaCompany;
     let planCode = metaPlan as PlanCode | null;
-    let interval =
-      metaInterval === "year" || metaInterval === "month" ? metaInterval : null;
+    let interval = metaInterval === "year" || metaInterval === "month" ? metaInterval : null;
 
     const parsed = this.billing.parseSubscriptionExternalRef(external);
     if (parsed) {
@@ -110,12 +111,7 @@ export class MercadoPagoWebhookService {
       return;
     }
 
-    await this.billing.handleSubscriptionPaymentApproved(
-      companyId,
-      planCode,
-      paymentId,
-      interval,
-    );
+    await this.billing.handleSubscriptionPaymentApproved(companyId, planCode, paymentId, interval);
     this.logger.log(`Suscripción cobro aplicado company=${companyId} plan=${planCode}`);
   }
 

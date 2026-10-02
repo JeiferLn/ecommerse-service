@@ -99,7 +99,7 @@ export class MercadoPagoService implements OnModuleInit {
       body.notification_url = params.notificationUrl;
     }
     return this.preApprovalApi(accessToken).create({
-      body: body as Parameters<PreApproval["create"]>[0]["body"],
+      body: body,
     });
   }
 

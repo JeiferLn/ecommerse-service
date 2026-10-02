@@ -87,7 +87,10 @@ describe("CategoriesService", () => {
 
   it("mapea conflicto de slug a ConflictException", async () => {
     prisma.category.findFirst.mockResolvedValue(null);
-    prisma.category.create.mockRejectedValue({ code: "P2002", name: "PrismaClientKnownRequestError" });
+    prisma.category.create.mockRejectedValue({
+      code: "P2002",
+      name: "PrismaClientKnownRequestError",
+    });
 
     // Without instanceof Prisma error this will rethrow - simulate with real Prisma error class is hard.
     // Ensure create path works when no conflict:

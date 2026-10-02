@@ -1,4 +1,16 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Param, Post, Query, Req, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Throttle } from "@nestjs/throttler";
 import type { ApiResponse, AuthUser, InvitationInfo, RegisterResult } from "@commerce-ai/types";
@@ -142,10 +154,7 @@ export class AuthController {
     return value.split("?")[0]?.trim() || undefined;
   }
 
-  private extractEmbeddedQueryParam(
-    raw: string | undefined,
-    key: string,
-  ): string | undefined {
+  private extractEmbeddedQueryParam(raw: string | undefined, key: string): string | undefined {
     if (!raw) {
       return undefined;
     }

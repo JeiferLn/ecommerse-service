@@ -24,6 +24,8 @@ export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
     if (error instanceof BadRequestException) {
       throw error;
     }
-    throw new BadRequestException("No se pudo leer el PDF. Verifica que el archivo no esté dañado.");
+    throw new BadRequestException(
+      "No se pudo leer el PDF. Verifica que el archivo no esté dañado.",
+    );
   }
 }

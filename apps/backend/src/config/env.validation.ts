@@ -2,6 +2,13 @@ import { z } from "zod";
 
 const DEV_JWT_MARKER = "dev-only";
 
+/** Textos que ve el cliente; dotenv deja `\"` literal dentro de comillas dobles. */
+const botText = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((value) => value.replace(/\\"/g, '"'));
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -57,18 +64,28 @@ const envSchema = z
       .transform((value) => value === "true"),
     /** URL pública exacta del webhook para validar firma. Ej: https://xxx.ngrok.io/api/v1/whatsapp/webhook */
     TWILIO_WEBHOOK_URL: z.string().optional(),
+    /** Número de la plataforma (E.164) que comparten las tiendas sin número propio. Ej: +15554447456 */
+    TWILIO_SHARED_WHATSAPP_NUMBER: z.string().optional(),
     WHATSAPP_AUTO_REPLY_ENABLED: z
       .enum(["true", "false"])
       .default("true")
       .transform((value) => value === "true"),
-    WHATSAPP_AUTO_REPLY_TEXT: z
-      .string()
-      .default("Gracias por tu mensaje. Te responderemos pronto."),
+    WHATSAPP_AUTO_REPLY_TEXT: botText("Gracias por tu mensaje. Te responderemos pronto."),
     /** Si true, no llama a la API de Twilio al enviar (outbound simulado). */
     WHATSAPP_SIMULATE_SEND: z
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
+    /** Botones, listas y tarjetas en WhatsApp (Twilio Content API). Con false todo sale como texto. */
+    WHATSAPP_INTERACTIVE_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
+    /**
+     * Plantilla de Twilio aprobada por Meta con botón "Pagar" (call-to-action) cuya URL termina en `{{1}}`
+     * (token del checkout). Sin ella, el enlace de pago va en el texto.
+     */
+    TWILIO_CHECKOUT_CONTENT_SID: z.string().optional(),
     /** Responder inbound con IA (OpenRouter) en lugar del texto fijo. */
     AI_ENABLED: z
       .enum(["true", "false"])
@@ -80,28 +97,21 @@ const envSchema = z
     AI_MODEL: z.string().default("openrouter/free"),
     AI_MAX_PRODUCTS: z.coerce.number().int().positive().default(25),
     AI_HISTORY_LIMIT: z.coerce.number().int().positive().default(8),
-    AI_FALLBACK_TEXT: z
-      .string()
-      .default(
-        "Gracias por tu mensaje. En un momento un asesor de la tienda te atenderá por aquí.",
-      ),
+    AI_FALLBACK_TEXT: botText(
+      "Gracias por tu mensaje. En un momento un asesor de la tienda te atenderá por aquí.",
+    ),
     AI_HTTP_REFERER: z.string().optional(),
     AI_APP_TITLE: z.string().default("Commerce AI SaaS"),
-    WHATSAPP_HANDLER_CHOICE_TEXT: z
-      .string()
-      .default(
-        "¡Hola! ¿Prefieres que te atienda el asistente virtual (bot) o un asesor de la tienda? Responde \"bot\" o \"asesor\".",
-      ),
-    WHATSAPP_HANDLER_BOT_CONFIRM_TEXT: z
-      .string()
-      .default(
-        "Perfecto. Te atiende el asistente virtual. ¿En qué te puedo ayudar?",
-      ),
-    WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT: z
-      .string()
-      .default(
-        "Listo. Un asesor de la tienda continuará esta conversación por aquí.",
-      ),
+    /** Texto de respaldo (sin botones) para elegir bot o asesor. */
+    WHATSAPP_HANDLER_CHOICE_TEXT: botText(
+      '¡Hola! ¿Prefieres que te atienda el asistente virtual (bot) o un asesor de la tienda? Responde "bot" o "asesor".',
+    ),
+    WHATSAPP_HANDLER_BOT_CONFIRM_TEXT: botText(
+      "Perfecto. Te atiende el asistente virtual. ¿En qué te puedo ayudar?",
+    ),
+    WHATSAPP_HANDLER_HUMAN_CONFIRM_TEXT: botText(
+      "Listo. Un asesor de la tienda continuará esta conversación por aquí.",
+    ),
     /** Embeddings para RAG (Fase 7). */
     EMBEDDING_PROVIDER: z.enum(["openrouter", "mock"]).default("openrouter"),
     EMBEDDING_MODEL: z.string().default("openai/text-embedding-3-small"),

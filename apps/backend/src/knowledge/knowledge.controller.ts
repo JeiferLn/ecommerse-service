@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Put,
-  UploadedFile,
-  UseInterceptors,
-} from "@nestjs/common";
+import { Controller, Delete, Get, Param, Put, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { ApiResponse, KnowledgeSlot } from "@commerce-ai/types";
 import { memoryStorage } from "multer";

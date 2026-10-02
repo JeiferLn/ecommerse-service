@@ -63,7 +63,7 @@ const PANEL = [
 const PLANS = [
   { name: "Free", line: "15 días con el asistente activo. Sin tarjeta." },
   { name: "Pro", line: "Para tiendas que ya venden todos los días por WhatsApp." },
-  { name: "Business", line: "Más volumen, más miembros y más documentos de conocimiento." },
+  { name: "Business", line: "Más volumen, más miembros y atención humana cuando la necesites." },
 ];
 
 const FAQ: FaqItem[] = [

@@ -12,7 +12,7 @@ export default function KnowledgePage() {
     <div className="flex flex-col">
       <PageHeader
         title="Conocimiento"
-        description="Los documentos con los que el asistente responde sobre tu tienda: guía, preguntas frecuentes, garantías y políticas."
+        description="Documentos opcionales que mejoran las respuestas del asistente: guía, preguntas frecuentes, garantías y políticas."
         className="mb-6"
       />
       <CompanyKnowledgeSettingsForm />

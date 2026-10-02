@@ -5,7 +5,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { AssistantPlaygroundService } from "./assistant-playground.service";
-import { SendMessageDto } from "./dto/send-message.dto";
+import { PlaygroundMessageDto } from "./dto/playground-message.dto";
 
 @Roles("owner", "manager")
 @Controller("assistant/playground")
@@ -25,11 +25,11 @@ export class AssistantPlaygroundController {
   @Post("messages")
   async send(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: SendMessageDto,
+    @Body() dto: PlaygroundMessageDto,
   ): Promise<ApiResponse<AssistantPlaygroundThread>> {
     return {
       status: "success",
-      data: await this.playgroundService.sendMessage(user.companyId, dto.text),
+      data: await this.playgroundService.sendMessage(user.companyId, dto.text, dto.actionId),
     };
   }
 

@@ -1,10 +1,7 @@
 /**
  * Divide texto en chunks por párrafos / tamaño, con overlap opcional.
  */
-export function chunkText(
-  text: string,
-  options: { chunkSize: number; overlap: number },
-): string[] {
+export function chunkText(text: string, options: { chunkSize: number; overlap: number }): string[] {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) {
     return [];

@@ -25,8 +25,7 @@ describe("MercadoPagoConnectionService", () => {
       FRONTEND_URL: "http://localhost:3000",
       MP_CLIENT_ID: "app-123",
       MP_CLIENT_SECRET: "secret-456",
-      MP_REDIRECT_URI:
-        "https://example.ngrok-free.app/api/v1/payments/mercadopago/oauth/callback",
+      MP_REDIRECT_URI: "https://example.ngrok-free.app/api/v1/payments/mercadopago/oauth/callback",
     };
     prisma = {
       mercadoPagoConnection: {
@@ -86,9 +85,7 @@ describe("MercadoPagoConnectionService", () => {
 
   it("buildOAuthStartUrl requiere OAuth configurado", async () => {
     delete configValues.MP_CLIENT_ID;
-    expect(() => service.buildOAuthStartUrl("co-1", "user-1")).toThrow(
-      ServiceUnavailableException,
-    );
+    expect(() => service.buildOAuthStartUrl("co-1", "user-1")).toThrow(ServiceUnavailableException);
   });
 
   it("buildOAuthStartUrl genera URL de autorización", () => {

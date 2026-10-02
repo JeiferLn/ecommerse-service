@@ -1,16 +1,10 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
-import type {
-  ConversationSummary,
-  PaginatedResponse,
-  WhatsAppMessage,
-} from "@commerce-ai/types";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import type { ConversationSummary, PaginatedResponse, WhatsAppMessage } from "@commerce-ai/types";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
 import { ListConversationsQueryDto } from "./dto/list-conversations-query.dto";
+import { toWhatsAppMessageDto } from "./message-dto.util";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 
@@ -20,6 +14,7 @@ export class WhatsAppInboxService {
     private readonly prisma: PrismaService,
     private readonly twilioClient: TwilioWhatsAppClient,
     private readonly connectionService: WhatsAppConnectionService,
+    private readonly storage: StorageService,
   ) {}
 
   async listConversations(
@@ -68,10 +63,7 @@ export class WhatsAppInboxService {
     };
   }
 
-  async listMessages(
-    companyId: string | null,
-    conversationId: string,
-  ): Promise<WhatsAppMessage[]> {
+  async listMessages(companyId: string | null, conversationId: string): Promise<WhatsAppMessage[]> {
     const conversation = await this.findOwnedConversation(companyId, conversationId);
     const messages = await this.prisma.message.findMany({
       where: { conversationId: conversation.id },
@@ -165,8 +157,7 @@ export class WhatsAppInboxService {
         where: { id: conversation.waConnectionId },
       });
       if (connection?.isActive) {
-        const text =
-          "Un asesor reactivó el asistente virtual. ¿En qué te puedo ayudar?";
+        const text = "Un asesor reactivó el asistente virtual. ¿En qué te puedo ayudar?";
         let wamid: string | null = null;
         let status: "sent" | "failed" = "sent";
         try {
@@ -232,25 +223,7 @@ export class WhatsAppInboxService {
     return companyId;
   }
 
-  private toMessageDto(message: {
-    id: string;
-    conversationId: string;
-    direction: "inbound" | "outbound";
-    wamid: string | null;
-    type: string;
-    body: string;
-    status: "received" | "sent" | "failed" | null;
-    createdAt: Date;
-  }): WhatsAppMessage {
-    return {
-      id: message.id,
-      conversationId: message.conversationId,
-      direction: message.direction,
-      wamid: message.wamid,
-      type: message.type,
-      body: message.body,
-      status: message.status,
-      createdAt: message.createdAt.toISOString(),
-    };
+  private toMessageDto(message: Parameters<typeof toWhatsAppMessageDto>[0]): WhatsAppMessage {
+    return toWhatsAppMessageDto(message, (url) => this.storage.browserUrl(url));
   }
 }

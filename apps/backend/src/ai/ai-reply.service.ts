@@ -29,7 +29,11 @@ export interface GenerateReplyResult {
   requestedHandoff: boolean;
   /** URLs públicas de imágenes a enviar por WhatsApp ( Twilio MediaUrl ). */
   imageUrls: string[];
+  /** Productos de los que habla la respuesta (para lista o tarjeta en el chat). */
+  suggestedProductIds?: string[];
 }
+
+const MAX_SUGGESTED_PRODUCTS = 10;
 
 @Injectable()
 export class AiReplyService {
@@ -66,15 +70,10 @@ export class AiReplyService {
         .join(" ");
       const catalogQuery = `${priorInbound} ${input.customerText}`.trim();
 
-      const catalog = await this.catalogContext.buildForCompany(
-        input.companyId,
-        catalogQuery,
-      );
+      const catalog = await this.catalogContext.buildForCompany(input.companyId, catalogQuery);
 
       if (isClearlyOffTopicSalesQuery(input.customerText)) {
-        this.logger.log(
-          `Off-topic sales query blocked conversation=${input.conversationId}`,
-        );
+        this.logger.log(`Off-topic sales query blocked conversation=${input.conversationId}`);
         return {
           text: buildSalesScopeRedirect(catalog.companyName),
           requestedHandoff: false,
@@ -98,10 +97,12 @@ export class AiReplyService {
       }
 
       if (this.wantsProductImages(input.customerText) || productFocused) {
-        imageUrls = catalog.matchedProducts
-          .flatMap((product) => product.imageUrls)
-          .slice(0, 3);
+        imageUrls = catalog.matchedProducts.flatMap((product) => product.imageUrls).slice(0, 3);
       }
+      const suggestedProductIds =
+        productFocused || this.isCatalogOverviewQuery(input.customerText)
+          ? catalog.matchedProducts.map((product) => product.id).slice(0, MAX_SUGGESTED_PRODUCTS)
+          : [];
 
       const companyCommerce = await this.prisma.company.findUnique({
         where: { id: input.companyId },
@@ -123,12 +124,10 @@ export class AiReplyService {
         },
       );
 
-      const historyMessages: ChatMessage[] = recent
-        .reverse()
-        .map((message) => ({
-          role: message.direction === "inbound" ? ("user" as const) : ("assistant" as const),
-          content: message.body,
-        }));
+      const historyMessages: ChatMessage[] = recent.reverse().map((message) => ({
+        role: message.direction === "inbound" ? ("user" as const) : ("assistant" as const),
+        content: message.body,
+      }));
 
       if (
         historyMessages.length === 0 ||
@@ -181,13 +180,12 @@ export class AiReplyService {
             fallback,
           requestedHandoff: false,
           imageUrls,
+          suggestedProductIds,
         };
       }
 
       if (looksLikeOffTopicAssistantReply(content)) {
-        this.logger.warn(
-          `AI off-topic tutorial blocked conversation=${input.conversationId}`,
-        );
+        this.logger.warn(`AI off-topic tutorial blocked conversation=${input.conversationId}`);
         return {
           text: buildSalesScopeRedirect(catalog.companyName),
           requestedHandoff: false,
@@ -206,6 +204,7 @@ export class AiReplyService {
         text,
         requestedHandoff: false,
         imageUrls: this.wantsProductImages(input.customerText) ? imageUrls : [],
+        suggestedProductIds,
       };
     } catch (error) {
       this.logger.error(`AI reply failed: ${String(error)}`);
@@ -236,6 +235,16 @@ export class AiReplyService {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
     return /(precio|cuanto|cuesta|talla|tallas|color|colores|stock|disponible|mostrar|muestra|muestrame|foto|fotos|imagen|imagenes|variante|sku|producto|gorra|gorras|camisa|pantalon)/.test(
+      normalized,
+    );
+  }
+
+  private isCatalogOverviewQuery(text: string): boolean {
+    const normalized = text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return /(que venden|que tienen|que articulos|que productos|catalogo|en stock|disponibles|que hay|que ofrecen)/.test(
       normalized,
     );
   }
@@ -337,10 +346,7 @@ export class AiReplyService {
   }
 
   /** Si el modelo falla en una pregunta de catálogo, lista 2-3 nombres del bloque. */
-  private buildCatalogOverviewFallback(
-    catalogBlock: string,
-    customerText: string,
-  ): string | null {
+  private buildCatalogOverviewFallback(catalogBlock: string, customerText: string): string | null {
     const normalized = customerText
       .toLowerCase()
       .normalize("NFD")

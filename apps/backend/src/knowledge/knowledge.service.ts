@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   getMissingKnowledgeTypes,
   isCompanyKnowledgeConfigured,
@@ -192,9 +188,7 @@ export class KnowledgeService {
 
   private parseType(typeParam: string): KnowledgeDocumentType {
     if (!(REQUIRED_KNOWLEDGE_TYPES as readonly string[]).includes(typeParam)) {
-      throw new BadRequestException(
-        `Tipo inválido. Usa: ${REQUIRED_KNOWLEDGE_TYPES.join(", ")}`,
-      );
+      throw new BadRequestException(`Tipo inválido. Usa: ${REQUIRED_KNOWLEDGE_TYPES.join(", ")}`);
     }
     return typeParam as KnowledgeDocumentType;
   }

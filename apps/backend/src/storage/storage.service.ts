@@ -18,6 +18,7 @@ export class StorageService {
   private readonly publicUrl: string | null;
   private readonly localUploadDir: string;
   private readonly apiPublicUrl: string;
+  private readonly apiLocalUrl: string;
   private readonly mode: "r2" | "local" | "disabled";
 
   constructor(private readonly configService: ConfigService) {
@@ -30,11 +31,10 @@ export class StorageService {
     const nodeEnv = this.configService.get<string>("NODE_ENV") ?? "development";
 
     this.localUploadDir =
-      this.configService.get<string>("LOCAL_UPLOAD_DIR")?.trim() ||
-      join(process.cwd(), "uploads");
+      this.configService.get<string>("LOCAL_UPLOAD_DIR")?.trim() || join(process.cwd(), "uploads");
+    this.apiLocalUrl = `http://localhost:${port}`;
     this.apiPublicUrl = (
-      this.configService.get<string>("API_PUBLIC_URL")?.trim() ||
-      `http://localhost:${port}`
+      this.configService.get<string>("API_PUBLIC_URL")?.trim() || this.apiLocalUrl
     ).replace(/\/$/, "");
 
     if (accountId && accessKeyId && secretAccessKey && bucket && publicUrl) {
@@ -78,6 +78,27 @@ export class StorageService {
 
   usesLocalDisk(): boolean {
     return this.mode === "local";
+  }
+
+  /**
+   * URL para el admin. En disco local la URL guardada puede apuntar a un túnel (ngrok) que ya
+   * no existe; el navegador siempre llega al API local.
+   */
+  browserUrl(url: string): string {
+    return this.rebaseLocalUpload(url, this.apiLocalUrl);
+  }
+
+  /** URL que Twilio/WhatsApp puede descargar: en disco local, el `API_PUBLIC_URL` actual. */
+  externalUrl(url: string): string {
+    return this.rebaseLocalUpload(url, this.apiPublicUrl);
+  }
+
+  private rebaseLocalUpload(url: string, base: string): string {
+    if (this.mode !== "local") {
+      return url;
+    }
+    const match = /^https?:\/\/[^/]+\/uploads\/(.+)$/i.exec(url);
+    return match ? `${base}/uploads/${match[1]}` : url;
   }
 
   async uploadProductImage(params: {
@@ -142,7 +163,7 @@ export class StorageService {
     const filePath = join(this.localUploadDir, params.key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, params.body);
-    return { key: params.key, url: `${this.apiPublicUrl}/uploads/${params.key}` };
+    return { key: params.key, url: `${this.apiLocalUrl}/uploads/${params.key}` };
   }
 
   async deleteObject(key: string): Promise<void> {

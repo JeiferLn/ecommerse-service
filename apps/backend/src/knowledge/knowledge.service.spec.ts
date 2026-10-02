@@ -53,7 +53,10 @@ describe("KnowledgeService", () => {
         { provide: PrismaService, useValue: prisma },
         { provide: KnowledgeIndexerService, useValue: indexer },
         { provide: StorageService, useValue: storage },
-        { provide: BillingService, useValue: { assertCan: jest.fn().mockResolvedValue(undefined) } },
+        {
+          provide: BillingService,
+          useValue: { assertCan: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

@@ -112,7 +112,7 @@ export class AuthService {
       }
     }
 
-    const desiredPlanCode = (dto.planCode ?? "free") as PlanCode;
+    const desiredPlanCode = dto.planCode ?? "free";
     const paidPlan = desiredPlanCode === "pro" || desiredPlanCode === "business";
 
     if (paidPlan) {
@@ -180,7 +180,7 @@ export class AuthService {
       throw new ConflictException("Ya existe una cuenta con ese email");
     }
 
-    const interval = (dto.billingInterval ?? "month") as "month" | "year";
+    const interval = dto.billingInterval ?? "month";
     if (interval !== "month" && interval !== "year") {
       throw new BadRequestException("Intervalo de facturación inválido");
     }
@@ -246,7 +246,9 @@ export class AuthService {
         initPoint,
       };
     } catch (error) {
-      await this.prisma.pendingRegistration.delete({ where: { id: pending.id } }).catch(() => undefined);
+      await this.prisma.pendingRegistration
+        .delete({ where: { id: pending.id } })
+        .catch(() => undefined);
       throw error;
     }
   }
@@ -269,7 +271,9 @@ export class AuthService {
       return true;
     }
     if (pending.expiresAt <= new Date()) {
-      await this.prisma.pendingRegistration.delete({ where: { id: pending.id } }).catch(() => undefined);
+      await this.prisma.pendingRegistration
+        .delete({ where: { id: pending.id } })
+        .catch(() => undefined);
       return false;
     }
 
@@ -314,8 +318,8 @@ export class AuthService {
         await this.billingService.createActivePaidSubscription(
           tx,
           company.id,
-          pending.planCode as PlanCode,
-          pending.billingInterval as "month" | "year",
+          pending.planCode,
+          pending.billingInterval,
           opts?.mpPreapprovalId ?? pending.mpPreapprovalId,
           opts?.mpPaymentId ?? null,
         );

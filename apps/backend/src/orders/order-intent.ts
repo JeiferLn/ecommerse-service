@@ -1,8 +1,5 @@
 export type OrderChatIntent =
-  | { type: "view_cart" }
-  | { type: "clear_cart" }
-  | { type: "checkout" }
-  | { type: "add_to_cart" };
+  { type: "view_cart" } | { type: "clear_cart" } | { type: "checkout" } | { type: "add_to_cart" };
 
 export function detectsViewCart(text: string): boolean {
   const normalized = normalize(text);
@@ -54,8 +51,7 @@ export function looksLikeCatalogInquiry(text: string): boolean {
   );
 }
 
-const SPANISH_QTY =
-  "una|uno|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+";
+const SPANISH_QTY = "una|uno|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+";
 
 /**
  * Intención de agregar al carrito / pedir el producto del contexto.

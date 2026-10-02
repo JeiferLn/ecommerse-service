@@ -275,17 +275,43 @@ enum ConversationHandler {
   human
 }
 
+enum WhatsAppConnectionMode {
+  /// Número de la plataforma compartido por varias tiendas; se enruta por `storeCode`.
+  shared
+  /// Número propio de la tienda (exclusivo).
+  dedicated
+}
+
 model WhatsAppConnection {
-  id                   String         @id @default(cuid())
-  companyId            String         @unique
-  company              Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                   String                 @id @default(cuid())
+  companyId            String                 @unique
+  company              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Número WhatsApp E.164 sin prefijo whatsapp: (ej. +14155238886). Credenciales Twilio van en env de plataforma.
-  twilioWhatsAppNumber String         @unique
+  /// Único solo entre conexiones `dedicated` (índice parcial en la migración).
+  twilioWhatsAppNumber String
   displayPhoneNumber   String?
-  isActive             Boolean        @default(true)
+  mode                 WhatsAppConnectionMode @default(dedicated)
+  /// Código que el cliente envía en el número compartido para llegar a esta tienda.
+  storeCode            String?                @unique
+  isActive             Boolean                @default(true)
   conversations        Conversation[]
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  sharedSessions       SharedNumberSession[]
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([twilioWhatsAppNumber])
+}
+
+/// Con qué tienda habla cada cliente en el número compartido.
+model SharedNumberSession {
+  id           String             @id @default(cuid())
+  customerWaId String             @unique
+  connectionId String
+  connection   WhatsAppConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([connectionId])
 }
 
 model Conversation {
@@ -323,11 +349,22 @@ model Message {
   type           String           @default("text")
   body           String
   status         MessageStatus?
+  /// Botones, lista, tarjeta o enlace del bot; o `{ kind: "reply", actionId }` cuando el cliente tocó uno.
+  interactive    Json?
   rawPayload     Json?
   createdAt      DateTime         @default(now())
 
   @@index([conversationId, createdAt])
   @@index([wamid])
+}
+
+/// Contenidos creados en Twilio Content API, reutilizados por hash de su estructura.
+model WhatsAppContentTemplate {
+  id         String   @id @default(cuid())
+  hash       String   @unique
+  contentSid String
+  kind       String
+  createdAt  DateTime @default(now())
 }
 
 enum KnowledgeDocumentType {

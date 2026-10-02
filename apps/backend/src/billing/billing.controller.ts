@@ -55,10 +55,7 @@ export class BillingController {
     @Query("flow") flow: string | undefined,
     @Res() res: Response,
   ): void {
-    res.redirect(
-      302,
-      this.billing.getFrontendBillingReturnUrl(status ?? "success", flow),
-    );
+    res.redirect(302, this.billing.getFrontendBillingReturnUrl(status ?? "success", flow));
   }
 
   @Roles("owner", "manager", "user")
@@ -84,12 +81,7 @@ export class BillingController {
   ): Promise<ApiResponse<BillingCheckoutResult>> {
     return {
       status: "success",
-      data: await this.billing.checkout(
-        user.companyId,
-        dto.planCode,
-        dto.interval,
-        user.id,
-      ),
+      data: await this.billing.checkout(user.companyId, dto.planCode, dto.interval, user.id),
       message: "Checkout iniciado",
     };
   }
@@ -97,9 +89,7 @@ export class BillingController {
   @Roles("owner")
   @HttpCode(HttpStatus.OK)
   @Post("cancel")
-  async cancel(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<ApiResponse<BillingCancelResult>> {
+  async cancel(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponse<BillingCancelResult>> {
     return {
       status: "success",
       data: await this.billing.cancelAtPeriodEnd(user.companyId),

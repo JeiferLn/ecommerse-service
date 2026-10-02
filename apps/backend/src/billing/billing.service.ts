@@ -79,7 +79,7 @@ export class BillingService {
         maxVariants: 80,
         maxWaMessagesMonth: 100,
         maxAiRepliesMonth: 50,
-        maxKnowledgeDocs: 1,
+        maxKnowledgeDocs: 4,
         sortOrder: 0,
       },
       {
@@ -91,7 +91,7 @@ export class BillingService {
         maxVariants: 1000,
         maxWaMessagesMonth: 2000,
         maxAiRepliesMonth: 1500,
-        maxKnowledgeDocs: 5,
+        maxKnowledgeDocs: 4,
         sortOrder: 1,
       },
       {
@@ -103,7 +103,7 @@ export class BillingService {
         maxVariants: 8000,
         maxWaMessagesMonth: 10000,
         maxAiRepliesMonth: 8000,
-        maxKnowledgeDocs: 20,
+        maxKnowledgeDocs: 4,
         sortOrder: 2,
       },
     ];
@@ -140,7 +140,7 @@ export class BillingService {
     if (desiredPlanCode && desiredPlanCode !== "free") {
       const desired = await tx.plan.findUnique({ where: { code: desiredPlanCode } });
       desiredPlanId = desired?.id ?? null;
-      interval = (desiredBillingInterval ?? "month") as PrismaBillingInterval;
+      interval = desiredBillingInterval ?? "month";
     }
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     await tx.subscription.create({
@@ -176,7 +176,7 @@ export class BillingService {
         companyId,
         planId: plan.id,
         status: "active",
-        billingInterval: interval as PrismaBillingInterval,
+        billingInterval: interval,
         cancelAtPeriodEnd: false,
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
@@ -374,7 +374,7 @@ export class BillingService {
     ]);
 
     const plan = sub.plan;
-    const status = sub.status as SubscriptionStatus;
+    const status = sub.status;
     const featuresLocked =
       status === "trial_expired" || status === "canceled" || status === "past_due";
     const trialDaysLeft =
@@ -383,17 +383,17 @@ export class BillingService {
         : null;
 
     return {
-      planCode: plan.code as PlanCode,
+      planCode: plan.code,
       planName: plan.name,
       status,
       trialEndsAt: sub.trialEndsAt?.toISOString() ?? null,
       trialDaysLeft,
-      desiredPlanCode: (sub.desiredPlan?.code as PlanCode | undefined) ?? null,
+      desiredPlanCode: sub.desiredPlan?.code ?? null,
       checkoutRequired: Boolean(
         sub.desiredPlan && sub.desiredPlan.code !== "free" && status === "trialing",
       ),
       featuresLocked,
-      billingInterval: (sub.billingInterval as BillingInterval | null) ?? null,
+      billingInterval: sub.billingInterval ?? null,
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
       priceUsdCents: plan.priceUsdCents,
       priceYearUsdCents: priceYearUsdCents(plan.priceUsdCents),
@@ -416,7 +416,7 @@ export class BillingService {
       },
       currentPeriodStart: sub.currentPeriodStart?.toISOString() ?? null,
       currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
-      desiredBillingInterval: (sub.desiredBillingInterval as BillingInterval | null) ?? null,
+      desiredBillingInterval: sub.desiredBillingInterval ?? null,
     };
   }
 
@@ -549,7 +549,7 @@ export class BillingService {
       where: { companyId },
       data: {
         desiredPlanId: plan.id,
-        desiredBillingInterval: interval as PrismaBillingInterval,
+        desiredBillingInterval: interval,
       },
     });
 
@@ -742,7 +742,7 @@ export class BillingService {
         desiredPlanId: null,
         desiredBillingInterval: null,
         trialEndsAt: null,
-        billingInterval: interval as PrismaBillingInterval,
+        billingInterval: interval,
         cancelAtPeriodEnd: false,
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
@@ -773,10 +773,7 @@ export class BillingService {
     }
 
     const resolvedInterval: BillingInterval =
-      interval ??
-      (sub.desiredBillingInterval as BillingInterval | null) ??
-      (sub.billingInterval as BillingInterval | null) ??
-      "month";
+      interval ?? sub.desiredBillingInterval ?? sub.billingInterval ?? "month";
 
     if (sub.status === "active" && !sub.cancelAtPeriodEnd) {
       const base =
@@ -792,7 +789,7 @@ export class BillingService {
           ...(plan ? { planId: plan.id } : {}),
           status: "active",
           cancelAtPeriodEnd: false,
-          billingInterval: resolvedInterval as PrismaBillingInterval,
+          billingInterval: resolvedInterval,
           currentPeriodEnd: periodEnd,
           mpPaymentId: paymentId,
           desiredPlanId: null,
@@ -836,12 +833,7 @@ export class BillingService {
       where: { companyId: parsed.companyId },
     });
     if (sub && sub.status !== "active") {
-      await this.activatePaidPlan(
-        parsed.companyId,
-        parsed.planCode,
-        parsed.interval,
-        null,
-      );
+      await this.activatePaidPlan(parsed.companyId, parsed.planCode, parsed.interval, null);
     }
   }
 
@@ -890,11 +882,7 @@ export class BillingService {
         include: { plan: true, desiredPlan: true },
       });
     }
-    if (
-      sub.status === "trialing" &&
-      sub.trialEndsAt &&
-      sub.trialEndsAt.getTime() < Date.now()
-    ) {
+    if (sub.status === "trialing" && sub.trialEndsAt && sub.trialEndsAt.getTime() < Date.now()) {
       sub = await this.prisma.subscription.update({
         where: { id: sub.id },
         data: { status: "trial_expired" },
@@ -949,7 +937,7 @@ export class BillingService {
 
   private toPlanView(plan: Plan): PlanView {
     return {
-      code: plan.code as PlanCode,
+      code: plan.code,
       name: plan.name,
       priceUsdCents: plan.priceUsdCents,
       priceYearUsdCents: priceYearUsdCents(plan.priceUsdCents),

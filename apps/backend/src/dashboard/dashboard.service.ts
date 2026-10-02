@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-} from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import type {
   CompanyDashboardStats,
   CompanyType,
@@ -106,7 +102,7 @@ export class DashboardService {
     let totalStock = 0;
 
     for (const product of products) {
-      statusMap[product.status as ProductStatus] += 1;
+      statusMap[product.status] += 1;
       const productStock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
       variantsTotal += product.variants.length;
       totalStock += productStock;
@@ -203,12 +199,18 @@ export class DashboardService {
       usersTotal,
       productsTotal,
       membershipsTotal,
-      companiesLast30Days: this.toDailySeries(companiesCreated.map((row) => row.createdAt), since),
-      usersLast30Days: this.toDailySeries(usersCreated.map((row) => row.createdAt), since),
+      companiesLast30Days: this.toDailySeries(
+        companiesCreated.map((row) => row.createdAt),
+        since,
+      ),
+      usersLast30Days: this.toDailySeries(
+        usersCreated.map((row) => row.createdAt),
+        since,
+      ),
       recentCompanies: recentCompaniesRaw.map((company) => ({
         id: company.id,
         name: company.name,
-        type: company.type as CompanyType,
+        type: company.type,
         ownerName: company.owner.name,
         ownerEmail: company.owner.email,
         membersCount: company._count.memberships,

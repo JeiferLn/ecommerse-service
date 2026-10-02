@@ -42,7 +42,6 @@ function planBullets(plan: PlanView): string[] {
     `${plan.maxProducts} productos / ${plan.maxVariants} variantes`,
     "Integración Mercado Pago",
     `${plan.maxAiRepliesMonth.toLocaleString("es-CO")} respuestas IA/mes`,
-    `${plan.maxKnowledgeDocs} docs de conocimiento (RAG)`,
     `${plan.maxMembers} miembros`,
     "Ventas tienda + pedidos WhatsApp",
   ];
@@ -51,7 +50,6 @@ function planBullets(plan: PlanView): string[] {
     return [
       "Todo lo del plan Pro, más:",
       "Handoff a agente humano",
-      `${plan.maxKnowledgeDocs} docs RAG (políticas, FAQs)`,
       `${plan.maxMembers} miembros · ${plan.maxProducts} productos`,
       `${plan.maxAiRepliesMonth.toLocaleString("es-CO")} respuestas IA/mes`,
     ];
@@ -97,10 +95,6 @@ const COMPARISON: { label: string; value: (plan: PlanView) => string }[] = [
   {
     label: "Respuestas de IA al mes",
     value: (plan) => plan.maxAiRepliesMonth.toLocaleString("es-CO"),
-  },
-  {
-    label: "Documentos de conocimiento",
-    value: (plan) => plan.maxKnowledgeDocs.toLocaleString("es-CO"),
   },
 ];
 
@@ -221,7 +215,10 @@ function PlanCard({ plan, interval }: { plan: PlanView; interval: BillingInterva
       <p className="relative mt-2 text-sm text-muted-foreground">{planBlurb(plan.code)}</p>
 
       <p className="relative mt-10 flex items-baseline gap-2">
-        <span key={`${amount}-${interval}`} className="price-swap tracking-display text-6xl font-semibold">
+        <span
+          key={`${amount}-${interval}`}
+          className="price-swap tracking-display text-6xl font-semibold"
+        >
           {amount}
         </span>
         <span className="font-data text-sm text-muted-foreground">{suffix}</span>
@@ -429,7 +426,10 @@ export default function PricingPage() {
                         {sorted.map((plan) => (
                           <td
                             key={plan.code}
-                            className={cn("font-data px-4 py-4", plan.highlighted && "bg-primary/8")}
+                            className={cn(
+                              "font-data px-4 py-4",
+                              plan.highlighted && "bg-primary/8",
+                            )}
                           >
                             {row.value(plan)}
                           </td>
@@ -491,7 +491,9 @@ export default function PricingPage() {
                   <ArrowRight aria-hidden />
                 </Link>
               </Button>
-              <p className="font-data text-xs text-muted-foreground">Sin tarjeta · Listo en minutos</p>
+              <p className="font-data text-xs text-muted-foreground">
+                Sin tarjeta · Listo en minutos
+              </p>
             </div>
           </Reveal>
         </section>

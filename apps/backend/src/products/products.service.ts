@@ -159,9 +159,7 @@ export class ProductsService {
       where: { id: productId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
-        ...(dto.description !== undefined
-          ? { description: dto.description?.trim() || null }
-          : {}),
+        ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId || null } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
       },
@@ -228,8 +226,7 @@ export class ProductsService {
           ...(dto.price !== undefined ? { price: new Decimal(dto.price) } : {}),
           ...(dto.compareAtPrice !== undefined
             ? {
-                compareAtPrice:
-                  dto.compareAtPrice == null ? null : new Decimal(dto.compareAtPrice),
+                compareAtPrice: dto.compareAtPrice == null ? null : new Decimal(dto.compareAtPrice),
               }
             : {}),
           ...(dto.stock !== undefined ? { stock: dto.stock } : {}),
@@ -328,11 +325,7 @@ export class ProductsService {
     return this.toImageDto(image);
   }
 
-  async removeImage(
-    companyId: string | null,
-    productId: string,
-    imageId: string,
-  ): Promise<void> {
+  async removeImage(companyId: string | null, productId: string, imageId: string): Promise<void> {
     await this.findOwnedProduct(companyId, productId);
 
     const image = await this.prisma.productImage.findFirst({
@@ -475,7 +468,9 @@ export class ProductsService {
       variantsCount: product.variants.length,
       totalStock: product.variants.reduce((sum, variant) => sum + variant.stock, 0),
       minPrice: prices.length ? Math.min(...prices) : null,
-      coverImageUrl: product.images[0]?.url ?? null,
+      coverImageUrl: product.images[0]
+        ? this.storageService.browserUrl(product.images[0].url)
+        : null,
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
     };
@@ -551,7 +546,7 @@ export class ProductsService {
   }): ProductImageDto {
     return {
       id: image.id,
-      url: image.url,
+      url: this.storageService.browserUrl(image.url),
       key: image.key,
       alt: image.alt,
       sortOrder: image.sortOrder,

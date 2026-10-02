@@ -32,9 +32,7 @@ export function detectsBotChoice(text: string): boolean {
 
   // "no quiero un asistente / bot" no es elección de bot.
   if (
-    /\bno\s+(quiero|deseo|necesito|busco).{0,40}\b(el\s+)?(bot|asistente|ia)\b/.test(
-      normalized,
-    ) ||
+    /\bno\s+(quiero|deseo|necesito|busco).{0,40}\b(el\s+)?(bot|asistente|ia)\b/.test(normalized) ||
     /\bno\s+(el\s+)?(bot|asistente)\b/.test(normalized) ||
     /\bsin\s+(bot|asistente)\b/.test(normalized)
   ) {

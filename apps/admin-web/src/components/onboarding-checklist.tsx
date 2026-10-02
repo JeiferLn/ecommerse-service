@@ -1,15 +1,21 @@
 "use client";
 
-import { canManageWhatsapp, type CompanyDetails } from "@commerce-ai/types";
+import {
+  canManageWhatsapp,
+  REQUIRED_KNOWLEDGE_TYPES,
+  type CompanyDetails,
+} from "@commerce-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Check, Clock } from "lucide-react";
+import { ArrowRight, BookOpen, Check } from "lucide-react";
 import Link from "next/link";
 
+import { knowledgeUploadedCount } from "@/components/setup-requirements";
+import { StatusPill } from "@/components/ui/status-pill";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
-type StepState = "done" | "todo" | "review";
+type StepState = "done" | "todo";
 
 interface OnboardingStep {
   id: string;
@@ -18,15 +24,16 @@ interface OnboardingStep {
   href: string;
   cta: string;
   state: StepState;
+  /** No cuenta para el progreso: solo mejora las respuestas. */
+  optional?: boolean;
 }
 
 function buildSteps(company: CompanyDetails): OnboardingStep[] {
   const { onboarding } = company;
   const prerequisitesDone =
-    onboarding.activeProducts > 0 &&
-    company.commerce.isConfigured &&
-    company.knowledge.isConfigured &&
-    company.payments.isConfigured;
+    onboarding.activeProducts > 0 && company.commerce.isConfigured && company.payments.isConfigured;
+  const uploadedDocs = knowledgeUploadedCount(company);
+  const totalDocs = REQUIRED_KNOWLEDGE_TYPES.length;
 
   return [
     {
@@ -46,14 +53,6 @@ function buildSteps(company: CompanyDetails): OnboardingStep[] {
       state: company.commerce.isConfigured ? "done" : "todo",
     },
     {
-      id: "knowledge",
-      title: "Sube tus documentos",
-      detail: "Guía, preguntas frecuentes, garantías y políticas en PDF.",
-      href: "/knowledge",
-      cta: "Ir a Conocimiento",
-      state: company.knowledge.isConfigured ? "done" : "todo",
-    },
-    {
       id: "payments",
       title: "Conecta Mercado Pago",
       detail: "Los pedidos se cobran directo en tu cuenta.",
@@ -70,22 +69,29 @@ function buildSteps(company: CompanyDetails): OnboardingStep[] {
       state: onboarding.playgroundTried ? "done" : "todo",
     },
     {
-      id: "number",
-      title: "Recibe tu número de WhatsApp",
-      detail: prerequisitesDone
-        ? "Estamos asignando el número de tu tienda. Te avisaremos cuando esté listo."
-        : "Lo asignamos cuando completes los pasos anteriores.",
+      id: "channel",
+      title: "Activa tu canal de WhatsApp",
+      detail: onboarding.whatsappAssigned
+        ? "Tu canal está en pausa. Reactívalo para que el asistente responda y cobre por ti."
+        : prerequisitesDone
+          ? "Tu tienda ya cumple los requisitos. Actívalo y recibe tu enlace para clientes."
+          : "Disponible cuando tengas productos, envíos y Mercado Pago listos.",
       href: "/whatsapp",
-      cta: "Ver canal",
-      state: onboarding.whatsappAssigned ? "done" : prerequisitesDone ? "review" : "todo",
+      cta: onboarding.whatsappAssigned
+        ? "Ir al canal"
+        : prerequisitesDone
+          ? "Activar canal"
+          : "Ver canal",
+      state: onboarding.whatsappAssigned && onboarding.whatsappActive ? "done" : "todo",
     },
     {
-      id: "active",
-      title: "Activa el asistente",
-      detail: "Cuando está activo, responde y cobra en WhatsApp por ti.",
-      href: "/whatsapp",
-      cta: "Ir al canal",
-      state: onboarding.whatsappActive ? "done" : "todo",
+      id: "knowledge",
+      title: "Sube tus documentos",
+      detail: `${uploadedDocs} de ${totalDocs} cargados. Tu guía, preguntas frecuentes, garantías y políticas hacen que el asistente responda con más precisión.`,
+      href: "/knowledge",
+      cta: "Ir a Conocimiento",
+      state: uploadedDocs === totalDocs ? "done" : "todo",
+      optional: true,
     },
   ];
 }
@@ -93,9 +99,7 @@ function buildSteps(company: CompanyDetails): OnboardingStep[] {
 /** Pasos de puesta en marcha; solo para quien puede completarlos. */
 export function useOnboarding() {
   const { user } = useSession();
-  const enabled = Boolean(
-    user?.companyId && user.role !== "admin" && canManageWhatsapp(user.role),
-  );
+  const enabled = Boolean(user?.companyId && user.role !== "admin" && canManageWhatsapp(user.role));
   const { data: company } = useQuery({
     queryKey: ["company", user?.companyId],
     queryFn: () => apiFetch<CompanyDetails>("/company"),
@@ -106,22 +110,33 @@ export function useOnboarding() {
     return null;
   }
   const steps = buildSteps(company);
-  const done = steps.filter((step) => step.state === "done").length;
-  return { steps, done, total: steps.length, complete: done === steps.length };
+  const required = steps.filter((step) => !step.optional);
+  const done = required.filter((step) => step.state === "done").length;
+  return { steps, done, total: required.length, complete: done === required.length };
 }
 
-function StepIcon({ state, index, isNext }: { state: StepState; index: number; isNext: boolean }) {
+function StepIcon({
+  state,
+  index,
+  isNext,
+  optional,
+}: {
+  state: StepState;
+  index: number;
+  isNext: boolean;
+  optional?: boolean;
+}) {
+  if (optional && state !== "done") {
+    return (
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground">
+        <BookOpen className="size-3.5" aria-hidden />
+      </span>
+    );
+  }
   if (state === "done") {
     return (
       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
         <Check className="size-3.5" aria-hidden />
-      </span>
-    );
-  }
-  if (state === "review") {
-    return (
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
-        <Clock className="size-3.5" aria-hidden />
       </span>
     );
   }
@@ -145,7 +160,8 @@ export function OnboardingChecklist() {
     return null;
   }
 
-  const nextStep = onboarding.steps.find((step) => step.state === "todo");
+  const nextStep = onboarding.steps.find((step) => step.state === "todo" && !step.optional);
+  const pending = onboarding.total - onboarding.done;
 
   return (
     <section
@@ -159,8 +175,10 @@ export function OnboardingChecklist() {
             Puesta en marcha
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {onboarding.done} de {onboarding.total} pasos listos para que tu asistente venda por
-            WhatsApp.
+            {onboarding.done} de {onboarding.total} pasos listos.{" "}
+            {pending === 1
+              ? "Te falta 1 para que tu asistente venda por WhatsApp."
+              : `Te faltan ${pending} para que tu asistente venda por WhatsApp.`}
           </p>
         </div>
         <Progress done={onboarding.done} total={onboarding.total} className="w-full sm:w-48" />
@@ -180,16 +198,19 @@ export function OnboardingChecklist() {
                 done && "text-muted-foreground",
               )}
             >
-              <StepIcon state={step.state} index={index} isNext={isNext} />
+              <StepIcon state={step.state} index={index} isNext={isNext} optional={step.optional} />
               <div className="min-w-0 flex-1 basis-52">
-                <p className={cn("text-sm", done ? "font-normal" : "font-medium")}>
+                <p
+                  className={cn(
+                    "flex flex-wrap items-center gap-2 text-sm",
+                    done ? "font-normal" : "font-medium",
+                  )}
+                >
                   {step.title}
-                  {step.state === "review" ? (
-                    <span className="ml-2 text-xs font-normal text-warning">En revisión</span>
-                  ) : null}
+                  {step.optional && !done ? <StatusPill>Opcional</StatusPill> : null}
                 </p>
-                {!done && (isNext || step.state === "review") ? (
-                  <p className="mt-0.5 text-sm text-muted-foreground">{step.detail}</p>
+                {!done ? (
+                  <p className="mt-0.5 text-sm text-pretty text-muted-foreground">{step.detail}</p>
                 ) : null}
               </div>
               {step.state === "todo" ? (

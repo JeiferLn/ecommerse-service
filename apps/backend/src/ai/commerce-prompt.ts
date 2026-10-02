@@ -29,9 +29,7 @@ export function formatCommercePromptBlock(company: {
     Boolean,
   );
   const cityLine =
-    locationParts.length > 0
-      ? `- Ubicación base de la tienda: ${locationParts.join(", ")}`
-      : null;
+    locationParts.length > 0 ? `- Ubicación base de la tienda: ${locationParts.join(", ")}` : null;
 
   return {
     configured: true,

@@ -8,9 +8,7 @@ export class MockChatProvider implements AiChatProvider {
   async complete(request: ChatCompletionRequest): Promise<ChatCompletionResult> {
     const lastUser = [...request.messages].reverse().find((message) => message.role === "user");
     const text = lastUser?.content.toLowerCase() ?? "";
-    const normalized = text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
+    const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     if (
       text.includes("humano") ||
@@ -40,17 +38,16 @@ export class MockChatProvider implements AiChatProvider {
 
     if (isGreeting) {
       return {
-        content:
-          "¡Hola! Bienvenido a nuestra tienda. ¿En qué te puedo ayudar hoy?",
+        content: "¡Hola! Bienvenido a nuestra tienda. ¿En qué te puedo ayudar hoy?",
         model: "mock",
       };
     }
 
     const catalogHint =
       request.messages.find((message) => message.role === "system")?.content ?? "";
-    const productNames = [...catalogHint.matchAll(/^- (.+?)(?:\s\[|\s—|\s\|)/gm)].map(
-      (match) => match[1]?.trim(),
-    ).filter(Boolean);
+    const productNames = [...catalogHint.matchAll(/^- (.+?)(?:\s\[|\s—|\s\|)/gm)]
+      .map((match) => match[1]?.trim())
+      .filter(Boolean);
 
     const overviewAsk =
       /(que venden|que tienen|que productos|catalogo|en stock|disponibles|que hay)/.test(

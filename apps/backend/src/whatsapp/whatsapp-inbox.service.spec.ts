@@ -2,6 +2,7 @@ import { NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppInboxService } from "./whatsapp-inbox.service";
@@ -47,6 +48,7 @@ describe("WhatsAppInboxService", () => {
         WhatsAppInboxService,
         { provide: PrismaService, useValue: prisma },
         { provide: TwilioWhatsAppClient, useValue: twilioClient },
+        { provide: StorageService, useValue: { browserUrl: (url: string) => url } },
         {
           provide: WhatsAppConnectionService,
           useValue: { assertCommerceConfigured: jest.fn().mockResolvedValue(undefined) },

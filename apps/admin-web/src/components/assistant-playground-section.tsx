@@ -5,17 +5,23 @@ import {
   CONVERSATION_HANDLER_LABELS,
   type AssistantPlaygroundThread,
   type CompanyDetails,
+  type InteractiveAction,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, RotateCcw, Send, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { ChatSurface } from "@/components/chat-interactive";
 import { ChatMessageBubble } from "@/components/chat-message-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  getSetupItems,
+  KnowledgeHint,
+  missingRequiredItems,
+  SetupRequirements,
+} from "@/components/setup-requirements";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
-import { WhatsAppCommerceRequiredGate } from "@/components/whatsapp-commerce-required-gate";
-import { WhatsAppKnowledgeRequiredGate } from "@/components/whatsapp-knowledge-required-gate";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useFillHeight } from "@/lib/use-fill-height";
 import { cn } from "@/lib/utils";
@@ -26,6 +32,8 @@ const SUGGESTIONS = [
   "¿Hacen envíos a mi ciudad?",
   "Quiero hablar con un asesor",
 ];
+
+type PlaygroundInput = { text: string; actionId?: string };
 
 export function AssistantPlaygroundSection() {
   const { user } = useSession();
@@ -42,9 +50,11 @@ export function AssistantPlaygroundSection() {
     queryFn: () => apiFetch<CompanyDetails>("/company"),
     enabled: Boolean(user?.companyId) && canManage,
   });
-  const commerceReady = Boolean(company?.commerce.isConfigured);
-  const knowledgeReady = Boolean(company?.knowledge.isConfigured);
-  const ready = commerceReady && knowledgeReady;
+  const ready = Boolean(
+    company &&
+    missingRequiredItems(getSetupItems(company, user?.role, { requirePayments: false })).length ===
+      0,
+  );
 
   const threadKey = ["assistant-playground", user?.companyId];
   const { data: thread, isLoading: threadLoading } = useQuery({
@@ -54,14 +64,16 @@ export function AssistantPlaygroundSection() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (text: string) =>
+    mutationFn: (input: PlaygroundInput) =>
       apiFetch<AssistantPlaygroundThread>("/assistant/playground/messages", {
         method: "POST",
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(input),
       }),
-    onMutate: (text) => {
-      setPendingText(text);
-      setDraft("");
+    onMutate: (input) => {
+      setPendingText(input.text);
+      if (!input.actionId) {
+        setDraft("");
+      }
     },
     onSuccess: (data) => {
       queryClient.setQueryData(threadKey, data);
@@ -69,7 +81,11 @@ export function AssistantPlaygroundSection() {
         void queryClient.invalidateQueries({ queryKey: ["company"] });
       }
     },
-    onError: (_error, text) => setDraft(text),
+    onError: (_error, input) => {
+      if (!input.actionId) {
+        setDraft(input.text);
+      }
+    },
     onSettled: () => setPendingText(null),
   });
 
@@ -107,16 +123,14 @@ export function AssistantPlaygroundSection() {
     );
   }
 
-  if (companyLoading) {
-    return <Skeleton className="h-120ull rounded-lg" />;
+  if (companyLoading || !company) {
+    return <Skeleton className="h-120 w-full rounded-lg" />;
   }
 
-  if (!commerceReady) {
-    return <WhatsAppCommerceRequiredGate />;
-  }
-
-  if (!knowledgeReady) {
-    return <WhatsAppKnowledgeRequiredGate missingTypes={company?.knowledge.missingTypes ?? []} />;
+  if (!ready) {
+    return (
+      <SetupRequirements company={company} requirePayments={false} purpose="probar tu asistente" />
+    );
   }
 
   const send = (text: string) => {
@@ -124,151 +138,173 @@ export function AssistantPlaygroundSection() {
     if (!body || sendMutation.isPending) {
       return;
     }
-    sendMutation.mutate(body);
+    sendMutation.mutate({ text: body });
+  };
+
+  const tapAction = (action: InteractiveAction) => {
+    if (!sendMutation.isPending) {
+      sendMutation.mutate({ text: action.title, actionId: action.id });
+    }
   };
 
   const error = sendMutation.error ?? resetMutation.error;
 
   return (
-    <div
-      ref={fill.ref}
-      style={fill.height ? { height: fill.height } : undefined}
-      className="grid h-[calc(100dvh-12rem)] min-h-120 overflow-hidden rounded-lg border border-border bg-card lg:grid-cols-[minmax(0,1fr)_280px]"
-    >
-      <section aria-label="Chat de prueba" className="flex min-h-0 flex-col">
-        <header className="flex items-center gap-3 border-b border-border px-3 py-3 sm:px-4">
-          <span
-            aria-hidden
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
-          >
-            <UserRound className="size-4" />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-sm font-medium">Cliente de prueba</span>
-            <span className="truncate text-xs text-muted-foreground">
-              {thread ? `Atiende: ${CONVERSATION_HANDLER_LABELS[thread.handler]}` : "Cargando…"}
-            </span>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={resetMutation.isPending || sendMutation.isPending || messages.length === 0}
-            onClick={() => {
-              seenRef.current = null;
-              resetMutation.mutate();
-            }}
-          >
-            <RotateCcw className="size-4" aria-hidden />
-            <span className="sr-only sm:not-sr-only">
-              {resetMutation.isPending ? "Reiniciando…" : "Reiniciar"}
-            </span>
-          </Button>
-        </header>
-
-        <div
-          ref={scrollRef}
-          className="min-h-0 flex-1 overflow-y-auto bg-background px-3 py-4 sm:px-6"
-          aria-live="polite"
-        >
-          {threadLoading ? <SkeletonText lines={4} className="max-w-sm" /> : null}
-          {!threadLoading && messages.length === 0 && !pendingText ? (
-            <div className="fade-swap flex h-full flex-col items-center justify-center gap-4 text-center">
-              <p className="max-w-xs text-sm text-muted-foreground">
-                Escribe como lo haría un cliente, o empieza con una de estas:
-              </p>
-              <div className="flex max-w-md flex-wrap justify-center gap-2">
-                {SUGGESTIONS.map((suggestion) => (
-                  <Button
-                    key={suggestion}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => send(suggestion)}
-                  >
-                    {suggestion}
-                  </Button>
-                ))}
+    <div className="flex flex-col gap-3">
+      <KnowledgeHint company={company} />
+      <div
+        ref={fill.ref}
+        style={fill.height ? { height: fill.height } : undefined}
+        className="grid h-[calc(100dvh-12rem)] min-h-120 overflow-hidden rounded-lg border border-border bg-card lg:grid-cols-[minmax(0,1fr)_280px]"
+      >
+        <ChatSurface className="flex min-h-0 flex-col">
+          <section aria-label="Chat de prueba" className="flex min-h-0 flex-1 flex-col">
+            <header className="flex items-center gap-3 border-b border-border px-3 py-3 sm:px-4">
+              <span
+                aria-hidden
+                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+              >
+                <UserRound className="size-4" />
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium">Cliente de prueba</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {thread ? `Atiende: ${CONVERSATION_HANDLER_LABELS[thread.handler]}` : "Cargando…"}
+                </span>
               </div>
-            </div>
-          ) : null}
-          {messages.length > 0 || pendingText ? (
-            <div className="flex flex-col gap-2">
-              {messages.map((message) => (
-                <ChatMessageBubble
-                  key={message.id}
-                  message={message}
-                  showStatus={false}
-                  className={cn(seenRef.current && !seenRef.current.has(message.id) && "bubble-in")}
-                />
-              ))}
-              {pendingText ? (
-                <>
-                  <div className="bubble-in mr-auto max-w-[80%] rounded-lg rounded-bl-sm border border-border bg-card px-3 py-2 text-sm opacity-70">
-                    <p className="whitespace-pre-wrap">{pendingText}</p>
-                  </div>
-                  <p className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="size-1.5 animate-pulse rounded-full bg-primary" aria-hidden />
-                    El asistente está escribiendo…
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={
+                  resetMutation.isPending || sendMutation.isPending || messages.length === 0
+                }
+                onClick={() => {
+                  seenRef.current = null;
+                  resetMutation.mutate();
+                }}
+              >
+                <RotateCcw className="size-4" aria-hidden />
+                <span className="sr-only sm:not-sr-only">
+                  {resetMutation.isPending ? "Reiniciando…" : "Reiniciar"}
+                </span>
+              </Button>
+            </header>
+
+            <div
+              ref={scrollRef}
+              className="min-h-0 flex-1 overflow-y-auto bg-background px-3 py-4 sm:px-6"
+              aria-live="polite"
+            >
+              {threadLoading ? <SkeletonText lines={4} className="max-w-sm" /> : null}
+              {!threadLoading && messages.length === 0 && !pendingText ? (
+                <div className="fade-swap flex h-full flex-col items-center justify-center gap-4 text-center">
+                  <p className="max-w-xs text-sm text-muted-foreground">
+                    Escribe como lo haría un cliente, o empieza con una de estas:
                   </p>
-                </>
+                  <div className="flex max-w-md flex-wrap justify-center gap-2">
+                    {SUGGESTIONS.map((suggestion) => (
+                      <Button
+                        key={suggestion}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => send(suggestion)}
+                      >
+                        {suggestion}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {messages.length > 0 || pendingText ? (
+                <div className="flex flex-col gap-2">
+                  {messages.map((message) => (
+                    <ChatMessageBubble
+                      key={message.id}
+                      message={message}
+                      showStatus={false}
+                      onAction={tapAction}
+                      actionsDisabled={sendMutation.isPending}
+                      className={cn(
+                        seenRef.current && !seenRef.current.has(message.id) && "bubble-in",
+                      )}
+                    />
+                  ))}
+                  {pendingText ? (
+                    <>
+                      <div className="bubble-in ml-auto max-w-[80%] rounded-lg rounded-br-sm border border-border bg-card px-3 py-2 text-sm opacity-70">
+                        <p className="whitespace-pre-wrap">{pendingText}</p>
+                      </div>
+                      <p className="mr-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span
+                          className="size-1.5 animate-pulse rounded-full bg-primary"
+                          aria-hidden
+                        />
+                        El asistente está escribiendo…
+                      </p>
+                    </>
+                  ) : null}
+                </div>
               ) : null}
             </div>
-          ) : null}
-        </div>
 
-        <div className="flex flex-col gap-2 border-t border-border p-3">
-          <p className="text-xs text-muted-foreground lg:hidden">
-            Nada se envía por WhatsApp ni se crean pedidos.
-          </p>
-          <form
-            className="flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              send(draft);
-            }}
-          >
-            <Input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Escribe como si fueras un cliente…"
-              maxLength={1000}
-              disabled={sendMutation.isPending}
-              aria-label="Mensaje de prueba"
-            />
-            <Button
-              type="submit"
-              disabled={sendMutation.isPending || !draft.trim()}
-              aria-label="Enviar"
-            >
-              <Send className="size-4" aria-hidden />
-              <span className="hidden sm:inline">Enviar</span>
-            </Button>
-          </form>
-          {error ? (
-            <p className="text-sm text-destructive">
-              {error instanceof ApiClientError ? error.message : "No se pudo completar la acción"}
-            </p>
-          ) : null}
-        </div>
-      </section>
+            <div className="flex flex-col gap-2 border-t border-border p-3">
+              <p className="text-xs text-muted-foreground lg:hidden">
+                Nada se envía por WhatsApp ni se crean pedidos.
+              </p>
+              <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  send(draft);
+                }}
+              >
+                <Input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder="Escribe como si fueras un cliente…"
+                  maxLength={1000}
+                  disabled={sendMutation.isPending}
+                  aria-label="Mensaje de prueba"
+                />
+                <Button
+                  type="submit"
+                  disabled={sendMutation.isPending || !draft.trim()}
+                  aria-label="Enviar"
+                >
+                  <Send className="size-4" aria-hidden />
+                  <span className="hidden sm:inline">Enviar</span>
+                </Button>
+              </form>
+              {error ? (
+                <p className="text-sm text-destructive">
+                  {error instanceof ApiClientError
+                    ? error.message
+                    : "No se pudo completar la acción"}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </ChatSurface>
 
-      <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l border-border p-5 text-sm lg:flex">
-        <div className="flex items-center gap-2">
-          <FlaskConical className="size-4 text-muted-foreground" aria-hidden />
-          <span className="font-medium">Así lo verá tu cliente</span>
-        </div>
-        <ul className="flex flex-col divide-y divide-border text-muted-foreground">
-          <li className="pb-3">No se envía nada por WhatsApp y no aparece en Conversaciones.</li>
-          <li className="py-3">
-            Puedes armar un carrito, pero al confirmar no se crea el pedido ni se descuenta stock.
-          </li>
-          <li className="py-3">
-            Las respuestas del asistente sí cuentan en tu cupo mensual de IA.
-          </li>
-          <li className="pt-3">Usa Reiniciar para empezar de cero, como un cliente nuevo.</li>
-        </ul>
-      </aside>
+        <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l border-border p-5 text-sm lg:flex">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="size-4 text-muted-foreground" aria-hidden />
+            <span className="font-medium">Así lo verá tu cliente</span>
+          </div>
+          <ul className="flex flex-col divide-y divide-border text-muted-foreground">
+            <li className="pb-3">No se envía nada por WhatsApp y no aparece en Conversaciones.</li>
+            <li className="py-3">
+              Puedes armar un carrito, pero al confirmar no se crea el pedido ni se descuenta stock.
+            </li>
+            <li className="py-3">
+              Las respuestas del asistente sí cuentan en tu cupo mensual de IA.
+            </li>
+            <li className="pt-3">Usa Reiniciar para empezar de cero, como un cliente nuevo.</li>
+          </ul>
+        </aside>
+      </div>
     </div>
   );
 }

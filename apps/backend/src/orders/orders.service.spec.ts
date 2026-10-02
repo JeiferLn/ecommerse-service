@@ -102,7 +102,11 @@ describe("OrdersService", () => {
       name: "M",
       product: { id: "p-1", name: "Camisa", companyId: "co-1", status: "active" },
     });
-    prisma.cart.upsert.mockResolvedValue({ id: "cart-1", companyId: "co-1", conversationId: "conv-1" });
+    prisma.cart.upsert.mockResolvedValue({
+      id: "cart-1",
+      companyId: "co-1",
+      conversationId: "conv-1",
+    });
     prisma.cartItem.findUnique.mockResolvedValue({ id: "item-1", quantity: 1 });
 
     await expect(service.addCartItem("co-1", "conv-1", "var-1", 1)).rejects.toBeInstanceOf(

@@ -37,6 +37,7 @@ const manualSchema = z.object({
 type ManualValues = z.infer<typeof manualSchema>;
 
 const DEV_TOOLS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true";
+const IS_DEVELOPMENT = process.env.NODE_ENV !== "production";
 
 export function MercadoPagoConnectionSection() {
   const { user } = useSession();
@@ -229,6 +230,19 @@ export function MercadoPagoConnectionSection() {
                 <Unplug className="size-4" aria-hidden />
                 {oauthMutation.isPending ? "Redirigiendo…" : "Conectar Mercado Pago"}
               </Button>
+            ) : IS_DEVELOPMENT ? (
+              <p className="flex max-w-xl items-start gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm text-foreground">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+                <span>
+                  El botón para conectar aparece cuando el backend tiene la app de Mercado Pago:
+                  define <code className="font-data text-[13px]">MP_CLIENT_ID</code> y{" "}
+                  <code className="font-data text-[13px]">MP_CLIENT_SECRET</code> en{" "}
+                  <code className="font-data text-[13px]">apps/backend/.env</code>, más{" "}
+                  <code className="font-data text-[13px]">API_PUBLIC_URL</code> o{" "}
+                  <code className="font-data text-[13px]">MP_REDIRECT_URI</code>, y reinicia el
+                  backend. Solo se ve en desarrollo.
+                </span>
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">
                 Los pagos no están disponibles por ahora. Escríbenos a soporte para activarlos en tu

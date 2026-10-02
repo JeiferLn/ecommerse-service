@@ -35,9 +35,9 @@ describe("AiReplyService", () => {
     providerComplete = jest.fn();
     prisma = {
       message: {
-        findMany: jest.fn().mockResolvedValue([
-          { direction: "inbound", body: "¿Cuánto cuesta la camiseta?" },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ direction: "inbound", body: "¿Cuánto cuesta la camiseta?" }]),
       },
       company: {
         findUnique: jest.fn().mockResolvedValue({
@@ -93,6 +93,7 @@ describe("AiReplyService", () => {
       text: "La camiseta cuesta $10",
       requestedHandoff: false,
       imageUrls: [],
+      suggestedProductIds: [],
     });
   });
 

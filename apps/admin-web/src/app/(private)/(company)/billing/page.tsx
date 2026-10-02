@@ -393,11 +393,6 @@ function BillingPageInner() {
                 max={data.limits.maxVariants}
               />
               <UsageRow
-                label="Documentos"
-                used={data.usage.knowledgeDocs}
-                max={data.limits.maxKnowledgeDocs}
-              />
-              <UsageRow
                 label="Mensajes recibidos"
                 used={data.usage.waInbound}
                 max={data.limits.maxWaMessagesMonth}

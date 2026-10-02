@@ -7,6 +7,7 @@ import { OrdersModule } from "../orders/orders.module";
 import { AdminWhatsAppController } from "./admin-whatsapp.controller";
 import { AssistantPlaygroundController } from "./assistant-playground.controller";
 import { AssistantPlaygroundService } from "./assistant-playground.service";
+import { TwilioContentService } from "./twilio-content.service";
 import { TwilioWhatsAppClient } from "./twilio-whatsapp.client";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppInboxController } from "./whatsapp-inbox.controller";
@@ -24,6 +25,7 @@ import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
   ],
   providers: [
     TwilioWhatsAppClient,
+    TwilioContentService,
     WhatsAppConnectionService,
     WhatsAppWebhookService,
     WhatsAppInboxService,

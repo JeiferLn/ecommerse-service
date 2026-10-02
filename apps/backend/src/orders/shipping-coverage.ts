@@ -49,7 +49,8 @@ export function resolveCountryCode(input: string): string | null {
   }
   const normalized = normalizePlaceName(raw);
   const match = COMPANY_COUNTRIES.find(
-    (country) => normalizePlaceName(country.name) === normalized || country.code.toLowerCase() === normalized,
+    (country) =>
+      normalizePlaceName(country.name) === normalized || country.code.toLowerCase() === normalized,
   );
   return match?.code ?? null;
 }
@@ -80,7 +81,11 @@ export function describeShippingCoverage(params: {
   if (scopes.includes("national") && scopes.includes("local")) {
     return `Envíos locales${place ? ` en ${place}` : ""} y nacionales en ${country}.`;
   }
-  if (scopes.includes("local") && !scopes.includes("national") && !scopes.includes("international")) {
+  if (
+    scopes.includes("local") &&
+    !scopes.includes("national") &&
+    !scopes.includes("international")
+  ) {
     return place
       ? `Solo envíos locales en ${place} (${country}).`
       : `Solo envíos locales en el municipio de la tienda (${country}).`;
@@ -91,7 +96,9 @@ export function describeShippingCoverage(params: {
   if (scopes.includes("international")) {
     return `Envíos internacionales${place ? ` desde ${place}` : ""}.`;
   }
-  return labels.length > 0 ? `Cobertura: ${labels.join(", ")}.` : "Sin cobertura de envío configurada.";
+  return labels.length > 0
+    ? `Cobertura: ${labels.join(", ")}.`
+    : "Sin cobertura de envío configurada.";
 }
 
 export type ShippingCoverageInput = {

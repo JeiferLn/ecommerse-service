@@ -47,7 +47,9 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
-      this.logger.error(`OpenRouter embeddings error ${response.status}: ${errorBody.slice(0, 300)}`);
+      this.logger.error(
+        `OpenRouter embeddings error ${response.status}: ${errorBody.slice(0, 300)}`,
+      );
       throw new Error(`OpenRouter embeddings respondió ${response.status}`);
     }
 

@@ -38,6 +38,7 @@ describe("ProductsService", () => {
   let storage: {
     uploadProductImage: jest.Mock;
     deleteObject: jest.Mock;
+    browserUrl: jest.Mock;
   };
 
   const baseProduct = {
@@ -103,6 +104,7 @@ describe("ProductsService", () => {
     storage = {
       uploadProductImage: jest.fn(),
       deleteObject: jest.fn(),
+      browserUrl: jest.fn((url: string) => url),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -110,7 +112,10 @@ describe("ProductsService", () => {
         ProductsService,
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
-        { provide: BillingService, useValue: { assertCan: jest.fn().mockResolvedValue(undefined) } },
+        {
+          provide: BillingService,
+          useValue: { assertCan: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -191,12 +196,10 @@ describe("ProductsService", () => {
         },
       ],
     };
-    prisma.product.findFirst
-      .mockResolvedValueOnce(withImages)
-      .mockResolvedValueOnce({
-        ...withImages,
-        images: [withImages.images[1], withImages.images[0]],
-      });
+    prisma.product.findFirst.mockResolvedValueOnce(withImages).mockResolvedValueOnce({
+      ...withImages,
+      images: [withImages.images[1], withImages.images[0]],
+    });
     prisma.productImage.update.mockResolvedValue({});
 
     const images = await service.reorderImages("company-1", "prod-1", ["img-b", "img-a"]);

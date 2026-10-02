@@ -27,24 +27,25 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
-type Filter = "all" | "awaiting" | "assigned";
+type Filter = "all" | "awaiting" | "shared" | "dedicated";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "Todas" },
-  { id: "awaiting", label: "Esperando número" },
-  { id: "assigned", label: "Con número" },
+  { id: "awaiting", label: "Sin activar" },
+  { id: "shared", label: "Compartido" },
+  { id: "dedicated", label: "Número propio" },
 ];
 
 const REQUIREMENT_LABELS: { key: keyof AdminCompanyRow["requirements"]; label: string }[] = [
   { key: "products", label: "Productos" },
   { key: "shipping", label: "Envíos" },
-  { key: "knowledge", label: "Documentos" },
   { key: "payments", label: "Pagos" },
 ];
 
 function matchesFilter(company: AdminCompanyRow, filter: Filter): boolean {
   if (filter === "awaiting") return company.awaitingNumber;
-  if (filter === "assigned") return Boolean(company.whatsapp);
+  if (filter === "shared") return company.whatsapp?.mode === "shared";
+  if (filter === "dedicated") return company.whatsapp?.mode === "dedicated";
   return true;
 }
 
@@ -52,7 +53,11 @@ function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
   if (company.whatsapp) {
     return (
       <span className="flex flex-col">
-        <span className="font-data text-sm">{company.whatsapp.twilioWhatsAppNumber}</span>
+        <span className="font-data text-sm">
+          {company.whatsapp.mode === "shared"
+            ? `Compartido · #${company.whatsapp.storeCode ?? ""}`
+            : company.whatsapp.twilioWhatsAppNumber}
+        </span>
         <span
           className={cn(
             "text-xs",
@@ -67,7 +72,7 @@ function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
   if (company.awaitingNumber) {
     return (
       <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-        Esperando número
+        Lista, sin activar
       </span>
     );
   }
@@ -77,7 +82,10 @@ function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
 function Requirements({ company }: { company: AdminCompanyRow }) {
   const done = REQUIREMENT_LABELS.filter((item) => company.requirements[item.key]).length;
   return (
-    <ul className="flex flex-wrap gap-1.5" aria-label={`${done} de 4 requisitos`}>
+    <ul
+      className="flex flex-wrap gap-1.5"
+      aria-label={`${done} de ${REQUIREMENT_LABELS.length} requisitos`}
+    >
       {REQUIREMENT_LABELS.map((item) => {
         const ok = company.requirements[item.key];
         return (
@@ -116,9 +124,13 @@ function AssignNumberSheet({
   const [active, setActive] = useState(true);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
+  const dedicated = company?.whatsapp?.mode === "dedicated" ? company.whatsapp : null;
+  const shared = company?.whatsapp?.mode === "shared" ? company.whatsapp : null;
+
   useEffect(() => {
-    setNumber(company?.whatsapp?.twilioWhatsAppNumber ?? "");
-    setDisplay(company?.whatsapp?.displayPhoneNumber ?? "");
+    const own = company?.whatsapp?.mode === "dedicated" ? company.whatsapp : null;
+    setNumber(own?.twilioWhatsAppNumber ?? "");
+    setDisplay(own?.displayPhoneNumber ?? "");
     setActive(company?.whatsapp?.isActive ?? Boolean(company?.awaitingNumber));
     setConfirmRemove(false);
   }, [company]);
@@ -159,13 +171,19 @@ function AssignNumberSheet({
     <Sheet open={Boolean(company)} onOpenChange={onOpenChange}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>
-            {company?.whatsapp ? "Número de WhatsApp" : "Asignar número de WhatsApp"}
-          </SheetTitle>
+          <SheetTitle>{dedicated ? "Número propio" : "Asignar número propio"}</SheetTitle>
           <SheetDescription>{company?.name}</SheetDescription>
         </SheetHeader>
 
         {company ? <Requirements company={company} /> : null}
+
+        {shared ? (
+          <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-pretty text-muted-foreground">
+            Hoy usa el número compartido con el código{" "}
+            <span className="font-data text-foreground">#{shared.storeCode}</span>. Al asignarle un
+            número propio lo reemplaza: su enlace cambia y los clientes deben escribir al nuevo.
+          </p>
+        ) : null}
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
@@ -191,7 +209,9 @@ function AssignNumberSheet({
               value={display}
               onChange={(event) => setDisplay(event.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Se usa para el enlace wa.me de la tienda.</p>
+            <p className="text-xs text-muted-foreground">
+              Se usa para el enlace wa.me de la tienda.
+            </p>
           </div>
 
           <label className="inline-flex items-center gap-2 text-sm">
@@ -211,14 +231,15 @@ function AssignNumberSheet({
           ) : null}
 
           <Button type="submit" disabled={!validNumber || assign.isPending}>
-            {assign.isPending ? "Guardando…" : company?.whatsapp ? "Guardar cambios" : "Asignar número"}
+            {assign.isPending ? "Guardando…" : dedicated ? "Guardar cambios" : "Asignar número"}
           </Button>
         </form>
 
         {company?.whatsapp ? (
           <div className="mt-auto flex flex-col gap-2 border-t border-border pt-5">
             <p className="text-sm text-muted-foreground">
-              Al retirar el número, la tienda deja de recibir mensajes en WhatsApp.
+              Al retirar el canal, la tienda deja de recibir mensajes en WhatsApp hasta que vuelva a
+              activarlo.
             </p>
             {confirmRemove ? (
               <div className="flex gap-2">
@@ -227,7 +248,7 @@ function AssignNumberSheet({
                   disabled={unassign.isPending}
                   onClick={() => unassign.mutate()}
                 >
-                  {unassign.isPending ? "Retirando…" : "Sí, retirar número"}
+                  {unassign.isPending ? "Retirando…" : "Sí, retirar canal"}
                 </Button>
                 <Button variant="ghost" onClick={() => setConfirmRemove(false)}>
                   Cancelar
@@ -235,7 +256,7 @@ function AssignNumberSheet({
               </div>
             ) : (
               <Button variant="outline" className="w-fit" onClick={() => setConfirmRemove(true)}>
-                Retirar número
+                Retirar canal
               </Button>
             )}
           </div>
@@ -271,7 +292,8 @@ export function AdminCompaniesSection() {
   const counts: Record<Filter, number> = {
     all: companies.length,
     awaiting: companies.filter((company) => company.awaitingNumber).length,
-    assigned: companies.filter((company) => company.whatsapp).length,
+    shared: companies.filter((company) => company.whatsapp?.mode === "shared").length,
+    dedicated: companies.filter((company) => company.whatsapp?.mode === "dedicated").length,
   };
   const rows = companies.filter((company) => matchesFilter(company, filter));
 
@@ -279,7 +301,7 @@ export function AdminCompaniesSection() {
     <div className="flex flex-col">
       <PageHeader
         title="Empresas"
-        description="Revisa qué tiendas cumplen los requisitos y asígnales su número de WhatsApp."
+        description="Revisa qué tiendas cumplen los requisitos, cómo atienden por WhatsApp y asígnales un número propio cuando lo necesiten."
       />
 
       <Segmented
@@ -287,7 +309,11 @@ export function AdminCompaniesSection() {
         className="mb-4"
         value={filter}
         onChange={setFilter}
-        options={FILTERS.map((item) => ({ value: item.id, label: item.label, count: counts[item.id] }))}
+        options={FILTERS.map((item) => ({
+          value: item.id,
+          label: item.label,
+          count: counts[item.id],
+        }))}
       />
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -298,7 +324,7 @@ export function AdminCompaniesSection() {
         {data && rows.length === 0 ? (
           <p className="p-6 text-sm text-muted-foreground">
             {filter === "awaiting"
-              ? "Ninguna tienda está esperando número."
+              ? "Ninguna tienda lista está sin activar su canal."
               : "No hay empresas en esta vista."}
           </p>
         ) : null}
@@ -306,10 +332,18 @@ export function AdminCompaniesSection() {
           <table className="w-full min-w-205 text-left text-sm">
             <thead className="text-muted-foreground">
               <tr className="border-b border-border">
-                <th scope="col" className="px-4 py-3 font-medium">Empresa</th>
-                <th scope="col" className="px-4 py-3 font-medium">Plan</th>
-                <th scope="col" className="px-4 py-3 font-medium">Requisitos</th>
-                <th scope="col" className="px-4 py-3 font-medium">WhatsApp</th>
+                <th scope="col" className="px-4 py-3 font-medium">
+                  Empresa
+                </th>
+                <th scope="col" className="px-4 py-3 font-medium">
+                  Plan
+                </th>
+                <th scope="col" className="px-4 py-3 font-medium">
+                  Requisitos
+                </th>
+                <th scope="col" className="px-4 py-3 font-medium">
+                  WhatsApp
+                </th>
                 <th scope="col" className="px-4 py-3 font-medium">
                   <span className="sr-only">Acciones</span>
                 </th>
@@ -341,12 +375,8 @@ export function AdminCompaniesSection() {
                     <WhatsAppStatus company={company} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button
-                      size="sm"
-                      variant={company.awaitingNumber ? "default" : "outline"}
-                      onClick={() => setEditing(company)}
-                    >
-                      {company.whatsapp ? "Editar" : "Asignar número"}
+                    <Button size="sm" variant="outline" onClick={() => setEditing(company)}>
+                      {company.whatsapp?.mode === "dedicated" ? "Editar" : "Número propio"}
                     </Button>
                   </td>
                 </tr>

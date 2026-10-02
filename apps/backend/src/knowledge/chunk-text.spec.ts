@@ -6,9 +6,9 @@ describe("chunkText", () => {
   });
 
   it("mantiene un párrafo corto como un solo chunk", () => {
-    expect(chunkText("Política de devoluciones en 15 días.", { chunkSize: 200, overlap: 20 })).toEqual([
-      "Política de devoluciones en 15 días.",
-    ]);
+    expect(
+      chunkText("Política de devoluciones en 15 días.", { chunkSize: 200, overlap: 20 }),
+    ).toEqual(["Política de devoluciones en 15 días."]);
   });
 
   it("parte texto largo respetando el tamaño", () => {

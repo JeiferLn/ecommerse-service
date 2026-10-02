@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import type { AssistantPlaygroundThread, WhatsAppMessage } from "@commerce-ai/types";
-import type { Message } from "@prisma/client";
+import type { AssistantPlaygroundThread } from "@commerce-ai/types";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
+import { toWhatsAppMessageDto } from "./message-dto.util";
 import { WhatsAppConnectionService } from "./whatsapp-connection.service";
 import { WhatsAppWebhookService } from "./whatsapp-webhook.service";
 
@@ -16,6 +17,7 @@ export class AssistantPlaygroundService {
     private readonly prisma: PrismaService,
     private readonly connectionService: WhatsAppConnectionService,
     private readonly webhookService: WhatsAppWebhookService,
+    private readonly storage: StorageService,
   ) {}
 
   async getThread(companyId: string | null): Promise<AssistantPlaygroundThread> {
@@ -30,11 +32,17 @@ export class AssistantPlaygroundService {
     return {
       conversationId: conversation.id,
       handler: conversation.handler,
-      messages: conversation.messages.map(toMessageDto),
+      messages: conversation.messages.map((message) =>
+        toWhatsAppMessageDto(message, (url) => this.storage.browserUrl(url)),
+      ),
     };
   }
 
-  async sendMessage(companyId: string | null, text: string): Promise<AssistantPlaygroundThread> {
+  async sendMessage(
+    companyId: string | null,
+    text: string,
+    actionId?: string | null,
+  ): Promise<AssistantPlaygroundThread> {
     const scopedCompanyId = this.requireCompany(companyId);
     const body = text.trim();
     if (!body) {
@@ -79,10 +87,16 @@ export class AssistantPlaygroundService {
         type: "text",
         body,
         status: "received",
+        interactive: actionId ? { kind: "reply", actionId } : undefined,
       },
     });
 
-    await this.webhookService.replyInPlayground(scopedCompanyId, conversation.id, body);
+    await this.webhookService.replyInPlayground(
+      scopedCompanyId,
+      conversation.id,
+      body,
+      actionId ?? null,
+    );
 
     return this.getThread(scopedCompanyId);
   }
@@ -113,17 +127,4 @@ export class AssistantPlaygroundService {
     }
     return companyId;
   }
-}
-
-function toMessageDto(message: Message): WhatsAppMessage {
-  return {
-    id: message.id,
-    conversationId: message.conversationId,
-    direction: message.direction,
-    wamid: message.wamid,
-    type: message.type,
-    body: message.body,
-    status: message.status,
-    createdAt: message.createdAt.toISOString(),
-  };
 }

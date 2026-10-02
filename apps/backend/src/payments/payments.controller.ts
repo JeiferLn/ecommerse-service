@@ -1,14 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Post,
-  Put,
-  Query,
-  Res,
-} from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Post, Put, Query, Res } from "@nestjs/common";
 import type { ApiResponse, CompanyPaymentsSettings } from "@commerce-ai/types";
 import type { Response } from "express";
 
@@ -92,9 +82,7 @@ export class PaymentsController {
 
   @Roles("owner")
   @Delete("connection")
-  async disconnect(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<ApiResponse<null>> {
+  async disconnect(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponse<null>> {
     await this.connectionService.disconnect(user.companyId);
     return {
       status: "success",
@@ -179,8 +167,7 @@ export class PaymentsController {
     const isPreapproval =
       eventType === "subscription_preapproval" || eventType.includes("preapproval");
     const isAuthorizedPayment =
-      eventType === "subscription_authorized_payment" ||
-      eventType.includes("authorized_payment");
+      eventType === "subscription_authorized_payment" || eventType.includes("authorized_payment");
     const isPayment = eventType === "payment" || params.topic === "payment" || !eventType;
 
     if (isPreapproval && resourceId) {

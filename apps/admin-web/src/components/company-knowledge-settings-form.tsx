@@ -100,8 +100,8 @@ export function CompanyKnowledgeSettingsForm() {
     <section id="conocimiento" className="flex max-w-4xl flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          PDFs con texto seleccionable (no escaneados). Sin los cuatro, el asistente no atiende en
-          WhatsApp.
+          Opcionales: el asistente atiende sin ellos, pero con cada uno responde mejor. Usa PDFs con
+          texto seleccionable (no escaneados).
         </p>
         {slots ? (
           <span className="text-sm tabular-nums">
@@ -127,8 +127,8 @@ export function CompanyKnowledgeSettingsForm() {
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{slot.title}</p>
-                    <StatusPill tone={slot.uploaded ? "positive" : "attention"}>
-                      {slot.uploaded ? "Cargado" : "Falta"}
+                    <StatusPill tone={slot.uploaded ? "positive" : "neutral"}>
+                      {slot.uploaded ? "Cargado" : "Sin subir"}
                     </StatusPill>
                   </div>
                   <p className="text-sm text-muted-foreground">{slot.reason}</p>

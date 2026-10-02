@@ -398,9 +398,13 @@ describe("AuthService", () => {
 
     it("plan de pago: no crea cuenta y devuelve initPoint de MP", async () => {
       usersService.findByEmail.mockResolvedValue(null);
-      const billing = (service as unknown as { billingService: {
-        createPendingRegistrationCheckout: jest.Mock;
-      } }).billingService;
+      const billing = (
+        service as unknown as {
+          billingService: {
+            createPendingRegistrationCheckout: jest.Mock;
+          };
+        }
+      ).billingService;
 
       const outcome = await service.register({
         name: "Pago User",

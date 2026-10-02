@@ -6,10 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type {
-  CompanyPaymentsSettings,
-  MercadoPagoConnectionView,
-} from "@commerce-ai/types";
+import type { CompanyPaymentsSettings, MercadoPagoConnectionView } from "@commerce-ai/types";
 import { isCompanyPaymentsConfigured } from "@commerce-ai/types";
 import type { MercadoPagoConnection, MercadoPagoConnectionSource } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -49,14 +46,12 @@ export class MercadoPagoConnectionService {
   isOAuthConfigured(): boolean {
     return Boolean(
       this.config.get("MP_CLIENT_ID", { infer: true })?.trim() &&
-        this.config.get("MP_CLIENT_SECRET", { infer: true })?.trim() &&
-        this.getRedirectUri(),
+      this.config.get("MP_CLIENT_SECRET", { infer: true })?.trim() &&
+      this.getRedirectUri(),
     );
   }
 
-  toPaymentsSettings(
-    connection: MercadoPagoConnection | null,
-  ): CompanyPaymentsSettings {
+  toPaymentsSettings(connection: MercadoPagoConnection | null): CompanyPaymentsSettings {
     const oauthAvailable = this.isOAuthConfigured();
     if (!connection || !isCompanyPaymentsConfigured(connection)) {
       return { isConfigured: false, connection: null, oauthAvailable };
@@ -216,7 +211,11 @@ export class MercadoPagoConnectionService {
 
     const clientId = this.config.get("MP_CLIENT_ID", { infer: true })!.trim();
     const redirectUri = this.getRedirectUri()!;
-    const state = this.signState({ companyId: scoped, userId, exp: Date.now() + OAUTH_STATE_TTL_MS });
+    const state = this.signState({
+      companyId: scoped,
+      userId,
+      exp: Date.now() + OAUTH_STATE_TTL_MS,
+    });
 
     const url = new URL("https://auth.mercadopago.com/authorization");
     url.searchParams.set("client_id", clientId);
@@ -273,8 +272,7 @@ export class MercadoPagoConnectionService {
           accessToken: token.access_token,
           refreshToken: token.refresh_token ?? null,
           publicKey: token.public_key ?? null,
-          mpUserId:
-            profile.mpUserId ?? (token.user_id != null ? String(token.user_id) : null),
+          mpUserId: profile.mpUserId ?? (token.user_id != null ? String(token.user_id) : null),
           mpNickname: profile.mpNickname,
           mpEmail: profile.mpEmail,
           mpFirstName: profile.mpFirstName,
@@ -289,8 +287,7 @@ export class MercadoPagoConnectionService {
           accessToken: token.access_token,
           refreshToken: token.refresh_token ?? null,
           publicKey: token.public_key ?? null,
-          mpUserId:
-            profile.mpUserId ?? (token.user_id != null ? String(token.user_id) : null),
+          mpUserId: profile.mpUserId ?? (token.user_id != null ? String(token.user_id) : null),
           mpNickname: profile.mpNickname,
           mpEmail: profile.mpEmail,
           mpFirstName: profile.mpFirstName,
@@ -335,9 +332,7 @@ export class MercadoPagoConnectionService {
     }
 
     const expiresAt =
-      typeof token.expires_in === "number"
-        ? new Date(Date.now() + token.expires_in * 1000)
-        : null;
+      typeof token.expires_in === "number" ? new Date(Date.now() + token.expires_in * 1000) : null;
 
     await this.prisma.mercadoPagoConnection.update({
       where: { id: connection.id },
@@ -490,7 +485,9 @@ export class MercadoPagoConnectionService {
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
       throw new Error("state firmado inválido");
     }
-    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as OAuthStatePayload;
+    const payload = JSON.parse(
+      Buffer.from(body, "base64url").toString("utf8"),
+    ) as OAuthStatePayload;
     if (!payload.companyId || !payload.userId || !payload.exp) {
       throw new Error("state incompleto");
     }
