@@ -3,9 +3,10 @@ from typing import Literal
 
 from app.core.text import strip_accents
 
-OrderChatIntent = Literal["view_cart", "clear_cart", "checkout", "add_to_cart"]
+OrderChatIntent = Literal["view_cart", "clear_cart", "checkout", "add_to_cart", "track_order"]
 
 _A = re.ASCII
+_ORDER_NUMBER_RE = re.compile(r"\b((?:ord|pos)-[a-z0-9]{4,12})\b", _A)
 SPANISH_QTY = r"una|uno|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+"
 
 
@@ -131,7 +132,51 @@ def bot_offered_add_to_cart(bot_text: str) -> bool:
     )
 
 
+def extract_tracked_order_number(text: str) -> str | None:
+    """Código ORD-… o POS-… si el cliente lo escribió."""
+    match = _ORDER_NUMBER_RE.search(_normalize(text))
+    return match.group(1).upper() if match else None
+
+
+def detects_order_tracking(text: str) -> bool:
+    """Pregunta por el estado de un pedido, con o sin número."""
+    normalized = _normalize(text)
+    if extract_tracked_order_number(normalized):
+        return True
+    return bool(
+        re.search(
+            r"\b(donde\s+esta|como\s+va|estado\s+de(l)?|seguimiento\s+de(l)?|"
+            r"rastrear|rastreo|mi\s+pedido|mi\s+orden|guia\s+de\s+envio)\b",
+            normalized,
+            _A,
+        )
+    )
+
+
+def is_direct_product_inquiry(text: str) -> bool:
+    """Pregunta de catálogo, precio, envío o un comando de compra.
+
+    Un saludo suelto no cuenta: en ese caso el menú bot/asesor sigue vigente.
+    """
+    normalized = _normalize(text)
+    if looks_like_catalog_inquiry(normalized):
+        return True
+    if detects_add_to_cart(normalized) or detects_view_cart(normalized) or detects_checkout(normalized):
+        return True
+    return bool(
+        re.search(
+            r"\b(precio|precios|cuanto|cuesta|venden|catalogo|stock|talla|tallas|"
+            r"color|colores|disponible|disponibles|envio|envios|garantia|comprar|"
+            r"pedir|gorra|gorras|camisa|pantalon|jean|zapato)\b",
+            normalized,
+            _A,
+        )
+    )
+
+
 def resolve_order_chat_intent(text: str) -> OrderChatIntent | None:
+    if detects_order_tracking(text):
+        return "track_order"
     if detects_view_cart(text):
         return "view_cart"
     if detects_clear_cart(text):

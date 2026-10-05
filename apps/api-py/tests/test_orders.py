@@ -3,6 +3,8 @@ import re
 from app.modules.orders.order_intent import (
     bot_offered_add_to_cart,
     detects_affirmative_cart_confirm,
+    extract_tracked_order_number,
+    is_direct_product_inquiry,
     resolve_order_chat_intent,
 )
 from app.modules.orders.service import parse_quantity_from_text, significant_tokens, tokens_overlap
@@ -60,6 +62,23 @@ def test_affirmative_confirm_and_bot_offer() -> None:
     )
     assert bot_offered_add_to_cart("Perfecto, agregaremos 2 gorras a tu carrito.")
     assert not bot_offered_add_to_cart("Hola, ¿en qué te ayudo?")
+
+
+def test_detects_order_tracking() -> None:
+    assert resolve_order_chat_intent("¿Cómo va mi pedido ORD-A1B2C3?") == "track_order"
+    assert extract_tracked_order_number("¿Cómo va mi pedido ORD-A1B2C3?") == "ORD-A1B2C3"
+    assert resolve_order_chat_intent("Dónde está mi pedido?") == "track_order"
+    assert extract_tracked_order_number("Dónde está mi pedido?") is None
+    assert resolve_order_chat_intent("confirmar pedido") == "checkout"
+
+
+def test_direct_product_inquiry_skips_greeting() -> None:
+    assert is_direct_product_inquiry("Hola, ¿cuánto cuesta la gorra negra?")
+    assert is_direct_product_inquiry("Tienen disponible en talla M?")
+    assert is_direct_product_inquiry("Qué productos tienen en catálogo?")
+    assert is_direct_product_inquiry("Hacen envíos a Medellín?")
+    assert not is_direct_product_inquiry("Hola")
+    assert not is_direct_product_inquiry("Buenos días")
 
 
 def test_parse_quantity_and_tokens() -> None:

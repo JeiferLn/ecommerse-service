@@ -11,7 +11,8 @@ Código en `app/modules/orders/`.
 
 ## Bot
 
-- Botones del carrito (`cart:*`, `variant:<id>`) y, si el cliente escribe, intenciones en `order_intent.py` antes del modelo: `agregar`, `ver/vaciar carrito`, `confirmar pedido`.
+- Botones del carrito (`cart:*`, `variant:<id>`) y, si el cliente escribe, intenciones en `order_intent.py` antes del modelo: `agregar`, `ver/vaciar carrito`, `confirmar pedido`, seguimiento (`ORD-…` / "dónde está mi pedido").
+- Si el hilo sigue en `pending` y el mensaje ya es una consulta de producto, entra al bot sin esperar "bot" o "asesor". Un saludo suelto sigue mostrando el menú.
 - `confirmar pedido` → `begin_checkout`: orden `awaiting_payment` con `checkoutToken`.
 - Mensajes al cliente: `format_cart_message` (`with_instructions=False` cuando va con botones) y `format_order_confirmation_message` (`include_link=False` cuando el enlace va en el botón Pagar).
 

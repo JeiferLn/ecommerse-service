@@ -151,7 +151,77 @@ class OpenRouterChatProvider:
         return ChatCompletionResult(content, data.get("model") or chosen_model)
 
 
+class GeminiChatProvider:
+    """Gemini por HTTP. El tope de salida queda bajo para no gastar tokens de más."""
+
+    _DEFAULT_MODEL = "gemini-2.5-flash"
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> ChatCompletionResult:
+        settings = get_settings()
+        api_key = (settings.GEMINI_API_KEY or "").strip()
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY no configurada")
+        chosen = model or _gemini_model(settings.AI_MODEL)
+        system = "\n\n".join(message.content for message in messages if message.role == "system")
+        contents = [
+            {
+                "role": "user" if message.role == "user" else "model",
+                "parts": [{"text": message.content}],
+            }
+            for message in messages
+            if message.role != "system"
+        ]
+        if not contents:
+            contents = [{"role": "user", "parts": [{"text": "Hola"}]}]
+        body: dict[str, object] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.2 if temperature is None else temperature,
+                "maxOutputTokens": 250 if max_tokens is None else max_tokens,
+            },
+        }
+        if system:
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{chosen}:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json=body,
+            )
+        if response.status_code >= 400:
+            logger.error("Gemini error %s: %s", response.status_code, response.text[:300])
+            raise RuntimeError(f"Gemini respondió {response.status_code}")
+
+        data = response.json()
+        parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+        content = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+        if not content:
+            logger.warning("Gemini empty content (model=%s)", chosen)
+            raise RuntimeError("Gemini devolvió una respuesta vacía")
+        return ChatCompletionResult(content, chosen)
+
+
+def _gemini_model(configured: str | None) -> str:
+    model = (configured or "").strip()
+    if model.startswith("gemini"):
+        return model
+    return GeminiChatProvider._DEFAULT_MODEL
+
+
 def get_chat_provider() -> AiChatProvider:
-    if get_settings().AI_PROVIDER == "mock":
+    settings = get_settings()
+    if settings.AI_PROVIDER == "mock":
         return MockChatProvider()
+    if settings.AI_PROVIDER == "gemini":
+        if (settings.GEMINI_API_KEY or "").strip():
+            return GeminiChatProvider()
+        logger.warning("AI_PROVIDER=gemini sin GEMINI_API_KEY; se usa OpenRouter")
     return OpenRouterChatProvider()

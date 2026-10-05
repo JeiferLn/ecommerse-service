@@ -58,8 +58,9 @@ class Settings(BaseSettings):
     WHATSAPP_INTERACTIVE_ENABLED: bool = True
     TWILIO_CHECKOUT_CONTENT_SID: str | None = None
     AI_ENABLED: bool = True
-    AI_PROVIDER: Literal["openrouter", "openai", "mock"] = "openrouter"
+    AI_PROVIDER: Literal["openrouter", "openai", "gemini", "mock"] = "openrouter"
     OPENROUTER_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
     AI_BASE_URL: str = "https://openrouter.ai/api/v1"
     AI_MODEL: str = "openrouter/free"
     AI_MAX_PRODUCTS: int = Field(default=25, gt=0)
@@ -114,9 +115,12 @@ class Settings(BaseSettings):
     def _production_rules(self) -> "Settings":
         errors: list[str] = []
         has_key = bool((self.OPENROUTER_API_KEY or "").strip())
+        has_gemini_key = bool((self.GEMINI_API_KEY or "").strip())
         if self.NODE_ENV == "production":
             if self.AI_ENABLED and self.AI_PROVIDER == "openrouter" and not has_key:
                 errors.append("En production con AI_ENABLED y openrouter se requiere OPENROUTER_API_KEY")
+            if self.AI_ENABLED and self.AI_PROVIDER == "gemini" and not has_gemini_key:
+                errors.append("En production con AI_ENABLED y gemini se requiere GEMINI_API_KEY")
             if self.EMBEDDING_PROVIDER == "openrouter" and not has_key:
                 errors.append(
                     "En production con EMBEDDING_PROVIDER=openrouter se requiere OPENROUTER_API_KEY"

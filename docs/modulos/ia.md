@@ -5,7 +5,7 @@ Código en `app/modules/ai/`.
 ## Proveedores
 
 - Abstraídos detrás de `AiChatProvider` (`providers.py`, `get_chat_provider()`); nunca acoplar lógica de negocio a un SDK de proveedor.
-- Por defecto **OpenRouter** (`AI_PROVIDER=openrouter`) vía HTTP compatible con chat completions. `AI_PROVIDER=mock` para tests.
+- Por defecto **OpenRouter** (`AI_PROVIDER=openrouter`) vía HTTP compatible con chat completions. `AI_PROVIDER=gemini` usa la API de Gemini (`GEMINI_API_KEY`; sin key vuelve a OpenRouter). `AI_PROVIDER=mock` para tests.
 
 ## Flujo
 
@@ -24,7 +24,7 @@ Separados del servicio: `prompts.py` (`build_sales_assistant_system_prompt`) y `
 
 ## Configuración
 
-`AI_ENABLED`, `OPENROUTER_API_KEY`, `AI_BASE_URL`, `AI_MODEL` (demo típico `openrouter/free`), `AI_MAX_PRODUCTS`, `AI_HISTORY_LIMIT`, `AI_FALLBACK_TEXT`, `AI_HTTP_REFERER`, `AI_APP_TITLE`.
+`AI_ENABLED`, `AI_PROVIDER` (`openrouter` | `openai` | `gemini` | `mock`), `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` (demo típico `openrouter/free`; con Gemini, `gemini-2.5-flash` si el modelo configurado no empieza por `gemini`), `AI_MAX_PRODUCTS`, `AI_HISTORY_LIMIT`, `AI_FALLBACK_TEXT`, `AI_HTTP_REFERER`, `AI_APP_TITLE`.
 
 ## Pendiente
 

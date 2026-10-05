@@ -22,6 +22,8 @@ from app.modules.billing.service import BillingService
 from app.modules.orders.order_intent import (
     bot_offered_add_to_cart,
     detects_affirmative_cart_confirm,
+    extract_tracked_order_number,
+    is_direct_product_inquiry,
     resolve_order_chat_intent,
 )
 from app.modules.orders.service import OrdersService, format_cart_message
@@ -477,7 +479,7 @@ class WhatsAppWebhookService:
             if chose_human:
                 state.next_handler = "human"
                 state.outbound.append(OutboundMessage(human_confirm))
-            elif chose_bot:
+            elif chose_bot or (not action and is_direct_product_inquiry(customer_text)):
                 state.next_handler = "bot"
                 state.outbound.append(OutboundMessage(bot_confirm))
                 await push_bot_follow_up()
@@ -722,6 +724,14 @@ class WhatsAppWebhookService:
                 return [self._cart_outbound(await self.orders.clear_cart(company_id, conversation_id))]
             if intent == "checkout":
                 return [await self._checkout_outbound(company_id, conversation_id, cart, playground)]
+            if intent == "track_order":
+                return [
+                    OutboundMessage(
+                        await self.orders.conversation_order_tracking(
+                            company_id, conversation_id, extract_tracked_order_number(customer_text)
+                        )
+                    )
+                ]
 
             match = await self.orders.find_variant_for_add_intent(company_id, customer_text)
             if not match:
@@ -770,6 +780,9 @@ class WhatsAppWebhookService:
         from_current = extract_residual_after_bot_choice(customer_text)
         if from_current and not is_only_greeting(from_current):
             return from_current
+        stripped = customer_text.strip()
+        if stripped and is_direct_product_inquiry(stripped) and not is_only_greeting(stripped):
+            return stripped
         return await self._find_prior_customer_question(conversation_id)
 
     async def _find_prior_customer_question(self, conversation_id: str) -> str | None:

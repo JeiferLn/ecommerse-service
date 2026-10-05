@@ -390,6 +390,40 @@ def format_order_confirmation_message(order: dict[str, Any], *, include_link: bo
     )
 
 
+_ORDER_STATUS_LABELS = {
+    "draft": "Borrador",
+    "confirmed": "Confirmado",
+    "awaiting_payment": "Pendiente de pago",
+    "paid": "Pagado y confirmado",
+    "preparing": "En preparación",
+    "shipped": "En camino / despachado",
+    "delivered": "Entregado",
+    "cancelled": "Cancelado",
+}
+
+
+def format_order_tracking_message(order: Order) -> str:
+    """Respuesta de WhatsApp con el estado de un pedido ya creado."""
+    lines = [f"• {item.quantity}x {item.product_name} ({item.variant_name})" for item in order.items]
+    status = _ORDER_STATUS_LABELS.get(order.status, order.status)
+    created = order.created_at.strftime("%d/%m/%Y %H:%M") if order.created_at else ""
+    message = [
+        f"Información de tu pedido {order.number}:",
+        f"• Estado: {status}",
+        f"• Fecha: {created}",
+        f"• Total: ${_money(num(order.total))} {order.currency}",
+        "",
+        "Productos incluidos:",
+        *(lines or ["• Productos del pedido"]),
+    ]
+    checkout_url = build_checkout_url(order.checkout_token)
+    if order.status == "awaiting_payment" and checkout_url:
+        message.extend(["", "Para completar el pago, ingresa aquí:", checkout_url])
+    elif order.status in ("preparing", "shipped"):
+        message.extend(["", 'Si necesitas ayuda con la entrega, escribe "asesor" para hablar con la tienda.'])
+    return "\n".join(message)
+
+
 def format_payment_confirmed_whatsapp_message(order: Order) -> str:
     lines = [f"• {item.product_name} ({item.variant_name}) x{item.quantity}" for item in order.items]
     return "\n".join(
@@ -407,6 +441,24 @@ class OrdersService:
         self.session = session
 
     # Carrito
+
+    async def conversation_order_tracking(
+        self, company_id: str | None, conversation_id: str, order_number: str | None
+    ) -> str:
+        """Último pedido del chat, o el número que el cliente escribió."""
+        scoped = _require_company(company_id)
+        query = select(Order).where(Order.company_id == scoped).options(selectinload(Order.items))
+        if order_number:
+            query = query.where(func.lower(Order.number) == order_number.lower())
+        else:
+            query = query.where(Order.conversation_id == conversation_id).order_by(Order.created_at.desc())
+        order = await self.session.scalar(query.limit(1))
+        if not order:
+            return (
+                "No encontramos ningún pedido registrado para este chat. "
+                "Si ya tienes un número de orden (ej. ORD-1234), escríbemelo para buscarlo."
+            )
+        return format_order_tracking_message(order)
 
     async def get_cart_for_conversation(self, company_id: str | None, conversation_id: str) -> dict[str, Any]:
         scoped = _require_company(company_id)
