@@ -17,11 +17,11 @@ scripts/       # Utilidades de desarrollo
 
 ## Gestores y paquetes
 
-- **bun** (workspaces, `packageManager: bun@…`) + Turborepo. `bun.lock` es el lockfile válido; `pnpm-lock.yaml` es un resto histórico.
+- **pnpm** (workspaces en `pnpm-workspace.yaml`, `packageManager: pnpm@…`) + Turborepo. `pnpm-lock.yaml` es el lockfile válido.
 - Paquetes `@commerce-ai/*` (`apps/*` y `packages/*`), siempre `private`; nada se publica a npm.
-- Toda dependencia JS nueva se instala desde el workspace que la usa: `cd apps/<app> && bun add <pkg>`.
+- Toda dependencia JS nueva se instala desde el workspace que la usa: `pnpm --filter @commerce-ai/<app> add <pkg>`.
 - El backend es Python y usa **uv**: `cd apps/api-py && uv add <pkg>` (dev: `uv add --dev <pkg>`). Su `package.json` solo expone scripts (`dev`, `test`, `lint`, `typecheck`, `db:*`) para que turbo lo orqueste; requiere `uv` en el PATH.
-- `packages/types` se consume compilado (`dist`): tras cambiarlo, `cd packages/types && bun run build`.
+- `packages/types` se consume compilado (`dist`): tras cambiarlo, `pnpm --filter @commerce-ai/types build`.
 
 ## Naming
 

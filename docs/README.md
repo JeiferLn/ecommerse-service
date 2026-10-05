@@ -6,7 +6,7 @@ Convenciones y referencia técnica para todo desarrollo en el proyecto. El estad
 
 | Documento                                         | Contenido                                                          |
 | ------------------------------------------------- | ------------------------------------------------------------------ |
-| [Monorepo](general/monorepo.md)                   | Estructura de carpetas, gestores (bun, uv, turbo), naming, commits |
+| [Monorepo](general/monorepo.md)                   | Estructura de carpetas, gestores (pnpm, uv, turbo), naming, commits |
 | [Autenticación y roles](general/autenticacion.md) | Roles, matriz de capacidades, reglas para endpoints, sesión        |
 | [Seguridad](general/seguridad.md)                 | Producción, rate limit, uploads, webhooks públicos                 |
 | [Entorno y verificación](general/entorno.md)      | Variables de entorno, typecheck, tests, lint y formato             |

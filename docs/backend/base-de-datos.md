@@ -10,9 +10,9 @@
 ## Migraciones
 
 1. Editar `models.py`.
-2. `bun run db:revision "<descripcion>"` (o `uv run alembic revision --autogenerate -m …`).
+2. `pnpm --filter @commerce-ai/api-py db:revision -- "<descripcion>"` (o `uv run alembic revision --autogenerate -m …`).
 3. Revisar el archivo generado en `alembic/versions/`.
-4. `bun run db:migrate`.
+4. `pnpm --filter @commerce-ai/api-py db:migrate`.
 
 Reglas:
 
@@ -22,4 +22,4 @@ Reglas:
 
 ## Seed
 
-Idempotente (usuario `admin@admin.com` y planes free/pro/business): `bun run db:seed` (`uv run python -m app.seed`).
+Idempotente (usuario `admin@admin.com` y planes free/pro/business): `pnpm --filter @commerce-ai/api-py db:seed` (`uv run python -m app.seed`).

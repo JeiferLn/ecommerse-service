@@ -699,25 +699,26 @@ En el corte (octubre 2026):
 
 # Puesta en Marcha
 
-Requisitos: Node.js 20+, Bun 1.4+, Python 3.12+, [uv](https://docs.astral.sh/uv/getting-started/installation/) en el `PATH`, Docker.
+Requisitos: Node.js 20+, pnpm 12+ (Corepack lo activa con el campo `packageManager`), Python 3.12+, [uv](https://docs.astral.sh/uv/getting-started/installation/) en el `PATH`, Docker.
 
 ```bash
-bun install                                   # dependencias del monorepo (admin-web y paquetes)
-bun run docker:up                             # PostgreSQL (pgvector) + Redis
-cd packages/types && bun run build && cd -    # compilar los tipos compartidos
+corepack enable pnpm                          # una vez, si pnpm no está en el PATH
+pnpm install                                  # dependencias del monorepo (admin-web y paquetes)
+pnpm docker:up                                # PostgreSQL (pgvector) + Redis
+pnpm --filter @commerce-ai/types build        # compilar los tipos compartidos
 cp apps/api-py/.env.example apps/api-py/.env  # y completar los valores
 cd apps/api-py && uv sync && uv run alembic upgrade head && uv run python -m app.seed && cd -
-bun run dev                                   # api-py en :4000 y admin-web en :3000
+pnpm dev                                      # api-py en :4000 y admin-web en :3000
 ```
 
 Otros comandos:
 
 ```bash
-bun run build       # build de producción (turborepo, en orden de dependencias)
-bun run typecheck   # tsc --noEmit en admin-web y mypy en api-py
-bun run test        # pytest en api-py
-bun run lint        # eslint en admin-web (hoy falla; ver Fase 14) y ruff en api-py
-bun run format      # prettier --write
+pnpm build       # build de producción (turborepo, en orden de dependencias)
+pnpm typecheck   # tsc --noEmit en admin-web y mypy en api-py
+pnpm test        # pytest en api-py
+pnpm lint        # eslint en admin-web (hoy falla; ver Fase 14) y ruff en api-py
+pnpm format      # prettier --write
 ```
 
 Base de datos (desde `apps/api-py`):

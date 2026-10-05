@@ -13,12 +13,12 @@
 
 Desde la raíz, vía turbo (o dentro de cada app):
 
-| Comando             | Qué hace                                                                   |
-| ------------------- | -------------------------------------------------------------------------- |
-| `bun run typecheck` | `tsc --noEmit` en las apps TS y `mypy app` en `apps/api-py`                |
-| `bun run test`      | pytest en `apps/api-py` (un archivo: `uv run pytest tests/test_orders.py`) |
-| `bun run lint`      | `ruff check app tests` en `apps/api-py`; eslint en `admin-web`             |
-| `bun run build`     | build de producción de las apps TS (dependencias en orden)                 |
+| Comando          | Qué hace                                                                   |
+| ---------------- | -------------------------------------------------------------------------- |
+| `pnpm typecheck` | `tsc --noEmit` en las apps TS y `mypy app` en `apps/api-py`                |
+| `pnpm test`      | pytest en `apps/api-py` (un archivo: `uv run pytest tests/test_orders.py`) |
+| `pnpm lint`      | `ruff check app tests` en `apps/api-py`; eslint en `admin-web`             |
+| `pnpm build`     | build de producción de las apps TS (dependencias en orden)                 |
 
 Formato: TypeScript con `node_modules/.bin/prettier --write <archivos>` desde la raíz; Python con `uv run ruff format app tests` en `apps/api-py`.
 
