@@ -14,7 +14,7 @@ from app.modules.platform.router import router as platform_router
 from app.modules.products.router import router as products_router
 from app.modules.whatsapp.router import admin_router as admin_whatsapp_router
 from app.modules.whatsapp.router import inbox_router as whatsapp_inbox_router
-from app.modules.whatsapp.router import playground_router
+from app.modules.whatsapp.router import meta_cloud_test_router, playground_router
 from app.modules.whatsapp.router import router as whatsapp_router
 
 routers: list[APIRouter] = [
@@ -33,5 +33,6 @@ routers: list[APIRouter] = [
     whatsapp_inbox_router,
     playground_router,
     admin_whatsapp_router,
+    meta_cloud_test_router,
     platform_router,
 ]

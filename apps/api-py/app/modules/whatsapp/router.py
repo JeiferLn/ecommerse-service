@@ -12,6 +12,7 @@ from app.core.schemas import QueryModel, RequestModel
 from app.core.security import CurrentUser, require_roles
 from app.core.validation import boolean, integer, matches, one_of, string
 from app.core.validation import text as length
+from app.modules.whatsapp import meta_cloud
 from app.modules.whatsapp.connection_service import WhatsAppConnectionService
 from app.modules.whatsapp.inbox_service import WhatsAppInboxService
 from app.modules.whatsapp.playground_service import AssistantPlaygroundService
@@ -30,6 +31,9 @@ playground_router = APIRouter(
     prefix="/assistant/playground", tags=["whatsapp"], dependencies=[require_roles("owner", "manager")]
 )
 admin_router = APIRouter(prefix="/admin/companies", tags=["admin"], dependencies=[require_roles("admin")])
+meta_cloud_test_router = APIRouter(
+    prefix="/admin/whatsapp-cloud-test", tags=["admin"], dependencies=[require_roles("admin")]
+)
 
 OwnerOrManager = [require_roles("owner", "manager")]
 
@@ -70,6 +74,22 @@ class PlaygroundMessageBody(RequestModel):
 
 class UpdateConversationHandlerBody(RequestModel):
     handler: Annotated[str, one_of(("bot", "human"), "handler debe ser bot o human")]
+
+
+class MetaCloudTestSendBody(RequestModel):
+    """Demo App Review: enviar texto por Cloud API del número de prueba de Meta."""
+
+    from_display_number: Annotated[
+        str,
+        string("fromDisplayNumber must be a string"),
+        length(min_len=8, min_msg="Indica el número de prueba desde el que envías"),
+    ]
+    to: Annotated[
+        str,
+        string("to must be a string"),
+        length(min_len=8, min_msg="Indica el número WhatsApp de destino"),
+    ]
+    text: MessageText
 
 
 class UpsertWhatsAppConnectionBody(RequestModel):
@@ -310,3 +330,16 @@ async def assign_whatsapp_connection(
 async def unassign_whatsapp_connection(company_id: str, session: DbSession) -> Any:
     await WhatsAppConnectionService(session).remove(company_id)
     return ok(None, "Número retirado")
+
+
+@meta_cloud_test_router.get("")
+async def get_meta_cloud_test_status() -> Any:
+    return ok(meta_cloud.cloud_status())
+
+
+@meta_cloud_test_router.post("/send", status_code=201)
+async def send_meta_cloud_test_message(body: MetaCloudTestSendBody) -> Any:
+    data = await meta_cloud.send_text(
+        to=body.to, text=body.text, from_display=body.from_display_number
+    )
+    return ok(data, "Mensaje enviado por WhatsApp Cloud API")

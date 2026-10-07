@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LayoutDashboard, Settings } from "lucide-react";
+import { Building2, LayoutDashboard, MessageCircle, Settings } from "lucide-react";
 
 import {
   NAV_ITEM_ACTIVE,
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/admin", label: "Resumen", icon: LayoutDashboard },
   { href: "/admin/companies", label: "Empresas", icon: Building2 },
+  { href: "/admin/whatsapp-test", label: "WhatsApp Test", icon: MessageCircle },
   { href: "/admin/settings", label: "Configuración", icon: Settings },
 ] as const;
 

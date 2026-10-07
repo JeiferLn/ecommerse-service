@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     META_APP_SECRET: str | None = None
     META_EMBEDDED_SIGNUP_CONFIG_ID: str | None = None
     TWILIO_TECH_PROVIDER_ENABLED: bool = False
+    # WhatsApp Cloud API (número de prueba Meta; demo / App Review sin Twilio).
+    META_WA_ACCESS_TOKEN: str | None = None
+    META_WA_PHONE_NUMBER_ID: str | None = None
+    META_WA_DISPLAY_PHONE_NUMBER: str | None = None
+    META_GRAPH_API_VERSION: str = "v21.0"
     WHATSAPP_AUTO_REPLY_ENABLED: bool = True
     WHATSAPP_AUTO_REPLY_TEXT: str = "Gracias por tu mensaje. Te responderemos pronto."
     WHATSAPP_SIMULATE_SEND: bool = False
@@ -156,6 +161,13 @@ class Settings(BaseSettings):
             and (self.META_APP_ID or "").strip()
             and (self.META_APP_SECRET or "").strip()
             and (self.META_EMBEDDED_SIGNUP_CONFIG_ID or "").strip()
+        )
+
+    @property
+    def meta_cloud_api_ready(self) -> bool:
+        """Token + Phone Number ID del número de prueba (Cloud API)."""
+        return bool(
+            (self.META_WA_ACCESS_TOKEN or "").strip() and (self.META_WA_PHONE_NUMBER_ID or "").strip()
         )
 
     @property
