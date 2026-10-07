@@ -86,6 +86,29 @@ class UpsertWhatsAppConnectionBody(RequestModel):
     is_active: Annotated[bool | None, boolean("isActive must be a boolean value")] = None
 
 
+class CompanyNumberBody(RequestModel):
+    phone_number: Annotated[
+        str,
+        string("phoneNumber must be a string"),
+        length(min_len=8, min_msg="Indica el número de WhatsApp de tu tienda"),
+        matches(r"^\+[1-9]\d{7,14}$", "Usa formato internacional con +: +573001112233", re.ASCII),
+    ] = Field(alias="phoneNumber")
+
+
+class NumberRequestBody(RequestModel):
+    kind: Annotated[
+        str, one_of(("platform_number", "own_number"), "kind debe ser platform_number u own_number")
+    ]
+    phone_number: Annotated[
+        Annotated[
+            str,
+            matches(r"^\+[1-9]\d{7,14}$", "Usa formato internacional con +: +573001112233", re.ASCII),
+        ]
+        | None,
+        string("phoneNumber must be a string"),
+    ] = Field(default=None, alias="phoneNumber")
+
+
 class ListConversationsQuery(QueryModel):
     page: Annotated[
         int, integer("page must be an integer number", minimum=1, min_msg="page must not be less than 1")
@@ -162,10 +185,36 @@ async def get_connection(user: CurrentUser, session: DbSession) -> Any:
 
 
 @router.post("/connection/shared", status_code=201, dependencies=[require_roles("owner")])
-async def activate_shared_connection(user: CurrentUser, session: DbSession) -> Any:
-    """Activa el canal al instante con el número compartido de la plataforma."""
-    data = await WhatsAppConnectionService(session).activate_shared(user.company_id)
+async def activate_shared_connection(body: CompanyNumberBody, user: CurrentUser, session: DbSession) -> Any:
+    """Activa el canal al instante con el número compartido de la plataforma y el WhatsApp de la tienda."""
+    data = await WhatsAppConnectionService(session).activate_shared(user.company_id, body.phone_number)
     return ok(data, "Canal de WhatsApp activado")
+
+
+@router.put("/connection/phone", dependencies=[require_roles("owner")])
+async def update_company_number(body: CompanyNumberBody, user: CurrentUser, session: DbSession) -> Any:
+    data = await WhatsAppConnectionService(session).update_company_number(user.company_id, body.phone_number)
+    return ok(data, "Número actualizado")
+
+
+@router.get("/number-request", dependencies=OwnerOrManager)
+async def get_number_request(user: CurrentUser, session: DbSession) -> Any:
+    return ok(await WhatsAppConnectionService(session).get_number_request(user.company_id))
+
+
+@router.post("/number-request", status_code=201, dependencies=[require_roles("owner")])
+async def request_number(body: NumberRequestBody, user: CurrentUser, session: DbSession) -> Any:
+    """Pide un número propio (planes de pago); la plataforma lo asigna después."""
+    data = await WhatsAppConnectionService(session).request_number(
+        user.company_id, body.kind, body.phone_number
+    )
+    return ok(data, "Solicitud enviada")
+
+
+@router.delete("/number-request", dependencies=[require_roles("owner")])
+async def cancel_number_request(user: CurrentUser, session: DbSession) -> Any:
+    await WhatsAppConnectionService(session).cancel_number_request(user.company_id)
+    return ok(None, "Solicitud cancelada")
 
 
 @router.patch("/connection", dependencies=OwnerOrManager)

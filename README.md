@@ -333,7 +333,7 @@ Número compartido de la plataforma (plan Free, sin esperar número propio):
 
 1. En `apps/api-py/.env`: `TWILIO_SHARED_WHATSAPP_NUMBER=+1…` (el sender de Twilio). Ese número no puede estar asignado como número propio de ninguna tienda.
 2. Reiniciar el backend
-3. Con productos, envíos y Mercado Pago listos, el dueño pulsa **Activar canal** en `/whatsapp` y copia su enlace (`…?text=Hola <Tienda> #codigo`)
+3. Con productos, envíos y Mercado Pago listos, el dueño escribe el WhatsApp de su tienda (obligatorio y único entre empresas), pulsa **Activar canal** en `/whatsapp` y copia su enlace (`…?text=Hola <Tienda> #codigo`)
 4. Abrir el enlace en el celular y enviar el mensaje: el bot responde "Estás hablando con _Tienda_." y sigue el flujo normal. Escribir al compartido sin código y sin sesión previa devuelve un mensaje genérico.
 
 Mensajes interactivos (botones, listas, tarjeta de producto y botón de pago):

@@ -1,13 +1,13 @@
 import re
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.errors import bad_request, conflict, not_found
+from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.ids import iso, utcnow
 from app.core.validation import is_unique_violation
 from app.models import (
@@ -18,15 +18,21 @@ from app.models import (
     SharedNumberSession,
     Subscription,
     WhatsAppConnection,
+    WhatsAppNumberRequest,
 )
 from app.modules.billing.service import BillingService
 from app.modules.companies.service import is_company_commerce_configured
 from app.modules.payments.connection_service import is_company_payments_configured
 from app.modules.platform.overrides import platform_overrides
+from app.modules.whatsapp import twilio_client
 from app.modules.whatsapp.phone import normalize_whatsapp_e164
 from app.modules.whatsapp.store_code import build_store_link, build_wa_me_link, slugify_store_code
 
 E164 = re.compile(r"^\+[1-9]\d{7,14}$", re.ASCII)
+# El sandbox de Twilio no aparece en la Senders API; solo se acepta fuera de producción.
+TWILIO_SANDBOX_NUMBER = "+14155238886"
+NUMBER_TAKEN_MESSAGE = "Ese número de WhatsApp ya está registrado por otra empresa"
+COMPANY_NUMBER_FORMAT_MESSAGE = "Usa formato internacional con +: +573001112233"
 
 
 def normalize_shared_number(raw: str | None) -> str | None:
@@ -49,13 +55,16 @@ async def shared_number() -> str | None:
 def connection_dto(
     connection: WhatsAppConnection, store_name: str | None = None, *, expose_shared_number: bool = False
 ) -> dict[str, Any]:
-    """`expose_shared_number` solo para el panel de plataforma: las tiendas no ven el número compartido."""
+    """`expose_shared_number` solo para el panel de plataforma: las tiendas no ven el número compartido.
+
+    Con número propio el enlace va al sender: es el único número por el que el bot recibe mensajes.
+    """
     shared = connection.mode == "shared" and bool(connection.store_code)
     link: str | None
     if shared:
         link = build_store_link(get_settings().FRONTEND_URL, connection.store_code or "")
     else:
-        link = build_wa_me_link(number=connection.display_phone_number or connection.twilio_whatsapp_number)
+        link = build_wa_me_link(number=connection.twilio_whatsapp_number)
     return {
         "id": connection.id,
         "companyId": connection.company_id,
@@ -72,10 +81,27 @@ def connection_dto(
     }
 
 
+def number_request_dto(request: WhatsAppNumberRequest | None) -> dict[str, Any] | None:
+    if request is None:
+        return None
+    return {
+        "kind": request.kind,
+        "phoneNumber": request.phone_number,
+        "createdAt": iso(request.created_at),
+    }
+
+
 def _require_company(company_id: str | None) -> str:
     if not company_id:
         raise bad_request("No perteneces a una empresa")
     return company_id
+
+
+def _e164(raw: str, message: str) -> str:
+    number = normalize_whatsapp_e164(raw)
+    if not E164.match(number):
+        raise bad_request(message)
+    return number
 
 
 class WhatsAppConnectionService:
@@ -123,10 +149,11 @@ class WhatsAppConnectionService:
         connection = await self._find(scoped)
         return connection_dto(connection, connection.company.name) if connection else None
 
-    async def activate_shared(self, company_id: str | None) -> dict[str, Any]:
+    async def activate_shared(self, company_id: str | None, phone_number: str) -> dict[str, Any]:
         """Activa el canal con el número de la plataforma, sin intervención del admin.
 
-        Si la tienda ya tiene conexión (compartida o propia), la devuelve tal cual.
+        La tienda registra su WhatsApp de contacto, que no puede usar otra empresa. Si ya tiene conexión
+        (compartida o propia), la devuelve tal cual.
         """
         scoped = _require_company(company_id)
         existing = await self._find(scoped)
@@ -139,6 +166,7 @@ class WhatsAppConnectionService:
             raise bad_request(
                 "El número compartido de la plataforma no está configurado. Escríbenos para activar tu canal."
             )
+        company_number = await self._validated_company_number(scoped, phone_number, number)
 
         store_name = await self.session.scalar(select(Company.name).where(Company.id == scoped)) or ""
         base = slugify_store_code(store_name)
@@ -146,7 +174,7 @@ class WhatsAppConnectionService:
             connection = WhatsAppConnection(
                 company_id=scoped,
                 twilio_whatsapp_number=number,
-                display_phone_number=None,
+                display_phone_number=company_number,
                 mode="shared",
                 store_code=await self._next_free_store_code(base),
                 is_active=True,
@@ -162,7 +190,73 @@ class WhatsAppConnectionService:
                 raced = await self._find(scoped)
                 if raced:
                     return connection_dto(raced, store_name)
+                if await self._number_taken_by_other(scoped, company_number):
+                    raise conflict(NUMBER_TAKEN_MESSAGE) from error
         raise conflict("No se pudo generar el código de tu tienda. Inténtalo de nuevo.")
+
+    async def update_company_number(self, company_id: str | None, phone_number: str) -> dict[str, Any]:
+        """Cambia el WhatsApp de contacto de la tienda."""
+        scoped = _require_company(company_id)
+        connection = await self._find(scoped)
+        if not connection:
+            raise not_found("Tu tienda aún no tiene el canal de WhatsApp activado")
+        connection.display_phone_number = await self._validated_company_number(
+            scoped, phone_number, await shared_number()
+        )
+        connection.updated_at = utcnow()
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            if is_unique_violation(error):
+                raise conflict(NUMBER_TAKEN_MESSAGE) from error
+            raise
+        return connection_dto(connection, connection.company.name)
+
+    async def get_number_request(self, company_id: str | None) -> dict[str, Any] | None:
+        scoped = _require_company(company_id)
+        return number_request_dto(await self._find_request(scoped))
+
+    async def request_number(
+        self, company_id: str | None, kind: str, phone_number: str | None
+    ) -> dict[str, Any]:
+        """Pide un número propio (planes de pago): uno empresarial nuestro o el de la tienda, conectado
+        por Meta. Queda pendiente hasta que la plataforma lo asigna con `upsert`."""
+        await self.assert_whatsapp_prerequisites(company_id)
+        scoped = _require_company(company_id)
+        if not await self._is_paid_plan(scoped):
+            raise forbidden("El número propio está disponible en los planes de pago. Mejora tu plan.")
+        number: str | None = None
+        if kind == "own_number":
+            if not phone_number:
+                raise bad_request("Indica el número de WhatsApp que quieres conectar")
+            number = _e164(phone_number, COMPANY_NUMBER_FORMAT_MESSAGE)
+            if await self._number_taken_by_other(scoped, number):
+                raise conflict(NUMBER_TAKEN_MESSAGE)
+
+        request = await self._find_request(scoped)
+        if request is None:
+            request = WhatsAppNumberRequest(company_id=scoped)
+            self.session.add(request)
+        request.kind = kind
+        request.phone_number = number
+        request.updated_at = utcnow()
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            if is_unique_violation(error):
+                raise conflict("Ya tienes una solicitud en curso. Recarga la página.") from error
+            raise
+        return number_request_dto(request) or {}
+
+    async def cancel_number_request(self, company_id: str | None) -> None:
+        scoped = _require_company(company_id)
+        request = await self._find_request(scoped)
+        if not request:
+            raise not_found("No tienes una solicitud de número pendiente")
+        await self.session.delete(request)
+        await self.session.commit()
 
     async def upsert(
         self,
@@ -177,14 +271,17 @@ class WhatsAppConnectionService:
         if active:
             await self.assert_whatsapp_prerequisites(company_id)
         scoped = _require_company(company_id)
-        number = normalize_whatsapp_e164(twilio_whatsapp_number)
-        if not E164.match(number):
-            raise bad_request("Usa formato E.164 con +: +14155238886")
+        number = _e164(twilio_whatsapp_number, "Usa formato E.164 con +: +14155238886")
         if number == await shared_number():
             raise bad_request(
                 "Ese es el número compartido de la plataforma; asígnale a la tienda un número propio."
             )
-        display = (display_phone_number or "").strip() or number
+        display = normalize_whatsapp_e164(display_phone_number or "") or number
+        if await self._number_taken_by_other(scoped, number) or (
+            display != number and await self._number_taken_by_other(scoped, display)
+        ):
+            raise conflict(NUMBER_TAKEN_MESSAGE)
+        await self._assert_sender_online(number)
 
         connection = await self._find(scoped)
         if connection:
@@ -199,6 +296,9 @@ class WhatsAppConnectionService:
         connection.display_phone_number = display
         connection.mode = "dedicated"
         connection.is_active = active
+        await self.session.execute(
+            delete(WhatsAppNumberRequest).where(WhatsAppNumberRequest.company_id == scoped)
+        )
         try:
             await self.session.commit()
         except IntegrityError as error:
@@ -260,6 +360,7 @@ class WhatsAppConnectionService:
                     selectinload(Company.owner),
                     selectinload(Company.mercado_pago_connection),
                     selectinload(Company.whatsapp_connection),
+                    selectinload(Company.whatsapp_number_request),
                     selectinload(Company.subscription).selectinload(Subscription.plan),
                 )
                 .order_by(Company.created_at.desc())
@@ -300,6 +401,7 @@ class WhatsAppConnectionService:
             }
             subscription = company.subscription
             whatsapp = company.whatsapp_connection
+            number_request = company.whatsapp_number_request
             rows.append(
                 {
                     "id": company.id,
@@ -313,10 +415,11 @@ class WhatsAppConnectionService:
                     "planCode": subscription.plan.code if subscription else None,
                     "subscriptionStatus": subscription.status if subscription else None,
                     "requirements": requirements,
-                    "awaitingNumber": all(requirements.values()) and not whatsapp,
+                    "awaitingNumber": all(requirements.values()) and (not whatsapp or bool(number_request)),
                     "whatsapp": connection_dto(whatsapp, company.name, expose_shared_number=True)
                     if whatsapp
                     else None,
+                    "numberRequest": number_request_dto(number_request),
                 }
             )
         return rows
@@ -328,6 +431,72 @@ class WhatsAppConnectionService:
             .options(selectinload(WhatsAppConnection.company))
             .execution_options(populate_existing=True)
         )
+
+    async def _find_request(self, company_id: str) -> WhatsAppNumberRequest | None:
+        return await self.session.scalar(
+            select(WhatsAppNumberRequest).where(WhatsAppNumberRequest.company_id == company_id)
+        )
+
+    async def _is_paid_plan(self, company_id: str) -> bool:
+        details = await BillingService(self.session).get_subscription_details(company_id)
+        return details["planCode"] != "free"
+
+    async def _validated_company_number(
+        self, company_id: str, phone_number: str, platform_number: str | None
+    ) -> str:
+        """WhatsApp de contacto de la tienda en E.164, distinto del número de la plataforma y sin usar
+        por otra empresa."""
+        number = _e164(phone_number, COMPANY_NUMBER_FORMAT_MESSAGE)
+        if number == platform_number:
+            raise bad_request("Ese es el número de la plataforma; escribe el WhatsApp de tu tienda.")
+        if await self._number_taken_by_other(company_id, number):
+            raise conflict(NUMBER_TAKEN_MESSAGE)
+        return number
+
+    async def _assert_sender_online(self, sender: str) -> None:
+        """El sender existe en nuestra cuenta de Twilio y está en línea. Se omite en modo simulado."""
+        if await twilio_client.credentials() is None:
+            return
+        if sender == TWILIO_SANDBOX_NUMBER and not get_settings().is_production:
+            return
+        try:
+            status = await twilio_client.find_whatsapp_sender_status(sender)
+        except RuntimeError as error:
+            raise bad_request(
+                "No pudimos verificar el sender con Twilio. Inténtalo de nuevo en unos minutos."
+            ) from error
+        if status is None:
+            raise bad_request("Ese sender no existe en la cuenta de Twilio de la plataforma.")
+        if not status.upper().startswith("ONLINE"):
+            raise bad_request(
+                f"El sender aún no está activo en WhatsApp (estado: {status}). Inténtalo cuando esté en línea."
+            )
+
+    async def _number_taken_by_other(self, company_id: str, number: str) -> bool:
+        """Otra empresa ya lo usa como su WhatsApp o como su número propio, o lo pidió conectar."""
+        taken = await self.session.scalar(
+            select(WhatsAppConnection.id)
+            .where(
+                WhatsAppConnection.company_id != company_id,
+                or_(
+                    WhatsAppConnection.display_phone_number == number,
+                    (WhatsAppConnection.mode == "dedicated")
+                    & (WhatsAppConnection.twilio_whatsapp_number == number),
+                ),
+            )
+            .limit(1)
+        )
+        if taken is not None:
+            return True
+        requested = await self.session.scalar(
+            select(WhatsAppNumberRequest.id)
+            .where(
+                WhatsAppNumberRequest.company_id != company_id,
+                WhatsAppNumberRequest.phone_number == number,
+            )
+            .limit(1)
+        )
+        return requested is not None
 
     async def _next_free_store_code(self, base: str) -> str:
         """Primer código libre a partir de `base`: base, base-2, base-3…"""

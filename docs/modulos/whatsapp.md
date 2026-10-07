@@ -17,7 +17,8 @@ Código en `app/modules/whatsapp/`. Los botones y listas están en [Mensajes int
 
 - Es un sender de la plataforma que comparten todas las tiendas sin número propio. Se configura en `/admin/settings` (tabla `PlatformSettings`); `TWILIO_SHARED_WHATSAPP_NUMBER` del `.env` queda como respaldo si el panel está vacío. Al cambiarlo, las conexiones `shared` pasan al número nuevo en la misma transacción, y no se puede vaciar mientras haya tiendas usándolo.
 - Siempre leerlo con `await shared_number()` (`connection_service.py`), nunca directamente del `.env`.
-- La tienda lo activa sola con `POST /whatsapp/connection/shared` (solo `owner`, exige los [prerrequisitos](#prerrequisitos)). Se crea una conexión `shared` con `storeCode` único (slug del nombre, `-2`, `-3`… si choca).
+- La tienda lo activa sola con `POST /whatsapp/connection/shared` y `{ phoneNumber }` (solo `owner`, exige los [prerrequisitos](#prerrequisitos)). Se crea una conexión `shared` con `storeCode` único (slug del nombre, `-2`, `-3`… si choca).
+- `phoneNumber` es el WhatsApp de contacto de la tienda (`displayPhoneNumber`), obligatorio. No puede ser el número compartido ni usarlo otra empresa como su WhatsApp, su número propio o en una solicitud pendiente (`_number_taken_by_other`). Lo respalda el índice único parcial `WhatsAppConnection_displayPhoneNumber_key`. Se cambia con `PUT /whatsapp/connection/phone`. No recibe al bot.
 - Enlace de la tienda: `<FRONTEND_URL>/w/<storeCode>`. La ruta `app/w/[code]/route.ts` del panel consulta `GET /whatsapp/store-links/:code` (público, sin límite por IP porque llega desde el servidor de Next) y redirige a `wa.me/<compartido>?text=Hola <Tienda> #<storeCode>` con el número vigente. Así los enlaces publicados sobreviven a un cambio del número compartido.
 - La tienda no ve el número compartido: `connection_dto` devuelve `twilioWhatsAppNumber: null` en modo `shared`. Solo el panel de plataforma lo recibe (`expose_shared_number=True`). El cliente final sí lo ve al abrir el chat; WhatsApp no permite ocultarlo.
 
@@ -32,7 +33,10 @@ El código se quita del texto guardado. Un cliente solo está en una tienda a la
 
 ## Número propio
 
-- Lo asigna la plataforma (`PUT /admin/companies/:id/whatsapp-connection`): pasa la conexión a `dedicated`, borra `storeCode` y sesiones compartidas, y rechaza el número compartido.
+- Lo asigna la plataforma (`PUT /admin/companies/:id/whatsapp-connection`): pasa la conexión a `dedicated`, borra `storeCode` y sesiones compartidas, cierra la solicitud pendiente y rechaza el número compartido.
+- Antes de asignarlo valida que el sender exista en la cuenta de Twilio y que su estado empiece por `ONLINE` (`find_whatsapp_sender_status` en `twilio_client.py`, Senders API v2). Se omite si los envíos están simulados; el sandbox `+14155238886` se acepta fuera de production.
+- El enlace `wa.me` de una tienda con número propio siempre va al sender: un mensaje a `displayPhoneNumber` llegaría al teléfono de la tienda, nunca a Twilio.
+- Las tiendas de planes de pago lo piden con `POST /whatsapp/number-request` (solo `owner`): `{ kind: "platform_number" }` para un número empresarial nuestro o `{ kind: "own_number", phoneNumber }` para conectar el suyo por Meta. La solicitud vive en `WhatsAppNumberRequest` (1 por empresa, solo mientras está pendiente); `GET` la devuelve y `DELETE` la cancela. En `/admin/companies` aparece en "Pendientes" con `numberRequest`.
 - `twilioWhatsAppNumber` no es único por sí solo: la unicidad entre dedicados es un índice único **parcial** (`WhatsAppConnection_dedicated_number_key`, `WHERE mode = 'dedicated'`) declarado en `app/models.py`; no lo quites.
 
 ## Envío

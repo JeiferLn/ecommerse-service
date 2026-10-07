@@ -167,6 +167,9 @@ class Company(Base):
     whatsapp_connection: Mapped[WhatsAppConnection | None] = relationship(
         back_populates="company", uselist=False
     )
+    whatsapp_number_request: Mapped[WhatsAppNumberRequest | None] = relationship(
+        back_populates="company", uselist=False
+    )
     subscription: Mapped[Subscription | None] = relationship(back_populates="company", uselist=False)
 
 
@@ -353,6 +356,22 @@ class SharedNumberSession(Base):
     connection_id: Mapped[str] = fk("connectionId", "WhatsAppConnection.id")
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
+
+
+class WhatsAppNumberRequest(Base):
+    """Número propio que una tienda de pago pidió; existe mientras está pendiente."""
+
+    __tablename__ = "WhatsAppNumberRequest"
+
+    id: Mapped[str] = id_column()
+    company_id: Mapped[str] = fk("companyId", "Company.id")
+    # `platform_number`: número empresarial nuestro; `own_number`: su número, conectado por Meta.
+    kind: Mapped[str] = mapped_column(Text)
+    phone_number: Mapped[str | None] = mapped_column("phoneNumber", Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    company: Mapped[Company] = relationship(back_populates="whatsapp_number_request")
 
 
 class Conversation(Base):
@@ -671,6 +690,13 @@ Index(
     unique=True,
     postgresql_where=text("mode = 'dedicated'"),
 )
+Index(
+    "WhatsAppConnection_displayPhoneNumber_key",
+    WhatsAppConnection.display_phone_number,
+    unique=True,
+    postgresql_where=text('"displayPhoneNumber" IS NOT NULL'),
+)
 Index("WhatsAppConnection_storeCode_key", WhatsAppConnection.store_code, unique=True)
+Index("WhatsAppNumberRequest_companyId_key", WhatsAppNumberRequest.company_id, unique=True)
 Index("WhatsAppConnection_twilioWhatsAppNumber_idx", WhatsAppConnection.twilio_whatsapp_number)
 Index("WhatsAppContentTemplate_hash_key", WhatsAppContentTemplate.hash, unique=True)

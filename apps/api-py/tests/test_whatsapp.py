@@ -8,7 +8,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.models import WhatsAppConnection
+from app.models import Company, WhatsAppConnection, WhatsAppNumberRequest
 from app.modules.platform.overrides import PlatformOverrides
 from app.modules.whatsapp import connection_service, twilio_client
 from app.modules.whatsapp.conversation_handler import (
@@ -382,16 +382,334 @@ def test_shared_connection_hides_number_from_store(monkeypatch: pytest.MonkeyPat
     assert admin_view["twilioWhatsAppNumber"] == "+15554447456"
 
 
-def test_dedicated_connection_keeps_its_own_number() -> None:
+def test_dedicated_connection_links_to_its_sender() -> None:
     dto = connection_service.connection_dto(
         _connection(mode="dedicated", store_code=None, display_phone_number="+573001112233"), "Sentix"
     )
 
     assert dto["twilioWhatsAppNumber"] == "+15554447456"
-    assert dto["waMeLink"] == "https://wa.me/573001112233"
+    assert dto["displayPhoneNumber"] == "+573001112233"
+    assert dto["waMeLink"] == "https://wa.me/15554447456"
 
 
 def test_store_link_redirects_to_current_shared_number() -> None:
     assert build_wa_me_link(number="+15554447456", store_code="sentix", store_name="Sentix") == (
         "https://wa.me/15554447456?text=Hola%20Sentix%20%23sentix"
     )
+
+
+class _ConnectionSession:
+    """Sesión mínima: `scalar` responde si el número ya lo usa otra empresa."""
+
+    def __init__(self, taken_by: str | None = None) -> None:
+        self.taken_by = taken_by
+        self.statements: list[Any] = []
+        self.added: list[Any] = []
+        self.executed: list[Any] = []
+        self.commits = 0
+
+    async def scalar(self, statement: Any) -> str | None:
+        self.statements.append(statement)
+        return self.taken_by
+
+    async def execute(self, statement: Any) -> None:
+        self.executed.append(statement)
+
+    def add(self, instance: Any) -> None:
+        self.added.append(instance)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        return None
+
+
+def _connection_service(
+    session: _ConnectionSession,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: WhatsAppConnection | None = None,
+    *,
+    paid: bool = True,
+) -> connection_service.WhatsAppConnectionService:
+    fake: Any = session
+    service = connection_service.WhatsAppConnectionService(fake)
+
+    async def find(_company_id: str) -> WhatsAppConnection | None:
+        return existing
+
+    async def find_request(_company_id: str) -> None:
+        return None
+
+    async def prerequisites(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    async def is_paid(_company_id: str) -> bool:
+        return paid
+
+    async def next_code(base: str) -> str:
+        return base
+
+    monkeypatch.setattr(service, "_find", find)
+    monkeypatch.setattr(service, "_find_request", find_request)
+    monkeypatch.setattr(service, "assert_whatsapp_prerequisites", prerequisites)
+    monkeypatch.setattr(service, "_is_paid_plan", is_paid)
+    monkeypatch.setattr(service, "_next_free_store_code", next_code)
+    return service
+
+
+async def test_activate_shared_saves_store_number(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "FRONTEND_URL", "https://app.example.com")
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch)
+
+    dto = await service.activate_shared("c1", "+57 300 111 2233")
+
+    [connection] = session.added
+    assert isinstance(connection, WhatsAppConnection)
+    assert (
+        connection.twilio_whatsapp_number,
+        connection.display_phone_number,
+        connection.mode,
+        connection.store_code,
+    ) == ("+14155238886", "+573001112233", "shared", "tienda")
+    assert dto["twilioWhatsAppNumber"] is None
+    assert dto["waMeLink"] == "https://app.example.com/w/tienda"
+    assert session.commits == 1
+
+
+@pytest.mark.parametrize(
+    ("phone", "message"),
+    [
+        ("123", "Usa formato internacional con +: +573001112233"),
+        ("+14155238886", "Ese es el número de la plataforma; escribe el WhatsApp de tu tienda."),
+    ],
+)
+async def test_activate_shared_rejects_invalid_store_number(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch, phone: str, message: str
+) -> None:
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch)
+    with pytest.raises(ApiError) as error:
+        await service.activate_shared("c1", phone)
+    assert (error.value.status_code, error.value.message) == (400, message)
+    assert not session.added
+
+
+async def test_activate_shared_rejects_number_of_other_company(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _ConnectionSession(taken_by="wc-other")
+    service = _connection_service(session, monkeypatch)
+    with pytest.raises(ApiError) as error:
+        await service.activate_shared("c1", "+573001112233")
+    assert (error.value.status_code, error.value.message) == (409, connection_service.NUMBER_TAKEN_MESSAGE)
+    assert not session.added
+
+    sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+    assert '"WhatsAppConnection"."companyId" != \'c1\'' in sql
+    assert '"WhatsAppConnection"."displayPhoneNumber" = \'+573001112233\'' in sql
+    assert "\"WhatsAppConnection\".mode = 'dedicated'" in sql
+
+
+async def test_activate_shared_returns_existing_connection(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection = _connection()
+    connection.company = Company(id="c1", name="Sentix")
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch, existing=connection)
+    dto = await service.activate_shared("c1", "+573001112233")
+    assert dto["id"] == "wc1"
+    assert not session.added
+
+
+async def test_update_company_number(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection = _connection(display_phone_number="+573001112233")
+    connection.company = Company(id="c1", name="Sentix")
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch, existing=connection)
+
+    dto = await service.update_company_number("c1", "+57 300 999 8877")
+
+    assert dto["displayPhoneNumber"] == "+573009998877"
+    assert dto["storeCode"] == "sentix"
+    assert session.commits == 1
+
+
+async def test_update_company_number_requires_connection(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _connection_service(_ConnectionSession(), monkeypatch)
+    with pytest.raises(ApiError) as error:
+        await service.update_company_number("c1", "+573001112233")
+    assert error.value.status_code == 404
+
+
+async def test_number_request_requires_paid_plan(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch, paid=False)
+    with pytest.raises(ApiError) as error:
+        await service.request_number("c1", "platform_number", None)
+    assert error.value.status_code == 403
+    assert not session.added
+
+
+async def test_platform_number_request(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch)
+
+    dto = await service.request_number("c1", "platform_number", "+573001112233")
+
+    [request] = session.added
+    assert isinstance(request, WhatsAppNumberRequest)
+    assert (request.company_id, request.kind, request.phone_number) == ("c1", "platform_number", None)
+    assert dto["kind"] == "platform_number"
+    assert session.commits == 1
+
+
+async def test_own_number_request_validates_phone(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = _connection_service(_ConnectionSession(), monkeypatch)
+    with pytest.raises(ApiError) as no_phone:
+        await missing.request_number("c1", "own_number", None)
+    assert no_phone.value.status_code == 400
+
+    taken = _connection_service(_ConnectionSession(taken_by="wc-other"), monkeypatch)
+    with pytest.raises(ApiError) as conflict:
+        await taken.request_number("c1", "own_number", "+573001112233")
+    assert conflict.value.status_code == 409
+
+    session = _ConnectionSession()
+    ok = _connection_service(session, monkeypatch)
+    dto = await ok.request_number("c1", "own_number", "+57 300 111 2233")
+    assert dto["phoneNumber"] == "+573001112233"
+    assert session.added[0].phone_number == "+573001112233"
+
+
+class _RequestedNumberSession(_ConnectionSession):
+    """El número no está en ninguna conexión, pero otra empresa ya pidió conectarlo."""
+
+    async def scalar(self, statement: Any) -> str | None:
+        self.statements.append(statement)
+        return "req-other" if len(self.statements) == 2 else None
+
+
+async def test_store_number_taken_by_pending_request(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _RequestedNumberSession()
+    service = _connection_service(session, monkeypatch)
+    with pytest.raises(ApiError) as error:
+        await service.activate_shared("c1", "+573001112233")
+    assert error.value.status_code == 409
+
+    sql = str(session.statements[1].compile(compile_kwargs={"literal_binds": True}))
+    assert '"WhatsAppNumberRequest"."companyId" != \'c1\'' in sql
+    assert '"WhatsAppNumberRequest"."phoneNumber" = \'+573001112233\'' in sql
+
+
+@pytest.fixture
+def twilio_senders(panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Envíos reales con la Senders API simulada: `status` es lo que Twilio devuelve para el sender."""
+    panel_overrides["whatsapp_simulate_send"] = False
+    sender: dict[str, Any] = {"status": "ONLINE", "error": False, "lookups": []}
+
+    async def find_status(number: str) -> str | None:
+        sender["lookups"].append(number)
+        if sender["error"]:
+            raise RuntimeError("Twilio respondió 500")
+        return sender["status"]
+
+    monkeypatch.setattr(twilio_client, "find_whatsapp_sender_status", find_status)
+    return sender
+
+
+async def _assign(service: connection_service.WhatsAppConnectionService, number: str) -> dict[str, Any]:
+    return await service.upsert(
+        "c1", twilio_whatsapp_number=number, display_phone_number=None, is_active=True
+    )
+
+
+async def test_admin_assigns_sender_replacing_shared_connection(
+    twilio_senders: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection = _connection(display_phone_number="+573001112233")
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch, existing=connection)
+
+    dto = await _assign(service, "+15550001111")
+
+    assert twilio_senders["lookups"] == ["+15550001111"]
+    assert (connection.mode, connection.store_code, connection.twilio_whatsapp_number) == (
+        "dedicated",
+        None,
+        "+15550001111",
+    )
+    assert dto["waMeLink"] == "https://wa.me/15550001111"
+    assert len(session.executed) == 2
+    assert session.commits == 1
+
+
+async def test_admin_cannot_assign_shared_number(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _connection_service(_ConnectionSession(), monkeypatch)
+    with pytest.raises(ApiError) as error:
+        await _assign(service, "+14155238886")
+    assert error.value.status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("status", "error", "message"),
+    [
+        (None, False, "Ese sender no existe en la cuenta de Twilio de la plataforma."),
+        (
+            "PENDING_VERIFICATION",
+            False,
+            "El sender aún no está activo en WhatsApp (estado: PENDING_VERIFICATION). "
+            "Inténtalo cuando esté en línea.",
+        ),
+        ("ONLINE", True, "No pudimos verificar el sender con Twilio. Inténtalo de nuevo en unos minutos."),
+    ],
+)
+async def test_admin_sender_must_exist_and_be_online(
+    twilio_senders: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    status: str | None,
+    error: bool,
+    message: str,
+) -> None:
+    twilio_senders.update(status=status, error=error)
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch)
+    with pytest.raises(ApiError) as raised:
+        await _assign(service, "+15550001111")
+    assert (raised.value.status_code, raised.value.message) == (400, message)
+    assert not session.added
+
+
+async def test_admin_sender_check_skipped_in_simulated_mode(
+    panel_overrides: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lookups: list[str] = []
+
+    async def find_status(number: str) -> str | None:
+        lookups.append(number)
+        return None
+
+    monkeypatch.setattr(twilio_client, "find_whatsapp_sender_status", find_status)
+    session = _ConnectionSession()
+    service = _connection_service(session, monkeypatch)
+    await _assign(service, "+15550001111")
+    assert lookups == []
+    assert session.commits == 1

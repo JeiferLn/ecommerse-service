@@ -12,6 +12,7 @@ from app.modules.whatsapp.phone import to_twilio_whatsapp_address
 logger = logging.getLogger("app.whatsapp.twilio")
 
 TIMEOUT = httpx.Timeout(15.0)
+SENDERS_URL = "https://messaging.twilio.com/v2/Channels/Senders"
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,28 @@ async def credentials() -> tuple[str, str] | None:
     """Credenciales para enviar de verdad, o None si los envíos se simulan."""
     simulate, _ = resolve_simulate_send((await platform_overrides()).whatsapp_simulate_send)
     return None if simulate else account_credentials()
+
+
+async def find_whatsapp_sender_status(number: str) -> str | None:
+    """Estado del sender de WhatsApp con ese número en nuestra cuenta de Twilio (`ONLINE`, `OFFLINE`,
+    `PENDING_VERIFICATION`…), o None si no existe."""
+    account = account_credentials()
+    if not account:
+        raise RuntimeError("Credenciales de Twilio no configuradas")
+    target = to_twilio_whatsapp_address(number)
+    url: str | None = f"{SENDERS_URL}?Channel=whatsapp&PageSize=100"
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        while url:
+            response = await client.get(url, auth=account)
+            if response.status_code >= 400:
+                logger.error("Twilio Senders API error %s: %s", response.status_code, response.text)
+                raise RuntimeError(f"Twilio respondió {response.status_code}")
+            data = response.json()
+            for sender in data.get("senders") or []:
+                if str(sender.get("sender_id") or "").lower() == target.lower():
+                    return str(sender.get("status") or "")
+            url = (data.get("meta") or {}).get("next_page_url")
+    return None
 
 
 async def send_text(*, from_: str, to: str, text: str) -> SendResult:

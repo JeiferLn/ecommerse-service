@@ -689,9 +689,10 @@ export interface AdminCompanyRow extends PlatformCompanySummary {
     shipping: boolean;
     payments: boolean;
   };
-  /** Cumple todos los requisitos y aún no tiene número asignado. */
+  /** Cumple todos los requisitos y aún no tiene número asignado o pidió uno propio. */
   awaitingNumber: boolean;
   whatsapp: WhatsAppConnection | null;
+  numberRequest: WhatsAppNumberRequest | null;
 }
 
 export interface PlatformDashboardStats {
@@ -752,12 +753,25 @@ export const CONVERSATION_HANDLER_LABELS: Record<ConversationHandler, string> = 
 /** `shared`: número de la plataforma enrutado por código; `dedicated`: número propio de la tienda. */
 export type WhatsAppConnectionMode = "shared" | "dedicated";
 
+/** `platform_number`: número empresarial de la plataforma; `own_number`: el de la tienda, conectado
+ * por Meta. */
+export type WhatsAppNumberRequestKind = "platform_number" | "own_number";
+
+/** Número propio pedido por una tienda de pago, pendiente hasta que la plataforma lo asigna. */
+export interface WhatsAppNumberRequest {
+  kind: WhatsAppNumberRequestKind;
+  /** Solo en `own_number`. */
+  phoneNumber: string | null;
+  createdAt: string;
+}
+
 export interface WhatsAppConnection {
   id: string;
   companyId: string;
   /** Número WhatsApp E.164 (ej. +14155238886), sin prefijo whatsapp:. `null` para la tienda en modo
    * compartido: el número de la plataforma solo lo ve el admin. */
   twilioWhatsAppNumber: string | null;
+  /** WhatsApp de contacto de la tienda (único entre empresas); no recibe al bot. */
   displayPhoneNumber: string | null;
   mode: WhatsAppConnectionMode;
   /** Código de la tienda en el número compartido (sin #). */

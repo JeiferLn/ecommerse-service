@@ -5,6 +5,7 @@ import {
   SUBSCRIPTION_STATUS_LABELS,
   type AdminCompanyRow,
   type WhatsAppConnection,
+  type WhatsAppNumberRequest,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Minus } from "lucide-react";
@@ -31,7 +32,7 @@ type Filter = "all" | "awaiting" | "shared" | "dedicated";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "Todas" },
-  { id: "awaiting", label: "Sin activar" },
+  { id: "awaiting", label: "Pendientes" },
   { id: "shared", label: "Compartido" },
   { id: "dedicated", label: "Número propio" },
 ];
@@ -49,15 +50,34 @@ function matchesFilter(company: AdminCompanyRow, filter: Filter): boolean {
   return true;
 }
 
+function numberRequestLabel(request: WhatsAppNumberRequest): string {
+  return request.kind === "own_number"
+    ? `Conectar ${request.phoneNumber ?? "su número"}`
+    : "Pidió número empresarial";
+}
+
+function NumberRequestBadge({ request }: { request: WhatsAppNumberRequest }) {
+  return (
+    <span className="w-fit rounded-md bg-primary/10 px-1.5 py-0.5 font-data text-xs font-medium text-primary">
+      {numberRequestLabel(request)}
+    </span>
+  );
+}
+
 function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
   if (company.whatsapp) {
+    const shared = company.whatsapp.mode === "shared";
+    const storePhone = company.whatsapp.displayPhoneNumber;
     return (
-      <span className="flex flex-col">
+      <span className="flex flex-col gap-0.5">
         <span className="font-data text-sm">
-          {company.whatsapp.mode === "shared"
+          {shared
             ? `Compartido · #${company.whatsapp.storeCode ?? ""}`
             : company.whatsapp.twilioWhatsAppNumber}
         </span>
+        {storePhone && storePhone !== company.whatsapp.twilioWhatsAppNumber ? (
+          <span className="font-data text-xs text-muted-foreground">Tienda · {storePhone}</span>
+        ) : null}
         <span
           className={cn(
             "text-xs",
@@ -66,8 +86,12 @@ function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
         >
           {company.whatsapp.isActive ? "Asistente activo" : "En pausa"}
         </span>
+        {company.numberRequest ? <NumberRequestBadge request={company.numberRequest} /> : null}
       </span>
     );
+  }
+  if (company.numberRequest) {
+    return <NumberRequestBadge request={company.numberRequest} />;
   }
   if (company.awaitingNumber) {
     return (
@@ -129,8 +153,9 @@ function AssignNumberSheet({
 
   useEffect(() => {
     const own = company?.whatsapp?.mode === "dedicated" ? company.whatsapp : null;
-    setNumber(own?.twilioWhatsAppNumber ?? "");
-    setDisplay(own?.displayPhoneNumber ?? "");
+    const requested = company?.numberRequest?.phoneNumber ?? "";
+    setNumber(own?.twilioWhatsAppNumber ?? requested);
+    setDisplay(own?.displayPhoneNumber ?? company?.whatsapp?.displayPhoneNumber ?? requested);
     setActive(company?.whatsapp?.isActive ?? Boolean(company?.awaitingNumber));
     setConfirmRemove(false);
   }, [company]);
@@ -177,6 +202,18 @@ function AssignNumberSheet({
 
         {company ? <Requirements company={company} /> : null}
 
+        {company?.numberRequest ? (
+          <div className="flex flex-col gap-1 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-pretty">
+            <span className="font-medium">{numberRequestLabel(company.numberRequest)}</span>
+            <span className="text-muted-foreground">
+              {company.numberRequest.kind === "own_number"
+                ? "Registra ese número como sender de WhatsApp en Twilio (verificación con Meta) y asígnalo aquí."
+                : "Compra un número en Twilio, regístralo como sender de WhatsApp y asígnalo aquí."}{" "}
+              Al asignarlo, la solicitud se cierra.
+            </span>
+          </div>
+        ) : null}
+
         {shared ? (
           <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-pretty text-muted-foreground">
             Hoy usa el número compartido con el código{" "}
@@ -202,7 +239,7 @@ function AssignNumberSheet({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="assign-display">Número visible para clientes (opcional)</Label>
+            <Label htmlFor="assign-display">WhatsApp de la tienda (opcional)</Label>
             <Input
               id="assign-display"
               placeholder="+57 300 111 2233"
@@ -210,7 +247,8 @@ function AssignNumberSheet({
               onChange={(event) => setDisplay(event.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Se usa para el enlace wa.me de la tienda.
+              Número de contacto de la tienda; no recibe al bot. Si lo dejas vacío, se usa el del
+              sender.
             </p>
           </div>
 
