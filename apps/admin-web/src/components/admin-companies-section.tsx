@@ -5,7 +5,6 @@ import {
   SUBSCRIPTION_STATUS_LABELS,
   type AdminCompanyRow,
   type WhatsAppConnection,
-  type WhatsAppNumberRequest,
 } from "@commerce-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Minus } from "lucide-react";
@@ -28,13 +27,13 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/providers/session-provider";
 
-type Filter = "all" | "awaiting" | "shared" | "dedicated";
+type Filter = "all" | "awaiting" | "online" | "onboarding";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "Todas" },
   { id: "awaiting", label: "Pendientes" },
-  { id: "shared", label: "Compartido" },
-  { id: "dedicated", label: "Número propio" },
+  { id: "online", label: "En línea" },
+  { id: "onboarding", label: "Onboarding" },
 ];
 
 const REQUIREMENT_LABELS: { key: keyof AdminCompanyRow["requirements"]; label: string }[] = [
@@ -45,39 +44,35 @@ const REQUIREMENT_LABELS: { key: keyof AdminCompanyRow["requirements"]; label: s
 
 function matchesFilter(company: AdminCompanyRow, filter: Filter): boolean {
   if (filter === "awaiting") return company.awaitingNumber;
-  if (filter === "shared") return company.whatsapp?.mode === "shared";
-  if (filter === "dedicated") return company.whatsapp?.mode === "dedicated";
+  if (filter === "online") return company.whatsapp?.onboardingStatus === "online";
+  if (filter === "onboarding")
+    return Boolean(company.whatsapp && company.whatsapp.onboardingStatus !== "online");
   return true;
 }
 
-function numberRequestLabel(request: WhatsAppNumberRequest): string {
-  return request.kind === "own_number"
-    ? `Conectar ${request.phoneNumber ?? "su número"}`
-    : "Pidió número empresarial";
-}
-
-function NumberRequestBadge({ request }: { request: WhatsAppNumberRequest }) {
+function NumberRequestBadge() {
   return (
     <span className="w-fit rounded-md bg-primary/10 px-1.5 py-0.5 font-data text-xs font-medium text-primary">
-      {numberRequestLabel(request)}
+      Pidió número empresarial
     </span>
   );
 }
 
 function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
   if (company.whatsapp) {
-    const shared = company.whatsapp.mode === "shared";
-    const storePhone = company.whatsapp.displayPhoneNumber;
+    const online = company.whatsapp.onboardingStatus === "online";
     return (
       <span className="flex flex-col gap-0.5">
         <span className="font-data text-sm">
-          {shared
-            ? `Compartido · #${company.whatsapp.storeCode ?? ""}`
-            : company.whatsapp.twilioWhatsAppNumber}
+          {online
+            ? (company.whatsapp.twilioWhatsAppNumber ?? "Sin sender")
+            : `Onboarding · ${company.whatsapp.onboardingStatus}`}
         </span>
-        {storePhone && storePhone !== company.whatsapp.twilioWhatsAppNumber ? (
-          <span className="font-data text-xs text-muted-foreground">Tienda · {storePhone}</span>
-        ) : null}
+        <span className="text-xs text-muted-foreground">
+          {company.whatsapp.connectionKind === "own_number"
+            ? "Número propio"
+            : "Número de la plataforma"}
+        </span>
         <span
           className={cn(
             "text-xs",
@@ -86,17 +81,17 @@ function WhatsAppStatus({ company }: { company: AdminCompanyRow }) {
         >
           {company.whatsapp.isActive ? "Asistente activo" : "En pausa"}
         </span>
-        {company.numberRequest ? <NumberRequestBadge request={company.numberRequest} /> : null}
+        {company.numberRequest ? <NumberRequestBadge /> : null}
       </span>
     );
   }
   if (company.numberRequest) {
-    return <NumberRequestBadge request={company.numberRequest} />;
+    return <NumberRequestBadge />;
   }
   if (company.awaitingNumber) {
     return (
       <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-        Lista, sin activar
+        Lista, sin canal
       </span>
     );
   }
@@ -148,11 +143,11 @@ function AssignNumberSheet({
   const [active, setActive] = useState(true);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
-  const dedicated = company?.whatsapp?.mode === "dedicated" ? company.whatsapp : null;
-  const shared = company?.whatsapp?.mode === "shared" ? company.whatsapp : null;
+  const online =
+    company?.whatsapp?.onboardingStatus === "online" ? company.whatsapp : null;
 
   useEffect(() => {
-    const own = company?.whatsapp?.mode === "dedicated" ? company.whatsapp : null;
+    const own = company?.whatsapp?.onboardingStatus === "online" ? company.whatsapp : null;
     const requested = company?.numberRequest?.phoneNumber ?? "";
     setNumber(own?.twilioWhatsAppNumber ?? requested);
     setDisplay(own?.displayPhoneNumber ?? company?.whatsapp?.displayPhoneNumber ?? requested);
@@ -196,7 +191,7 @@ function AssignNumberSheet({
     <Sheet open={Boolean(company)} onOpenChange={onOpenChange}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>{dedicated ? "Número propio" : "Asignar número propio"}</SheetTitle>
+          <SheetTitle>{online ? "Sender de WhatsApp" : "Asignar sender"}</SheetTitle>
           <SheetDescription>{company?.name}</SheetDescription>
         </SheetHeader>
 
@@ -204,22 +199,12 @@ function AssignNumberSheet({
 
         {company?.numberRequest ? (
           <div className="flex flex-col gap-1 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-pretty">
-            <span className="font-medium">{numberRequestLabel(company.numberRequest)}</span>
+            <span className="font-medium">Pidió número empresarial</span>
             <span className="text-muted-foreground">
-              {company.numberRequest.kind === "own_number"
-                ? "Registra ese número como sender de WhatsApp en Twilio (verificación con Meta) y asígnalo aquí."
-                : "Compra un número en Twilio, regístralo como sender de WhatsApp y asígnalo aquí."}{" "}
-              Al asignarlo, la solicitud se cierra.
+              Compra un número en Twilio, regístralo como sender de WhatsApp y asígnalo aquí. Al
+              asignarlo, la solicitud se cierra.
             </span>
           </div>
-        ) : null}
-
-        {shared ? (
-          <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-pretty text-muted-foreground">
-            Hoy usa el número compartido con el código{" "}
-            <span className="font-data text-foreground">#{shared.storeCode}</span>. Al asignarle un
-            número propio lo reemplaza: su enlace cambia y los clientes deben escribir al nuevo.
-          </p>
         ) : null}
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
@@ -269,7 +254,7 @@ function AssignNumberSheet({
           ) : null}
 
           <Button type="submit" disabled={!validNumber || assign.isPending}>
-            {assign.isPending ? "Guardando…" : dedicated ? "Guardar cambios" : "Asignar número"}
+            {assign.isPending ? "Guardando…" : online ? "Guardar cambios" : "Asignar sender"}
           </Button>
         </form>
 
@@ -330,8 +315,10 @@ export function AdminCompaniesSection() {
   const counts: Record<Filter, number> = {
     all: companies.length,
     awaiting: companies.filter((company) => company.awaitingNumber).length,
-    shared: companies.filter((company) => company.whatsapp?.mode === "shared").length,
-    dedicated: companies.filter((company) => company.whatsapp?.mode === "dedicated").length,
+    online: companies.filter((company) => company.whatsapp?.onboardingStatus === "online").length,
+    onboarding: companies.filter(
+      (company) => company.whatsapp && company.whatsapp.onboardingStatus !== "online",
+    ).length,
   };
   const rows = companies.filter((company) => matchesFilter(company, filter));
 
@@ -339,7 +326,7 @@ export function AdminCompaniesSection() {
     <div className="flex flex-col">
       <PageHeader
         title="Empresas"
-        description="Revisa qué tiendas cumplen los requisitos, cómo atienden por WhatsApp y asígnales un número propio cuando lo necesiten."
+        description="Revisa qué tiendas cumplen los requisitos, el onboarding de WhatsApp y asígnales un sender de plataforma cuando lo pidan."
       />
 
       <Segmented
@@ -414,7 +401,7 @@ export function AdminCompaniesSection() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Button size="sm" variant="outline" onClick={() => setEditing(company)}>
-                      {company.whatsapp?.mode === "dedicated" ? "Editar" : "Número propio"}
+                      {company.whatsapp?.onboardingStatus === "online" ? "Editar" : "Asignar sender"}
                     </Button>
                   </td>
                 </tr>

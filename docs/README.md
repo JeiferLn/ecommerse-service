@@ -31,7 +31,7 @@ Convenciones y referencia técnica para todo desarrollo en el proyecto. El estad
 | ------------------------------------------------ | ------ | --------------------------------------------------- |
 | [Catálogo](modulos/catalogo.md)                  | 3      | Categorías, productos, variantes, imágenes          |
 | [Dashboards](modulos/dashboards.md)              | 4      | Overview de la tienda y panel de plataforma         |
-| [WhatsApp](modulos/whatsapp.md)                  | 5      | Twilio, número compartido/propio, inbox, playground |
+| [WhatsApp](modulos/whatsapp.md)                  | 5      | Twilio, BYO/plataforma, inbox, playground, Tech Provider |
 | [Mensajes interactivos](modulos/interactivos.md) | 5      | Botones, listas, tarjetas y botón de pago           |
 | [IA](modulos/ia.md)                              | 6      | Proveedores, flujo de respuesta, prompts            |
 | [Conocimiento (RAG)](modulos/conocimiento.md)    | 7      | PDFs, chunking, embeddings, retrieval               |

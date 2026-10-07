@@ -8,13 +8,11 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { FormSection } from "@/components/form-section";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Segmented } from "@/components/ui/segmented";
 import { SkeletonText } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -22,7 +20,6 @@ import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
 
 const QUERY_KEY = ["admin-platform-settings"];
-const E164 = /^\+[1-9]\d{7,14}$/;
 
 type SendMode = "simulated" | "real";
 
@@ -40,81 +37,8 @@ function useUpdateSettings() {
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(QUERY_KEY, data);
-      void queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
     },
   });
-}
-
-function SharedNumberForm({ whatsapp }: { whatsapp: PlatformWhatsAppSettings }) {
-  const update = useUpdateSettings();
-  const saved = whatsapp.sharedNumberSource === "panel" ? (whatsapp.sharedNumber ?? "") : "";
-  const [number, setNumber] = useState(saved);
-
-  useEffect(() => setNumber(saved), [saved]);
-
-  const value = number.trim();
-  const valid = value === "" || E164.test(value);
-  const dirty = value !== saved;
-  const movesStores =
-    dirty &&
-    whatsapp.sharedStoresCount > 0 &&
-    (value || whatsapp.envSharedNumber) !== whatsapp.sharedNumber;
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (valid && dirty) update.mutate({ sharedWhatsAppNumber: value || null });
-  }
-
-  let hint: string;
-  if (whatsapp.sharedNumberSource === "env") {
-    hint = `Hoy se usa el del .env (${whatsapp.sharedNumber}). Guárdalo aquí para cambiarlo sin reiniciar la API.`;
-  } else if (whatsapp.envSharedNumber) {
-    hint = `Si lo dejas vacío se usa el del .env (${whatsapp.envSharedNumber}).`;
-  } else if (whatsapp.sharedNumber) {
-    hint = "Formato internacional con +, sin el prefijo whatsapp:.";
-  } else {
-    hint = "Sin número compartido, las tiendas no pueden activar su canal de WhatsApp.";
-  }
-
-  return (
-    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="shared-number">Número del sender en Twilio</Label>
-        <Input
-          id="shared-number"
-          inputMode="tel"
-          placeholder={whatsapp.envSharedNumber ?? "+15554447456"}
-          value={number}
-          onChange={(event) => setNumber(event.target.value)}
-          aria-invalid={!valid}
-          aria-describedby="shared-number-hint"
-          className="max-w-xs font-data"
-        />
-        <p id="shared-number-hint" className="text-xs text-pretty text-muted-foreground">
-          {valid ? hint : "Usa formato E.164 con +: +15554447456"}
-        </p>
-      </div>
-
-      {movesStores ? (
-        <p className="rounded-md border border-border bg-warning-soft p-3 text-sm text-pretty">
-          {whatsapp.sharedStoresCount === 1
-            ? "La tienda que lo usa pasa al número nuevo"
-            : `Las ${whatsapp.sharedStoresCount} tiendas que lo usan pasan al número nuevo`}
-          : sus enlaces de WhatsApp cambian y los clientes deben escribir al nuevo.
-        </p>
-      ) : null}
-
-      {update.isError ? (
-        <p className="text-sm text-destructive">
-          {errorMessage(update.error, "No se pudo guardar")}
-        </p>
-      ) : null}
-
-      <Button type="submit" className="w-fit" disabled={!valid || !dirty || update.isPending}>
-        {update.isPending ? "Guardando…" : "Guardar número"}
-      </Button>
-    </form>
-  );
 }
 
 function SendModeControl({ whatsapp }: { whatsapp: PlatformWhatsAppSettings }) {
@@ -262,6 +186,11 @@ function TwilioStatus({ whatsapp }: { whatsapp: PlatformWhatsAppSettings }) {
             {whatsapp.checkoutTemplateConfigured ? "Configurada" : "Sin plantilla, enlace en texto"}
           </StatusPill>
         </StatusRow>
+        <StatusRow label="Meta Tech Provider">
+          <StatusPill tone={whatsapp.techProviderEnabled ? "positive" : "attention"}>
+            {whatsapp.techProviderEnabled ? "Listo" : "Pendiente"}
+          </StatusPill>
+        </StatusRow>
       </dl>
     </div>
   );
@@ -287,7 +216,7 @@ export function AdminPlatformSettingsSection() {
     <div className="flex max-w-4xl flex-col">
       <PageHeader
         title="Configuración"
-        description="Ajustes de la plataforma que comparten todas las tiendas. Las credenciales de Twilio viven en apps/api-py/.env y aquí solo se muestra si están."
+        description="Ajustes de la plataforma. Las credenciales de Twilio y Meta viven en apps/api-py/.env."
       />
 
       {sessionLoading || isLoading ? <SkeletonText lines={6} /> : null}
@@ -304,21 +233,6 @@ export function AdminPlatformSettingsSection() {
       {data ? (
         <>
           <FormSection
-            title="Número compartido de WhatsApp"
-            description={
-              <>
-                Lo usan las tiendas sin número propio; cada una se identifica por el código #tienda
-                de su enlace.{" "}
-                {data.whatsapp.sharedStoresCount === 1
-                  ? "Hoy lo usa 1 tienda."
-                  : `Hoy lo usan ${data.whatsapp.sharedStoresCount} tiendas.`}
-              </>
-            }
-          >
-            <SharedNumberForm whatsapp={data.whatsapp} />
-          </FormSection>
-
-          <FormSection
             title="Envío de mensajes"
             description="En modo simulado la API no llama a Twilio. Útil para probar sin gastar mensajes."
           >
@@ -326,7 +240,7 @@ export function AdminPlatformSettingsSection() {
           </FormSection>
 
           <FormSection
-            title="Twilio"
+            title="Twilio y Meta"
             description="Estado de la cuenta de plataforma. Estos valores se cambian en apps/api-py/.env."
           >
             <TwilioStatus whatsapp={data.whatsapp} />

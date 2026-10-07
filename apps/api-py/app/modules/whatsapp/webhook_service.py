@@ -16,7 +16,7 @@ from app.core.errors import ApiError, bad_request, forbidden, unauthorized
 from app.core.ids import new_id, utcnow
 from app.core.storage import get_storage
 from app.core.text import strip_accents
-from app.models import Company, Conversation, Message, SharedNumberSession, WhatsAppConnection
+from app.models import Conversation, Message, WhatsAppConnection
 from app.modules.ai.reply import GenerateReplyResult, generate_reply
 from app.modules.billing.service import BillingService
 from app.modules.orders.order_intent import (
@@ -28,7 +28,7 @@ from app.modules.orders.order_intent import (
 )
 from app.modules.orders.service import OrdersService, format_cart_message
 from app.modules.whatsapp import twilio_client
-from app.modules.whatsapp.connection_service import WhatsAppConnectionService, shared_number
+from app.modules.whatsapp.connection_service import WhatsAppConnectionService
 from app.modules.whatsapp.conversation_handler import (
     detects_bot_choice,
     detects_human_request,
@@ -48,15 +48,11 @@ from app.modules.whatsapp.interactive import (
 )
 from app.modules.whatsapp.message_dto import parse_interactive
 from app.modules.whatsapp.phone import normalize_whatsapp_e164
-from app.modules.whatsapp.store_code import extract_store_code
 from app.modules.whatsapp.twilio_client import SendResult
 from app.modules.whatsapp.twilio_content import TwilioContentService
 
 logger = logging.getLogger("app.whatsapp.webhook")
 
-SHARED_NUMBER_UNROUTED_TEXT = (
-    "Hola, este es el WhatsApp de Commerce AI. Para hablar con una tienda, abre el enlace que te compartió."
-)
 HANDLER_CHOICE_BUTTONS_TEXT = "¡Hola! ¿Quién prefieres que te atienda?"
 CONTINUE_SHOPPING_TEXT = "¡Claro! Elige otro producto de la lista o cuéntame qué buscas."
 ADD_DECLINED_TEXT = "Perfecto. ¿Te ayudo con algo más?"
@@ -76,7 +72,7 @@ SENT_STATUSES = {"sent", "delivered", "read", "queued", "sending", "received"}
 
 @dataclass
 class InboundMessage:
-    # Número Twilio al que escribió el cliente (E.164): el propio de una tienda o el compartido.
+    # Sender de Twilio al que escribió el cliente (E.164): identifica a la tienda.
     twilio_whatsapp_number: str
     from_: str
     text: str
@@ -103,15 +99,6 @@ class ReplyChannel:
 
     company_id: str
     twilio_whatsapp_number: str | None
-
-
-@dataclass
-class ResolvedInbound:
-    connection: WhatsAppConnection
-    # Texto del cliente sin el `#codigo` de la tienda.
-    text: str
-    # "Estás hablando con …" cuando el cliente entra a una tienda por el número compartido.
-    store_greeting: str | None = None
 
 
 @dataclass
@@ -226,7 +213,12 @@ class WhatsAppWebhookService:
         connection = await self.session.scalar(
             select(WhatsAppConnection).where(WhatsAppConnection.company_id == company_id)
         )
-        if not connection or not connection.is_active:
+        if (
+            not connection
+            or not connection.is_active
+            or connection.onboarding_status != "online"
+            or not connection.twilio_whatsapp_number
+        ):
             raise bad_request("Configura una conexión WhatsApp activa primero")
         customer = normalize_whatsapp_e164(from_)
         if not customer:
@@ -234,7 +226,7 @@ class WhatsAppWebhookService:
 
         clean = text.strip()
         return await self._ingest_for_connection(
-            ResolvedInbound(connection=connection, text=clean),
+            connection,
             InboundMessage(
                 twilio_whatsapp_number=connection.twilio_whatsapp_number,
                 from_=customer,
@@ -254,101 +246,30 @@ class WhatsAppWebhookService:
             conversation_id,
             "",
             customer_text,
-            None,
             action_id,
         )
 
-    async def ingest_inbound(self, message: InboundMessage) -> dict[str, str] | None:
-        """Resuelve la tienda de un mensaje entrante y lo procesa.
-
-        En el número compartido, sin código ni sesión, responde cómo llegar a una tienda y no crea
-        conversación.
-        """
-        resolved = await self._resolve_inbound_connection(
-            message.twilio_whatsapp_number, message.from_, message.text
+    async def ingest_inbound(self, message: InboundMessage) -> dict[str, str]:
+        """Resuelve la tienda por el sender al que escribió el cliente y procesa el mensaje."""
+        connection = await self.session.scalar(
+            select(WhatsAppConnection)
+            .where(
+                WhatsAppConnection.twilio_whatsapp_number == message.twilio_whatsapp_number,
+                WhatsAppConnection.onboarding_status == "online",
+            )
+            .limit(1)
         )
-        if not resolved:
-            if message.twilio_whatsapp_number == await shared_number():
-                await self._reply_unrouted_shared_message(message.twilio_whatsapp_number, message.from_)
-                return None
+        if not connection:
             logger.warning(
                 "No active WhatsApp connection for twilioWhatsAppNumber=%s", message.twilio_whatsapp_number
             )
             raise bad_request("Conexión WhatsApp no encontrada o inactiva")
-        return await self._ingest_for_connection(resolved, message)
-
-    async def _resolve_inbound_connection(self, to: str, customer: str, text: str) -> ResolvedInbound | None:
-        """Número propio → su tienda. Número compartido → tienda del `#codigo` del mensaje
-        (y se recuerda para ese cliente) o, sin código, la tienda de su sesión."""
-        dedicated = await self.session.scalar(
-            select(WhatsAppConnection)
-            .where(WhatsAppConnection.twilio_whatsapp_number == to, WhatsAppConnection.mode == "dedicated")
-            .limit(1)
-        )
-        if dedicated:
-            return ResolvedInbound(connection=dedicated, text=text)
-
-        number = await shared_number()
-        if not number or number != to:
-            return None
-
-        code, rest = extract_store_code(text)
-        if code:
-            target = await self.session.scalar(
-                select(WhatsAppConnection)
-                .where(WhatsAppConnection.store_code == code, WhatsAppConnection.mode == "shared")
-                .limit(1)
-            )
-            if target:
-                previous = await self.session.scalar(
-                    select(SharedNumberSession.connection_id).where(
-                        SharedNumberSession.customer_wa_id == customer
-                    )
-                )
-                now = utcnow()
-                await self.session.execute(
-                    insert(SharedNumberSession)
-                    .values(
-                        id=new_id(),
-                        customer_wa_id=customer,
-                        connection_id=target.id,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                    .on_conflict_do_update(
-                        index_elements=["customerWaId"], set_={"connectionId": target.id, "updatedAt": now}
-                    )
-                )
-                await self.session.commit()
-                company_name = await self.session.scalar(
-                    select(Company.name).where(Company.id == target.company_id)
-                )
-                return ResolvedInbound(
-                    connection=target,
-                    text=rest or text,
-                    store_greeting=None if previous == target.id else f"Estás hablando con *{company_name}*.",
-                )
-
-        session_connection = await self.session.scalar(
-            select(WhatsAppConnection)
-            .join(SharedNumberSession, SharedNumberSession.connection_id == WhatsAppConnection.id)
-            .where(SharedNumberSession.customer_wa_id == customer)
-        )
-        if session_connection and session_connection.mode == "shared":
-            return ResolvedInbound(connection=session_connection, text=text)
-        return None
-
-    async def _reply_unrouted_shared_message(self, number: str, customer: str) -> None:
-        try:
-            await twilio_client.send_text(from_=number, to=customer, text=SHARED_NUMBER_UNROUTED_TEXT)
-        except Exception as error:  # noqa: BLE001
-            logger.error("Respuesta del número compartido falló: %s", error)
+        return await self._ingest_for_connection(connection, message)
 
     async def _ingest_for_connection(
-        self, resolved: ResolvedInbound, message: InboundMessage
+        self, connection: WhatsAppConnection, message: InboundMessage
     ) -> dict[str, str]:
-        connection = resolved.connection
-        text = resolved.text
+        text = message.text
         if not connection.is_active:
             logger.warning(
                 "No active WhatsApp connection for twilioWhatsAppNumber=%s", message.twilio_whatsapp_number
@@ -407,7 +328,6 @@ class WhatsAppWebhookService:
             conversation_id,
             message.from_,
             text,
-            resolved.store_greeting,
             message.action_id,
         )
         return {"conversationId": conversation_id, "messageId": inbound.id}
@@ -428,7 +348,6 @@ class WhatsAppWebhookService:
         conversation_id: str,
         customer_wa_id: str,
         customer_text: str,
-        store_greeting: str | None = None,
         action_id: str | None = None,
     ) -> None:
         settings = get_settings()
@@ -448,10 +367,6 @@ class WhatsAppWebhookService:
         chose_human = action_type == "handler_human" or (not action and detects_human_request(customer_text))
 
         if handler == "human" and not chose_bot:
-            if store_greeting:
-                await self._send_outbound(
-                    channel, conversation_id, customer_wa_id, OutboundMessage(store_greeting)
-                )
             return
 
         state = _ReplyState()
@@ -537,15 +452,6 @@ class WhatsAppWebhookService:
                                 await self._append_ai_reply(state, reply, channel.company_id)
                     else:
                         state.outbound.append(OutboundMessage(settings.WHATSAPP_AUTO_REPLY_TEXT))
-
-        if store_greeting:
-            if state.outbound:
-                first = state.outbound[0]
-                first.text = f"{store_greeting}\n\n{first.text}"
-                if first.fallback_text:
-                    first.fallback_text = f"{store_greeting}\n\n{first.fallback_text}"
-            else:
-                state.outbound.append(OutboundMessage(store_greeting))
 
         if not state.outbound and not state.image_urls:
             return
@@ -917,7 +823,6 @@ class WhatsAppWebhookService:
 __all__ = [
     "HANDLER_CHOICE_BUTTONS_TEXT",
     "PLAYGROUND_CHECKOUT_TEXT",
-    "SHARED_NUMBER_UNROUTED_TEXT",
     "InboundMessage",
     "WhatsAppWebhookService",
     "assert_development_only",

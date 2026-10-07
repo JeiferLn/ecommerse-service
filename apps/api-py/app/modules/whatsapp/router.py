@@ -2,12 +2,11 @@ import json
 import re
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Path, Query, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import Field
 
 from app.core.db import DbSession
 from app.core.errors import ApiError, unauthorized
-from app.core.rate_limit import limiter
 from app.core.responses import ok
 from app.core.schemas import QueryModel, RequestModel
 from app.core.security import CurrentUser, require_roles
@@ -33,7 +32,6 @@ playground_router = APIRouter(
 admin_router = APIRouter(prefix="/admin/companies", tags=["admin"], dependencies=[require_roles("admin")])
 
 OwnerOrManager = [require_roles("owner", "manager")]
-STORE_CODE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9-]{1,28}[A-Za-z0-9]$"
 
 MessageText = Annotated[
     str, string("text must be a string"), length(min_len=1, min_msg="El mensaje no puede estar vacío")
@@ -86,19 +84,8 @@ class UpsertWhatsAppConnectionBody(RequestModel):
     is_active: Annotated[bool | None, boolean("isActive must be a boolean value")] = None
 
 
-class CompanyNumberBody(RequestModel):
-    phone_number: Annotated[
-        str,
-        string("phoneNumber must be a string"),
-        length(min_len=8, min_msg="Indica el número de WhatsApp de tu tienda"),
-        matches(r"^\+[1-9]\d{7,14}$", "Usa formato internacional con +: +573001112233", re.ASCII),
-    ] = Field(alias="phoneNumber")
-
-
 class NumberRequestBody(RequestModel):
-    kind: Annotated[
-        str, one_of(("platform_number", "own_number"), "kind debe ser platform_number u own_number")
-    ]
+    kind: Annotated[str, one_of(("platform_number",), "kind debe ser platform_number")]
     phone_number: Annotated[
         Annotated[
             str,
@@ -107,6 +94,14 @@ class NumberRequestBody(RequestModel):
         | None,
         string("phoneNumber must be a string"),
     ] = Field(default=None, alias="phoneNumber")
+
+
+class ConnectCompleteBody(RequestModel):
+    code: Annotated[str | None, string("code must be a string")] = None
+    waba_id: Annotated[str | None, string("wabaId must be a string")] = Field(default=None, alias="wabaId")
+    phone_number_id: Annotated[str | None, string("phoneNumberId must be a string")] = Field(
+        default=None, alias="phoneNumberId"
+    )
 
 
 class ListConversationsQuery(QueryModel):
@@ -169,32 +164,36 @@ async def simulate_inbound(body: SimulateInboundBody, user: CurrentUser, session
     return ok(data, "Mensaje simulado")
 
 
-@router.get("/store-links/{store_code}")
-@limiter.exempt
-async def resolve_store_link(
-    store_code: Annotated[str, Path(pattern=STORE_CODE_PATTERN)], session: DbSession
-) -> Any:
-    """Público: destino de `/w/<código>` del panel. Sin límite por IP porque llega desde el servidor
-    de Next, que comparte una sola IP para todos los visitantes."""
-    return ok({"url": await WhatsAppConnectionService(session).resolve_store_link(store_code)})
-
-
 @router.get("/connection", dependencies=OwnerOrManager)
 async def get_connection(user: CurrentUser, session: DbSession) -> Any:
     return ok(await WhatsAppConnectionService(session).get(user.company_id))
 
 
-@router.post("/connection/shared", status_code=201, dependencies=[require_roles("owner")])
-async def activate_shared_connection(body: CompanyNumberBody, user: CurrentUser, session: DbSession) -> Any:
-    """Activa el canal al instante con el número compartido de la plataforma y el WhatsApp de la tienda."""
-    data = await WhatsAppConnectionService(session).activate_shared(user.company_id, body.phone_number)
-    return ok(data, "Canal de WhatsApp activado")
+@router.get("/connect/status", dependencies=OwnerOrManager)
+async def get_connect_status(user: CurrentUser, session: DbSession) -> Any:
+    """Estado del onboarding BYO y si Meta Tech Provider está listo."""
+    return ok(await WhatsAppConnectionService(session).get_connect_status(user.company_id))
 
 
-@router.put("/connection/phone", dependencies=[require_roles("owner")])
-async def update_company_number(body: CompanyNumberBody, user: CurrentUser, session: DbSession) -> Any:
-    data = await WhatsAppConnectionService(session).update_company_number(user.company_id, body.phone_number)
-    return ok(data, "Número actualizado")
+@router.post("/connect/start", status_code=201, dependencies=[require_roles("owner")])
+async def start_own_number_connect(user: CurrentUser, session: DbSession) -> Any:
+    """Inicia la conexión del número propio (Embedded Signup). Stub hasta completar Tech Provider."""
+    data = await WhatsAppConnectionService(session).start_own_number_connect(user.company_id)
+    return ok(data, "Conexión iniciada")
+
+
+@router.post("/connect/complete", dependencies=[require_roles("owner")])
+async def complete_own_number_connect(
+    body: ConnectCompleteBody, user: CurrentUser, session: DbSession
+) -> Any:
+    """Recibe el resultado de Embedded Signup. En Fase 1 solo persiste el estado de registro."""
+    data = await WhatsAppConnectionService(session).complete_own_number_connect(
+        user.company_id,
+        code=body.code,
+        waba_id=body.waba_id,
+        phone_number_id=body.phone_number_id,
+    )
+    return ok(data, "Resultado de Embedded Signup recibido")
 
 
 @router.get("/number-request", dependencies=OwnerOrManager)
@@ -204,7 +203,7 @@ async def get_number_request(user: CurrentUser, session: DbSession) -> Any:
 
 @router.post("/number-request", status_code=201, dependencies=[require_roles("owner")])
 async def request_number(body: NumberRequestBody, user: CurrentUser, session: DbSession) -> Any:
-    """Pide un número propio (planes de pago); la plataforma lo asigna después."""
+    """Pide un número de la plataforma (planes de pago); el admin lo asigna después."""
     data = await WhatsAppConnectionService(session).request_number(
         user.company_id, body.kind, body.phone_number
     )
@@ -219,10 +218,9 @@ async def cancel_number_request(user: CurrentUser, session: DbSession) -> Any:
 
 @router.patch("/connection", dependencies=OwnerOrManager)
 async def set_connection_active(body: SetConnectionActiveBody, user: CurrentUser, session: DbSession) -> Any:
-    """La tienda pausa o reactiva su asistente; el número propio lo asigna la plataforma."""
+    """La tienda pausa o reactiva su asistente; el sender lo asigna la plataforma o Embedded Signup."""
     data = await WhatsAppConnectionService(session).set_active(user.company_id, body.is_active)
     return ok(data, "Asistente activado" if body.is_active else "Asistente en pausa")
-
 
 @inbox_router.get("")
 async def list_conversations(

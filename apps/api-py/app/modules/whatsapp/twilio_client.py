@@ -50,6 +50,13 @@ async def credentials() -> tuple[str, str] | None:
     return None if simulate else account_credentials()
 
 
+async def credentials_for_connection(connection: object | None = None) -> tuple[str, str] | None:
+    """Credenciales de envío para una conexión. Hoy usa la cuenta de plataforma; cuando haya
+    subcuentas por empresa, usará `connection.twilio_subaccount_sid`."""
+    _ = connection
+    return await credentials()
+
+
 async def find_whatsapp_sender_status(number: str) -> str | None:
     """Estado del sender de WhatsApp con ese número en nuestra cuenta de Twilio (`ONLINE`, `OFFLINE`,
     `PENDING_VERIFICATION`…), o None si no existe."""

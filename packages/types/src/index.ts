@@ -689,7 +689,7 @@ export interface AdminCompanyRow extends PlatformCompanySummary {
     shipping: boolean;
     payments: boolean;
   };
-  /** Cumple todos los requisitos y aún no tiene número asignado o pidió uno propio. */
+  /** Cumple requisitos y aún no tiene canal en línea, o pidió número de plataforma. */
   awaitingNumber: boolean;
   whatsapp: WhatsAppConnection | null;
   numberRequest: WhatsAppNumberRequest | null;
@@ -710,13 +710,6 @@ export type PlatformSettingSource = "panel" | "env";
 
 /** WhatsApp/Twilio de la plataforma. Las credenciales nunca se exponen, solo si están. */
 export interface PlatformWhatsAppSettings {
-  /** Número compartido vigente, o null si no hay ninguno. */
-  sharedNumber: string | null;
-  sharedNumberSource: PlatformSettingSource | null;
-  /** Respaldo del `.env` al dejar vacío el número del panel. */
-  envSharedNumber: string | null;
-  /** Tiendas que hoy atienden por el número compartido. */
-  sharedStoresCount: number;
   credentialsConfigured: boolean;
   simulateSend: boolean;
   simulateSendSource: PlatformSettingSource;
@@ -726,6 +719,10 @@ export interface PlatformWhatsAppSettings {
   signatureValidation: boolean;
   interactiveEnabled: boolean;
   checkoutTemplateConfigured: boolean;
+  /** Meta Tech Provider / Embedded Signup listo para conectar números propios. */
+  techProviderEnabled: boolean;
+  metaAppId: string | null;
+  metaEmbeddedSignupConfigId: string | null;
 }
 
 export interface PlatformSettings {
@@ -734,7 +731,6 @@ export interface PlatformSettings {
 
 /** `null` en un campo vuelve al valor del `.env`; los campos omitidos no cambian. */
 export interface UpdatePlatformSettingsRequest {
-  sharedWhatsAppNumber?: string | null;
   whatsappSimulateSend?: boolean | null;
 }
 
@@ -750,17 +746,22 @@ export const CONVERSATION_HANDLER_LABELS: Record<ConversationHandler, string> = 
   human: "Asesor",
 };
 
-/** `shared`: número de la plataforma enrutado por código; `dedicated`: número propio de la tienda. */
-export type WhatsAppConnectionMode = "shared" | "dedicated";
+/** Origen del sender: número propio (Embedded Signup) o número otorgado por la plataforma. */
+export type WhatsAppConnectionKind = "own_number" | "platform_number";
 
-/** `platform_number`: número empresarial de la plataforma; `own_number`: el de la tienda, conectado
- * por Meta. */
-export type WhatsAppNumberRequestKind = "platform_number" | "own_number";
+export type WhatsAppOnboardingStatus =
+  | "pending"
+  | "awaiting_meta"
+  | "registering"
+  | "online"
+  | "failed";
 
-/** Número propio pedido por una tienda de pago, pendiente hasta que la plataforma lo asigna. */
+/** Solo `platform_number`: número empresarial de la plataforma (planes de pago). */
+export type WhatsAppNumberRequestKind = "platform_number";
+
+/** Número de plataforma pedido por una tienda de pago, pendiente hasta que el admin lo asigna. */
 export interface WhatsAppNumberRequest {
   kind: WhatsAppNumberRequestKind;
-  /** Solo en `own_number`. */
   phoneNumber: string | null;
   createdAt: string;
 }
@@ -768,20 +769,27 @@ export interface WhatsAppNumberRequest {
 export interface WhatsAppConnection {
   id: string;
   companyId: string;
-  /** Número WhatsApp E.164 (ej. +14155238886), sin prefijo whatsapp:. `null` para la tienda en modo
-   * compartido: el número de la plataforma solo lo ve el admin. */
+  /** Sender E.164 sin prefijo whatsapp:. Null mientras el onboarding no tiene sender. */
   twilioWhatsAppNumber: string | null;
-  /** WhatsApp de contacto de la tienda (único entre empresas); no recibe al bot. */
+  /** WhatsApp de contacto de la tienda; no recibe al bot. */
   displayPhoneNumber: string | null;
-  mode: WhatsAppConnectionMode;
-  /** Código de la tienda en el número compartido (sin #). */
-  storeCode: string | null;
+  connectionKind: WhatsAppConnectionKind;
+  onboardingStatus: WhatsAppOnboardingStatus;
+  onboardingError: string | null;
+  wabaId: string | null;
   isActive: boolean;
-  /** Enlace para clientes. En modo compartido es `<panel>/w/<código>`, que redirige a wa.me con el
-   * número vigente y el código de la tienda en el mensaje. */
+  /** Enlace wa.me al sender cuando el canal está en línea. */
   waMeLink: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Estado del flujo «Conectar WhatsApp» (BYO / Embedded Signup). */
+export interface WhatsAppConnectStatus {
+  techProviderReady: boolean;
+  metaAppId: string | null;
+  metaEmbeddedSignupConfigId: string | null;
+  connection: WhatsAppConnection | null;
 }
 
 export interface ConversationSummary {

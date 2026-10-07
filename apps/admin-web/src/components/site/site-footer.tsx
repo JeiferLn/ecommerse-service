@@ -20,13 +20,17 @@ const COLUMNS = [
       { href: "/forgot-password", label: "Recuperar contraseña" },
     ],
   },
+  {
+    title: "Legal",
+    links: [{ href: "/terms", label: "Términos de servicio" }],
+  },
 ];
 
 export function SiteFooter() {
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 lg:grid-cols-12 lg:px-10">
-        <div className="lg:col-span-5">
+      <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:grid-cols-2 lg:grid-cols-12 lg:px-10">
+        <div className="sm:col-span-2 lg:col-span-4">
           <SiteLogo />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
             El vendedor de tu tienda en WhatsApp. Responde con tu catálogo y cobra en el chat.
@@ -36,7 +40,7 @@ export function SiteFooter() {
           <nav
             key={column.title}
             aria-label={column.title}
-            className="lg:col-span-3 lg:first-of-type:col-start-7"
+            className="lg:col-span-2 lg:first-of-type:col-start-6"
           >
             <p className="font-data text-xs tracking-wider text-muted-foreground uppercase">
               {column.title}
@@ -57,8 +61,11 @@ export function SiteFooter() {
         ))}
       </div>
       <div className="border-t border-border">
-        <p className="mx-auto max-w-7xl px-5 py-6 text-xs text-muted-foreground lg:px-10">
-          © 2026 Commerce AI. Pagos procesados por Mercado Pago.
+        <p className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-6 text-xs text-muted-foreground lg:px-10">
+          <span>© 2026 Commerce AI. Pagos procesados por Mercado Pago.</span>
+          <Link href="/terms" className="underline-offset-4 hover:underline">
+            Términos de servicio
+          </Link>
         </p>
       </div>
     </footer>

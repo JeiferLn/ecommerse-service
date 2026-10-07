@@ -21,7 +21,7 @@ const COMPANY_ROUTES = [
 
 const PRIVATE_ROUTES = [...COMPANY_ROUTES, "/admin"];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
-const PUBLIC_ROUTES = ["/", "/pricing", "/checkout", "/session-refresh", "/w"];
+const PUBLIC_ROUTES = ["/", "/pricing", "/terms", "/checkout", "/session-refresh"];
 
 function matches(pathname: string, routes: string[]): boolean {
   return routes.some((route) => pathname === route || pathname.startsWith(`${route}/`));

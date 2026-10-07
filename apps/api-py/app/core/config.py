@@ -51,7 +51,11 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str | None = None
     TWILIO_SKIP_SIGNATURE: bool = False
     TWILIO_WEBHOOK_URL: str | None = None
-    TWILIO_SHARED_WHATSAPP_NUMBER: str | None = None
+    # Meta Tech Provider / Embedded Signup (Fase 1: stubs hasta completar el onboarding).
+    META_APP_ID: str | None = None
+    META_APP_SECRET: str | None = None
+    META_EMBEDDED_SIGNUP_CONFIG_ID: str | None = None
+    TWILIO_TECH_PROVIDER_ENABLED: bool = False
     WHATSAPP_AUTO_REPLY_ENABLED: bool = True
     WHATSAPP_AUTO_REPLY_TEXT: str = "Gracias por tu mensaje. Te responderemos pronto."
     WHATSAPP_SIMULATE_SEND: bool = False
@@ -143,6 +147,16 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.NODE_ENV == "production"
+
+    @property
+    def tech_provider_ready(self) -> bool:
+        """True cuando el onboarding Meta Tech Provider / Embedded Signup está habilitado y configurado."""
+        return bool(
+            self.TWILIO_TECH_PROVIDER_ENABLED
+            and (self.META_APP_ID or "").strip()
+            and (self.META_APP_SECRET or "").strip()
+            and (self.META_EMBEDDED_SIGNUP_CONFIG_ID or "").strip()
+        )
 
     @property
     def async_database_url(self) -> str:

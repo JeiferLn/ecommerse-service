@@ -60,6 +60,10 @@ MessageDirectionEnum = pg_enum("MessageDirection", "inbound", "outbound")
 MessageStatusEnum = pg_enum("MessageStatus", "received", "sent", "failed")
 ConversationHandlerEnum = pg_enum("ConversationHandler", "pending", "bot", "human")
 WaModeEnum = pg_enum("WhatsAppConnectionMode", "shared", "dedicated")
+WaConnectionKindEnum = pg_enum("WhatsAppConnectionKind", "own_number", "platform_number")
+WaOnboardingStatusEnum = pg_enum(
+    "WhatsAppOnboardingStatus", "pending", "awaiting_meta", "registering", "online", "failed"
+)
 KnowledgeTypeEnum = pg_enum("KnowledgeDocumentType", "faq", "policy", "warranty", "guide")
 KnowledgeStatusEnum = pg_enum("KnowledgeDocumentStatus", "draft", "active", "archived")
 OrderStatusEnum = pg_enum(
@@ -337,10 +341,21 @@ class WhatsAppConnection(Base):
 
     id: Mapped[str] = id_column()
     company_id: Mapped[str] = mapped_column("companyId", Text, ref("Company.id"))
-    twilio_whatsapp_number: Mapped[str] = mapped_column("twilioWhatsAppNumber", Text)
+    # Nullable mientras el onboarding BYO / provisión aún no tiene sender.
+    twilio_whatsapp_number: Mapped[str | None] = mapped_column("twilioWhatsAppNumber", Text)
     display_phone_number: Mapped[str | None] = mapped_column("displayPhoneNumber", Text)
     mode: Mapped[str] = mapped_column(WaModeEnum, default="dedicated")
-    store_code: Mapped[str | None] = mapped_column("storeCode", Text)
+    connection_kind: Mapped[str] = mapped_column(
+        "connectionKind", WaConnectionKindEnum, default="platform_number"
+    )
+    onboarding_status: Mapped[str] = mapped_column(
+        "onboardingStatus", WaOnboardingStatusEnum, default="online"
+    )
+    waba_id: Mapped[str | None] = mapped_column("wabaId", Text)
+    meta_phone_number_id: Mapped[str | None] = mapped_column("metaPhoneNumberId", Text)
+    twilio_subaccount_sid: Mapped[str | None] = mapped_column("twilioSubaccountSid", Text)
+    twilio_sender_sid: Mapped[str | None] = mapped_column("twilioSenderSid", Text)
+    onboarding_error: Mapped[str | None] = mapped_column("onboardingError", Text)
     is_active: Mapped[bool] = mapped_column("isActive", Boolean, default=True)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
@@ -348,24 +363,14 @@ class WhatsAppConnection(Base):
     company: Mapped[Company] = relationship(back_populates="whatsapp_connection")
 
 
-class SharedNumberSession(Base):
-    __tablename__ = "SharedNumberSession"
-
-    id: Mapped[str] = id_column()
-    customer_wa_id: Mapped[str] = mapped_column("customerWaId", Text)
-    connection_id: Mapped[str] = fk("connectionId", "WhatsAppConnection.id")
-    created_at: Mapped[datetime] = created_at_column()
-    updated_at: Mapped[datetime] = updated_at_column()
-
-
 class WhatsAppNumberRequest(Base):
-    """Número propio que una tienda de pago pidió; existe mientras está pendiente."""
+    """Número de plataforma pedido por una tienda de pago; existe mientras está pendiente."""
 
     __tablename__ = "WhatsAppNumberRequest"
 
     id: Mapped[str] = id_column()
     company_id: Mapped[str] = fk("companyId", "Company.id")
-    # `platform_number`: número empresarial nuestro; `own_number`: su número, conectado por Meta.
+    # Solo `platform_number` en el flujo actual; BYO va por Embedded Signup.
     kind: Mapped[str] = mapped_column(Text)
     phone_number: Mapped[str | None] = mapped_column("phoneNumber", Text)
     created_at: Mapped[datetime] = created_at_column()
@@ -602,7 +607,6 @@ class PlatformSettings(Base):
     __tablename__ = "PlatformSettings"
 
     id: Mapped[str] = mapped_column("id", Text, primary_key=True)
-    shared_whatsapp_number: Mapped[str | None] = mapped_column("sharedWhatsAppNumber", Text)
     whatsapp_simulate_send: Mapped[bool | None] = mapped_column("whatsappSimulateSend", Boolean)
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -674,8 +678,6 @@ Index("ProductVariant_productId_idx", ProductVariant.product_id)
 Index("ProductVariant_productId_sku_key", ProductVariant.product_id, ProductVariant.sku, unique=True)
 Index("RefreshToken_tokenHash_key", RefreshToken.token_hash, unique=True)
 Index("RefreshToken_userId_idx", RefreshToken.user_id)
-Index("SharedNumberSession_connectionId_idx", SharedNumberSession.connection_id)
-Index("SharedNumberSession_customerWaId_key", SharedNumberSession.customer_wa_id, unique=True)
 Index("Subscription_companyId_key", Subscription.company_id, unique=True)
 Index("Subscription_mpPreapprovalId_idx", Subscription.mp_preapproval_id)
 Index("Subscription_planId_idx", Subscription.plan_id)
@@ -688,7 +690,7 @@ Index(
     "WhatsAppConnection_dedicated_number_key",
     WhatsAppConnection.twilio_whatsapp_number,
     unique=True,
-    postgresql_where=text("mode = 'dedicated'"),
+    postgresql_where=text("mode = 'dedicated' AND \"twilioWhatsAppNumber\" IS NOT NULL"),
 )
 Index(
     "WhatsAppConnection_displayPhoneNumber_key",
@@ -696,7 +698,6 @@ Index(
     unique=True,
     postgresql_where=text('"displayPhoneNumber" IS NOT NULL'),
 )
-Index("WhatsAppConnection_storeCode_key", WhatsAppConnection.store_code, unique=True)
 Index("WhatsAppNumberRequest_companyId_key", WhatsAppNumberRequest.company_id, unique=True)
 Index("WhatsAppConnection_twilioWhatsAppNumber_idx", WhatsAppConnection.twilio_whatsapp_number)
 Index("WhatsAppContentTemplate_hash_key", WhatsAppContentTemplate.hash, unique=True)

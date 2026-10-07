@@ -299,26 +299,23 @@ Conectar la plataforma con WhatsApp vía **Twilio**, multi-tenant, con modo simu
 
 Incluye (implementado):
 
-- Modelo `WhatsAppConnection` (1:1 empresa) con `twilioWhatsAppNumber` + `Conversation` + `Message`
-- Credenciales de plataforma en `.env` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`); número por empresa en DB
-- Webhook único público (`POST /api/v1/whatsapp/webhook`) — tenant por `To` (número Twilio)
-- CRUD de conexión por empresa (`/whatsapp/connection`)
+- Modelo `WhatsAppConnection` (1:1 empresa) con `connectionKind` / `onboardingStatus` + sender `twilioWhatsAppNumber` + `Conversation` + `Message`
+- Credenciales de plataforma en `.env` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`); sender por empresa en DB
+- Webhook único público (`POST /api/v1/whatsapp/webhook`) — tenant por `To` = sender `online`
+- Free: playground + `POST /whatsapp/connect/*` (BYO / Embedded Signup cuando Tech Provider esté listo)
+- Pago: `POST /whatsapp/number-request` (`platform_number`); admin asigna sender con `PUT /admin/companies/:id/whatsapp-connection`
 - Inbox: listar conversaciones, hilo y envío manual de texto
-- `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin llamadas reales (sin gastar mensajes)
+- `POST /whatsapp/webhook/simulate` + `WHATSAPP_SIMULATE_SEND` para desarrollar sin llamadas reales
 - Auto-reply configurable; con `AI_ENABLED=true` responde la IA (Fase 6)
-- Admin: `/whatsapp` (conexión + simular), `/whatsapp/inbox` (Conversaciones) y `/assistant/playground` (Prueba tu asistente, sin WhatsApp ni Twilio)
-- **Validación punta a punta en celular** con sender aprobado + ngrok → backend `:4000`
+- Admin: `/whatsapp` (canal), `/whatsapp/inbox` (Conversaciones) y `/assistant/playground`
+- Vars Meta/Tech Provider en `.env.example` (`META_*`, `TWILIO_TECH_PROVIDER_ENABLED`) — stub hasta aprobación externa
 
-Pendiente solo para endurecer producción (fuera del cierre MVP):
-
-- Firma `X-Twilio-Signature` con `TWILIO_WEBHOOK_URL` fijo (en local se puede usar `TWILIO_SKIP_SIGNATURE=true`)
-- Dominio/hosting estable (sin ngrok)
-- Plantillas / ventana 24h (reglas de WhatsApp vía Twilio)
+El número compartido con `/w/[código]` **ya no existe**.
 
 Cómo probar en local (sin gastar WhatsApp):
 
 1. `WHATSAPP_SIMULATE_SEND=true`
-2. Guardar conexión con el número del sender
+2. (Admin) asignar un sender a la tienda o usar el playground
 3. Simular mensaje entrante desde el admin
 4. Ver conversación + auto-reply en el inbox
 
@@ -327,14 +324,7 @@ Webhook real (móvil):
 1. ngrok/cloudflared → backend `:4000`
 2. En Twilio (sender): When a message comes in → `POST https://<host>/api/v1/whatsapp/webhook`
 3. `TWILIO_WEBHOOK_URL` igual a esa URL; `WHATSAPP_SIMULATE_SEND=false`
-4. Escribir desde el celular al número de la tienda
-
-Número compartido de la plataforma (plan Free, sin esperar número propio):
-
-1. En `apps/api-py/.env`: `TWILIO_SHARED_WHATSAPP_NUMBER=+1…` (el sender de Twilio). Ese número no puede estar asignado como número propio de ninguna tienda.
-2. Reiniciar el backend
-3. Con productos, envíos y Mercado Pago listos, el dueño escribe el WhatsApp de su tienda (obligatorio y único entre empresas), pulsa **Activar canal** en `/whatsapp` y copia su enlace (`…?text=Hola <Tienda> #codigo`)
-4. Abrir el enlace en el celular y enviar el mensaje: el bot responde "Estás hablando con _Tienda_." y sigue el flujo normal. Escribir al compartido sin código y sin sesión previa devuelve un mensaje genérico.
+4. Escribir desde el celular al sender de la tienda
 
 Mensajes interactivos (botones, listas, tarjeta de producto y botón de pago):
 

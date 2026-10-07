@@ -84,7 +84,7 @@ class WhatsAppInboxService:
             if conversation.wa_connection_id
             else None
         )
-        if not connection or not connection.is_active:
+        if not connection or not connection.is_active or not connection.twilio_whatsapp_number:
             raise bad_request("La conexión WhatsApp no está activa")
 
         body = text.strip()
@@ -130,7 +130,7 @@ class WhatsAppInboxService:
 
         if handler == "bot" and conversation.wa_connection_id:
             connection = await self.session.get(WhatsAppConnection, conversation.wa_connection_id)
-            if connection and connection.is_active:
+            if connection and connection.is_active and connection.twilio_whatsapp_number:
                 wamid: str | None = None
                 status = "sent"
                 try:

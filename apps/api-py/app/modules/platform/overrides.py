@@ -15,7 +15,6 @@ CACHE_TTL_SECONDS = 10.0
 class PlatformOverrides:
     """`None` = sin valor en el panel: se usa el del `.env`."""
 
-    shared_whatsapp_number: str | None = None
     whatsapp_simulate_send: bool | None = None
 
 
@@ -28,11 +27,7 @@ _cache = _Cache()
 
 
 def remember(row: PlatformSettings | None) -> PlatformOverrides:
-    _cache.value = (
-        PlatformOverrides(row.shared_whatsapp_number, row.whatsapp_simulate_send)
-        if row
-        else PlatformOverrides()
-    )
+    _cache.value = PlatformOverrides(row.whatsapp_simulate_send) if row else PlatformOverrides()
     _cache.loaded_at = time.monotonic()
     return _cache.value
 

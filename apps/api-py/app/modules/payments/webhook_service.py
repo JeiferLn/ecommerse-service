@@ -201,7 +201,12 @@ class MercadoPagoWebhookService:
             .options(selectinload(Conversation.wa_connection))
         )
         connection = conversation.wa_connection if conversation else None
-        if not conversation or not connection or not connection.is_active:
+        if (
+            not conversation
+            or not connection
+            or not connection.is_active
+            or not connection.twilio_whatsapp_number
+        ):
             logger.warning("Pedido %s: sin conversación/conexión WA activa para confirmar pago", order.number)
             return
 

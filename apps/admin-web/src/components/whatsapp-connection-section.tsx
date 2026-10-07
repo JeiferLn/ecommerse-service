@@ -4,6 +4,7 @@ import {
   canManageWhatsapp,
   type CompanyDetails,
   type SubscriptionDetails,
+  type WhatsAppConnectStatus,
   type WhatsAppConnection,
   type WhatsAppNumberRequest,
 } from "@commerce-ai/types";
@@ -13,13 +14,11 @@ import {
   Copy,
   ExternalLink,
   FlaskConical,
+  Link2,
   MessageCircle,
   MessageSquareText,
   Pause,
-  Pencil,
-  Phone,
   Play,
-  Power,
   RadioTower,
 } from "lucide-react";
 import Link from "next/link";
@@ -33,65 +32,29 @@ import {
   SetupRequirements,
 } from "@/components/setup-requirements";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { NumberRequestPanel } from "@/components/whatsapp-number-request-panel";
 import { apiFetch, ApiClientError } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
 
-const E164 = /^\+[1-9]\d{7,14}$/;
-
-/** "+57 300 111 2233" → "+573001112233". */
-function toE164(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  return digits ? `+${digits}` : "";
-}
-
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiClientError ? error.message : fallback;
 }
 
-function StorePhoneField({
-  id,
-  value,
-  onChange,
-  touched,
-}: {
-  id: string;
-  value: string;
-  onChange: (value: string) => void;
-  touched: boolean;
-}) {
-  const invalid = touched && !E164.test(toE164(value));
-  return (
-    <div className="flex max-w-sm flex-col gap-1.5">
-      <Label htmlFor={id}>WhatsApp de tu tienda</Label>
-      <Input
-        id={id}
-        type="tel"
-        inputMode="tel"
-        autoComplete="tel"
-        placeholder="+573001112233"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-invalid={invalid ? true : undefined}
-      />
-      <p className="text-xs text-pretty text-muted-foreground">
-        Con código de país. Es tu número de contacto y no puede usarlo otra tienda.
-      </p>
-    </div>
-  );
-}
+const ONBOARDING_LABELS: Record<string, string> = {
+  pending: "Pendiente",
+  awaiting_meta: "Esperando Meta",
+  registering: "Registrando sender",
+  online: "En línea",
+  failed: "Falló",
+};
 
 export function WhatsAppConnectionSection() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const canManage = Boolean(user && canManageWhatsapp(user.role));
   const [copied, setCopied] = useState(false);
-  const [phoneDraft, setPhoneDraft] = useState<string | null>(null);
-  const [editingPhone, setEditingPhone] = useState(false);
 
   const {
     data: connection,
@@ -116,38 +79,27 @@ export function WhatsAppConnectionSection() {
   });
   const isPaid = Boolean(subscription && subscription.planCode !== "free");
 
+  const { data: connectStatus } = useQuery({
+    queryKey: ["whatsapp-connect-status", user?.companyId],
+    queryFn: () => apiFetch<WhatsAppConnectStatus>("/whatsapp/connect/status"),
+    enabled: Boolean(user?.companyId && canManage),
+  });
+
   const { data: numberRequest } = useQuery({
     queryKey: ["whatsapp-number-request", user?.companyId],
     queryFn: () => apiFetch<WhatsAppNumberRequest | null>("/whatsapp/number-request"),
     enabled: Boolean(user?.companyId && canManage && isPaid),
   });
 
-  const onConnectionSaved = (data: WhatsAppConnection) => {
-    queryClient.setQueryData(["whatsapp-connection", user?.companyId], data);
-    setPhoneDraft(null);
-    setEditingPhone(false);
-  };
-
-  const activateMutation = useMutation({
-    mutationFn: (phoneNumber: string) =>
-      apiFetch<WhatsAppConnection>("/whatsapp/connection/shared", {
-        method: "POST",
-        body: JSON.stringify({ phoneNumber }),
-      }),
+  const connectStart = useMutation({
+    mutationFn: () =>
+      apiFetch<WhatsAppConnectStatus>("/whatsapp/connect/start", { method: "POST" }),
     onSuccess: (data) => {
-      onConnectionSaved(data);
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-connection"] });
-      void queryClient.invalidateQueries({ queryKey: ["company"] });
+      queryClient.setQueryData(["whatsapp-connect-status", user?.companyId], data);
+      if (data.connection) {
+        queryClient.setQueryData(["whatsapp-connection", user?.companyId], data.connection);
+      }
     },
-  });
-
-  const phoneMutation = useMutation({
-    mutationFn: (phoneNumber: string) =>
-      apiFetch<WhatsAppConnection>("/whatsapp/connection/phone", {
-        method: "PUT",
-        body: JSON.stringify({ phoneNumber }),
-      }),
-    onSuccess: onConnectionSaved,
   });
 
   const toggleMutation = useMutation({
@@ -198,98 +150,98 @@ export function WhatsAppConnectionSection() {
   }
 
   const isOwner = user.role === "owner";
+  const online =
+    connection?.onboardingStatus === "online" && Boolean(connection.twilioWhatsAppNumber);
+  const techReady = Boolean(connectStatus?.techProviderReady);
 
-  const ownNumberSection =
-    !connection || connection.mode === "shared" ? (
-      <FormSection
-        title="¿Quieres número propio?"
-        description="Un número de WhatsApp solo para tu tienda, sin código en el mensaje."
-      >
-        {isPaid ? (
-          <NumberRequestPanel
-            request={numberRequest ?? null}
-            isOwner={isOwner}
-            companyId={user.companyId}
-          />
-        ) : (
-          <p className="text-sm text-pretty text-muted-foreground">
-            Está disponible en los planes de pago.{" "}
-            <Link href="/billing" className="text-foreground underline-offset-4 hover:underline">
-              Ver planes
-            </Link>
-          </p>
-        )}
-      </FormSection>
-    ) : null;
-
-  if (!connection) {
-    // Solo se precarga el teléfono de la empresa si ya trae código de país.
-    const savedPhone = company.phone?.trim().startsWith("+") ? company.phone.trim() : "";
-    const phone = phoneDraft ?? savedPhone;
-    const phoneValid = E164.test(toE164(phone));
+  if (!online) {
+    const onboarding = connection && connection.onboardingStatus !== "online" ? connection : null;
     return (
       <div className="flex max-w-4xl flex-col gap-3">
-        <div className="flex flex-col gap-4 rounded-lg border border-border p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <MessageCircle className="size-4" aria-hidden />
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <h2 className="text-sm font-medium">Activa tu canal de WhatsApp</h2>
-              <p className="max-w-xl text-sm text-pretty text-muted-foreground">
-                Tu tienda ya tiene todo lo necesario. Escribe el WhatsApp de tu tienda y al
-                activarlo recibes un enlace para tus clientes; el asistente empieza a atenderlos al
-                instante.
+        <div className="flex flex-col gap-4 rounded-lg border border-border p-5 sm:flex-row sm:items-start">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <MessageCircle className="size-4" aria-hidden />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <h2 className="text-sm font-medium">WhatsApp de tu tienda</h2>
+            <p className="max-w-xl text-sm text-pretty text-muted-foreground">
+              Prueba el asistente en la app. Cuando quieras atender en WhatsApp, conecta tu propio
+              número o, en un plan de pago, solicita uno de la plataforma.
+            </p>
+            {onboarding ? (
+              <p className="text-sm text-muted-foreground">
+                Estado: {ONBOARDING_LABELS[onboarding.onboardingStatus] ?? onboarding.onboardingStatus}
+                {onboarding.onboardingError ? ` · ${onboarding.onboardingError}` : null}
               </p>
-              {isOwner ? null : (
-                <p className="text-sm text-muted-foreground">
-                  Solo el dueño de la tienda puede activar el canal.
-                </p>
-              )}
-            </div>
-            <Button asChild variant="ghost" size="sm" className="w-fit shrink-0">
+            ) : null}
+            {connectStart.isError ? (
+              <p className="text-sm text-destructive">
+                {errorMessage(connectStart.error, "No se pudo iniciar la conexión")}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button asChild variant="ghost" size="sm" className="w-fit">
               <Link href="/assistant/playground">
                 <FlaskConical className="size-4" aria-hidden />
                 Prueba tu asistente
               </Link>
             </Button>
-          </div>
-          {isOwner ? (
-            <div className="flex flex-col gap-3 sm:pl-13">
-              <StorePhoneField
-                id="wa-activate-phone"
-                value={phone}
-                onChange={setPhoneDraft}
-                touched={phoneDraft !== null}
-              />
-              {activateMutation.isError ? (
-                <p className="text-sm text-destructive">
-                  {errorMessage(activateMutation.error, "No se pudo activar el canal")}
-                </p>
-              ) : null}
+            {isOwner ? (
               <Button
                 type="button"
                 size="sm"
                 className="w-fit"
-                disabled={activateMutation.isPending || !phoneValid}
-                onClick={() => activateMutation.mutate(toE164(phone))}
+                disabled={connectStart.isPending}
+                onClick={() => connectStart.mutate()}
               >
-                <Power className="size-4" aria-hidden />
-                {activateMutation.isPending ? "Activando…" : "Activar canal"}
+                <Link2 className="size-4" aria-hidden />
+                {connectStart.isPending ? "Iniciando…" : "Conectar WhatsApp"}
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
+
+        {!techReady ? (
+          <p className="text-sm text-pretty text-muted-foreground">
+            La conexión con Meta (Embedded Signup) aún no está habilitada en esta instalación. Puedes
+            seguir probando el asistente en la app
+            {isPaid ? " o solicitar un número de la plataforma abajo" : ""}.
+          </p>
+        ) : null}
+
         <KnowledgeHint company={company} />
-        {ownNumberSection}
+
+        {isPaid ? (
+          <FormSection
+            title="Número de la plataforma"
+            description="Un número de WhatsApp Business exclusivo para tu tienda. Disponible en planes de pago."
+          >
+            <NumberRequestPanel
+              request={numberRequest ?? null}
+              isOwner={isOwner}
+              companyId={user.companyId}
+            />
+          </FormSection>
+        ) : (
+          <FormSection
+            title="¿Quieres un número nuestro?"
+            description="Si no tienes número propio o no quieres gestionar Meta, mejora tu plan y te asignamos uno."
+          >
+            <p className="text-sm text-pretty text-muted-foreground">
+              Disponible en los planes de pago.{" "}
+              <Link href="/billing" className="text-foreground underline-offset-4 hover:underline">
+                Ver planes
+              </Link>
+            </p>
+          </FormSection>
+        )}
       </div>
     );
   }
 
-  const isShared = connection.mode === "shared";
-  const headline = isShared ? `#${connection.storeCode ?? ""}` : connection.twilioWhatsAppNumber;
   const nextActive = !connection.isActive;
-  const editPhone = phoneDraft ?? connection.displayPhoneNumber ?? "";
+  const requirements = setupItems.filter((item) => !item.optional);
 
   const copyLink = async () => {
     if (!connection.waMeLink) {
@@ -300,23 +252,15 @@ export function WhatsAppConnectionSection() {
     window.setTimeout(() => setCopied(false), 2000);
   };
 
-  const cancelEdit = () => {
-    setEditingPhone(false);
-    setPhoneDraft(null);
-    phoneMutation.reset();
-  };
-
-  const requirements = setupItems.filter((item) => !item.optional);
-
   return (
     <div className="flex max-w-4xl flex-col">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-xs text-muted-foreground">
-            {isShared ? "Código de tu tienda" : "Número de tu asistente"}
-          </span>
+          <span className="text-xs text-muted-foreground">Número de tu asistente</span>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="font-data text-2xl tracking-tight">{headline}</span>
+            <span className="font-data text-2xl tracking-tight">
+              {connection.twilioWhatsAppNumber}
+            </span>
             <StatusPill tone={connection.isActive ? "positive" : "attention"}>
               {connection.isActive ? "Activo" : "En pausa"}
             </StatusPill>
@@ -357,11 +301,7 @@ export function WhatsAppConnectionSection() {
       {connection.waMeLink ? (
         <FormSection
           title="Enlace para clientes"
-          description={
-            isShared
-              ? "Compártelo en tu Instagram, tu web o tus anuncios. Abre WhatsApp con el código de tu tienda ya escrito, y así sabemos que te escriben a ti. Tus clientes deben entrar siempre por este enlace."
-              : "Compártelo en tu Instagram, tu web o tus anuncios para que te escriban directo al asistente."
-          }
+          description="Compártelo en tu Instagram, tu web o tus anuncios para que te escriban directo al asistente."
         >
           <div className="flex min-w-0 items-center gap-2 rounded-md border border-border py-1 pr-1 pl-3">
             <a
@@ -387,70 +327,19 @@ export function WhatsAppConnectionSection() {
         </FormSection>
       ) : null}
 
-      <FormSection
-        title="WhatsApp de tu tienda"
-        description="Tu número de contacto. Solo puede usarlo una tienda y no cambia tu enlace para clientes."
-      >
-        {editingPhone ? (
-          <div className="flex flex-col gap-3">
-            <StorePhoneField
-              id="wa-edit-phone"
-              value={editPhone}
-              onChange={setPhoneDraft}
-              touched={phoneDraft !== null}
-            />
-            {phoneMutation.isError ? (
-              <p className="text-sm text-destructive">
-                {errorMessage(phoneMutation.error, "No se pudo guardar el número")}
-              </p>
-            ) : null}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={phoneMutation.isPending || !E164.test(toE164(editPhone))}
-                onClick={() => phoneMutation.mutate(toE164(editPhone))}
-              >
-                {phoneMutation.isPending ? "Guardando…" : "Guardar"}
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={cancelEdit}>
-                Cancelar
-              </Button>
-            </div>
+      <FormSection title="Canal">
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <div className="flex items-center gap-2">
+            <RadioTower className="size-4 text-muted-foreground" aria-hidden />
+            <dt className="text-muted-foreground">Tipo</dt>
+            <dd>
+              {connection.connectionKind === "own_number"
+                ? "Número propio"
+                : "Número de la plataforma"}
+            </dd>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <dl className="grid flex-1 gap-3 text-sm sm:grid-cols-2">
-              <div className="flex items-center gap-2">
-                <Phone className="size-4 text-muted-foreground" aria-hidden />
-                <dt className="text-muted-foreground">Tienda</dt>
-                <dd className="font-data">{connection.displayPhoneNumber ?? "Sin registrar"}</dd>
-              </div>
-              {isShared ? null : (
-                <div className="flex items-center gap-2">
-                  <RadioTower className="size-4 text-muted-foreground" aria-hidden />
-                  <dt className="text-muted-foreground">Asistente</dt>
-                  <dd className="font-data">{connection.twilioWhatsAppNumber}</dd>
-                </div>
-              )}
-            </dl>
-            {isOwner ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-fit"
-                onClick={() => setEditingPhone(true)}
-              >
-                <Pencil className="size-4" aria-hidden />
-                Cambiar número
-              </Button>
-            ) : null}
-          </div>
-        )}
+        </dl>
       </FormSection>
-
-      {ownNumberSection}
 
       <FormSection
         title="Requisitos"

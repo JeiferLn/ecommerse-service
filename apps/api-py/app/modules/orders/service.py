@@ -1216,7 +1216,12 @@ class OrdersService:
         conversation = await self.session.scalar(query.limit(1))
 
         connection = conversation.wa_connection if conversation else None
-        if not conversation or not connection or not connection.is_active:
+        if (
+            not conversation
+            or not connection
+            or not connection.is_active
+            or not connection.twilio_whatsapp_number
+        ):
             logger.warning(
                 "Pedido %s: no se pudo notificar estado %s (sin WA activo)", order.number, order.status
             )
