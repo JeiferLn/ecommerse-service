@@ -24,6 +24,41 @@ class ChatMessage:
 class ChatCompletionResult:
     content: str
     model: str
+    finish_reason: str | None = None
+
+
+class CircuitBreaker:
+    def __init__(self) -> None:
+        self.consecutive_failures = 0
+        self.last_failure_time = 0.0
+
+    def is_open(self) -> bool:
+        settings = get_settings()
+        if not settings.AI_CIRCUIT_BREAKER_ENABLED:
+            return False
+        if self.consecutive_failures >= settings.AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD:
+            import time
+
+            if time.time() - self.last_failure_time < settings.AI_CIRCUIT_BREAKER_RESET_SECONDS:
+                return True
+            self.consecutive_failures = 0
+        return False
+
+    def record_failure(self) -> None:
+        import time
+
+        self.consecutive_failures += 1
+        self.last_failure_time = time.time()
+
+    def record_success(self) -> None:
+        self.consecutive_failures = 0
+
+
+_circuit_breaker = CircuitBreaker()
+
+
+def get_circuit_breaker() -> CircuitBreaker:
+    return _circuit_breaker
 
 
 class AiChatProvider(Protocol):
@@ -122,33 +157,45 @@ class OpenRouterChatProvider:
         if settings.AI_APP_TITLE:
             headers["X-Title"] = settings.AI_APP_TITLE
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                f"{settings.AI_BASE_URL.rstrip('/')}/chat/completions",
-                headers=headers,
-                json={
-                    "model": chosen_model,
-                    "messages": [{"role": m.role, "content": m.content} for m in messages],
-                    "temperature": 0.3 if temperature is None else temperature,
-                    "max_tokens": 400 if max_tokens is None else max_tokens,
-                },
-            )
-        if response.status_code >= 400:
-            logger.error("OpenRouter error %s: %s", response.status_code, response.text[:300])
-            raise RuntimeError(f"OpenRouter respondió {response.status_code}")
+        if _circuit_breaker.is_open():
+            logger.warning("AI Circuit Breaker OPEN; skipping call to OpenRouter")
+            raise RuntimeError("Circuit breaker abierto por fallos repetidos del proveedor")
 
-        data = response.json()
-        choice = (data.get("choices") or [{}])[0] or {}
-        raw = (choice.get("message") or {}).get("content") or choice.get("text")
-        content = ""
-        if isinstance(raw, str):
-            content = raw.strip()
-        elif isinstance(raw, list):
-            content = "".join(part.get("text", "") for part in raw if isinstance(part, dict)).strip()
-        if not content:
-            logger.warning("OpenRouter empty content (model=%s). keys=%s", chosen_model, list(choice.keys()))
-            raise RuntimeError("OpenRouter devolvió una respuesta vacía")
-        return ChatCompletionResult(content, data.get("model") or chosen_model)
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    f"{settings.AI_BASE_URL.rstrip('/')}/chat/completions",
+                    headers=headers,
+                    json={
+                        "model": chosen_model,
+                        "messages": [{"role": m.role, "content": m.content} for m in messages],
+                        "temperature": 0.3 if temperature is None else temperature,
+                        "max_tokens": 400 if max_tokens is None else max_tokens,
+                    },
+                )
+            if response.status_code >= 400:
+                logger.error("OpenRouter error %s: %s", response.status_code, response.text[:300])
+                _circuit_breaker.record_failure()
+                raise RuntimeError(f"OpenRouter respondió {response.status_code}")
+
+            data = response.json()
+            choice = (data.get("choices") or [{}])[0] or {}
+            finish_reason = choice.get("finish_reason")
+            raw = (choice.get("message") or {}).get("content") or choice.get("text")
+            content = ""
+            if isinstance(raw, str):
+                content = raw.strip()
+            elif isinstance(raw, list):
+                content = "".join(part.get("text", "") for part in raw if isinstance(part, dict)).strip()
+            if not content:
+                logger.warning("OpenRouter empty content (model=%s). keys=%s", chosen_model, list(choice.keys()))
+                _circuit_breaker.record_failure()
+                raise RuntimeError("OpenRouter devolvió una respuesta vacía")
+            _circuit_breaker.record_success()
+            return ChatCompletionResult(content, data.get("model") or chosen_model, finish_reason=finish_reason)
+        except Exception:
+            _circuit_breaker.record_failure()
+            raise
 
 
 class GeminiChatProvider:
@@ -190,23 +237,36 @@ class GeminiChatProvider:
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{chosen}:generateContent",
-                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-                json=body,
-            )
-        if response.status_code >= 400:
-            logger.error("Gemini error %s: %s", response.status_code, response.text[:300])
-            raise RuntimeError(f"Gemini respondió {response.status_code}")
+        if _circuit_breaker.is_open():
+            logger.warning("AI Circuit Breaker OPEN; skipping call to Gemini")
+            raise RuntimeError("Circuit breaker abierto por fallos repetidos del proveedor")
 
-        data = response.json()
-        parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
-        content = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
-        if not content:
-            logger.warning("Gemini empty content (model=%s)", chosen)
-            raise RuntimeError("Gemini devolvió una respuesta vacía")
-        return ChatCompletionResult(content, chosen)
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{chosen}:generateContent",
+                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    json=body,
+                )
+            if response.status_code >= 400:
+                logger.error("Gemini error %s: %s", response.status_code, response.text[:300])
+                _circuit_breaker.record_failure()
+                raise RuntimeError(f"Gemini respondió {response.status_code}")
+
+            data = response.json()
+            candidate = ((data.get("candidates") or [{}])[0])
+            finish_reason = (candidate.get("finishReason") or "").lower()
+            parts = (candidate.get("content") or {}).get("parts") or []
+            content = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+            if not content:
+                logger.warning("Gemini empty content (model=%s)", chosen)
+                _circuit_breaker.record_failure()
+                raise RuntimeError("Gemini devolvió una respuesta vacía")
+            _circuit_breaker.record_success()
+            return ChatCompletionResult(content, chosen, finish_reason=finish_reason)
+        except Exception:
+            _circuit_breaker.record_failure()
+            raise
 
 
 def _gemini_model(configured: str | None) -> str:

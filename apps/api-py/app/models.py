@@ -611,7 +611,21 @@ class PlatformSettings(Base):
     updated_at: Mapped[datetime] = updated_at_column()
 
 
+class AiUsage(Base):
+    __tablename__ = "AiUsage"
+
+    id: Mapped[str] = id_column()
+    company_id: Mapped[str] = fk("companyId", "Company.id")
+    conversation_id: Mapped[str | None] = mapped_column("conversationId", Text, nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column("customerPhone", Text, nullable=True)
+    created_at: Mapped[datetime] = created_at_column()
+
+
 # Índices con los nombres de la base (heredados de Prisma).
+Index("AiUsage_companyId_idx", AiUsage.company_id)
+Index("AiUsage_conversationId_idx", AiUsage.conversation_id)
+Index("AiUsage_customerPhone_idx", AiUsage.customer_phone)
+Index("AiUsage_createdAt_idx", AiUsage.created_at)
 Index("Cart_companyId_idx", Cart.company_id)
 Index("Cart_conversationId_key", Cart.conversation_id, unique=True)
 Index("CartItem_cartId_variantId_key", CartItem.cart_id, CartItem.variant_id, unique=True)

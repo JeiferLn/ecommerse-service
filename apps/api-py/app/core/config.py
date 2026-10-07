@@ -77,6 +77,20 @@ class Settings(BaseSettings):
     AI_FALLBACK_TEXT: str = (
         "Gracias por tu mensaje. En un momento un asesor de la tienda te atenderá por aquí."
     )
+    AI_RATE_LIMIT_ENABLED: bool = True
+    AI_SECURITY_GATE_ENABLED: bool = True
+    AI_OUTPUT_GUARD_ENABLED: bool = True
+    AI_FACT_CHECK_ENABLED: bool = True
+    AI_CIRCUIT_BREAKER_ENABLED: bool = True
+    AI_DEBUG_LOGS: bool = False
+    AI_MAX_MSGS_PER_CONVERSATION_HOUR: int = Field(default=20, gt=0)
+    AI_MAX_MSGS_PER_COMPANY_DAY: int = Field(default=500, gt=0)
+    AI_MAX_MSGS_PER_PHONE_MINUTE: int = Field(default=5, gt=0)
+    AI_ROUTER_DIRECT_CONFIDENCE: float = Field(default=0.90, ge=0.0, le=1.0)
+    AI_ROUTER_VALIDATED_CONFIDENCE: float = Field(default=0.78, ge=0.0, le=1.0)
+    AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = Field(default=3, gt=0)
+    AI_CIRCUIT_BREAKER_RESET_SECONDS: int = Field(default=60, gt=0)
+    AI_MAX_TOKENS_CONVERSATIONAL: int = Field(default=220, gt=0)
     AI_HTTP_REFERER: str | None = None
     AI_APP_TITLE: str = "Commerce AI SaaS"
     WHATSAPP_HANDLER_CHOICE_TEXT: str = (
