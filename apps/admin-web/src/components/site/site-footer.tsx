@@ -22,7 +22,11 @@ const COLUMNS = [
   },
   {
     title: "Legal",
-    links: [{ href: "/terms", label: "Términos de servicio" }],
+    links: [
+      { href: "/terms", label: "Términos de servicio" },
+      { href: "/privacy", label: "Privacidad" },
+      { href: "/data-deletion", label: "Eliminación de datos" },
+    ],
   },
 ];
 
@@ -65,6 +69,12 @@ export function SiteFooter() {
           <span>© 2026 Commerce AI. Pagos procesados por Mercado Pago.</span>
           <Link href="/terms" className="underline-offset-4 hover:underline">
             Términos de servicio
+          </Link>
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            Privacidad
+          </Link>
+          <Link href="/data-deletion" className="underline-offset-4 hover:underline">
+            Eliminación de datos
           </Link>
         </p>
       </div>

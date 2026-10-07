@@ -175,10 +175,14 @@ const SECTIONS: { id: string; title: string; body: ReactNode }[] = [
     title: "10. Datos personales",
     body: (
       <p>
-        Tratamos datos necesarios para operar la cuenta, la mensajería y la facturación. Eres
-        responsable de informar a tus clientes cuando uses WhatsApp u otros canales y de contar con
-        bases legales adecuadas. Si necesitas ejercer derechos sobre tus datos de cuenta, escríbenos
-        al contacto indicado más abajo.
+        Tratamos datos necesarios para operar la cuenta, la mensajería y la facturación. El detalle
+        está en la{" "}
+        <Link href="/privacy" className="underline underline-offset-4 hover:text-foreground">
+          Política de privacidad
+        </Link>
+        . Eres responsable de informar a tus clientes cuando uses WhatsApp u otros canales y de
+        contar con bases legales adecuadas. Si necesitas ejercer derechos sobre tus datos de
+        cuenta, escríbenos al contacto indicado más abajo.
       </p>
     ),
   },
