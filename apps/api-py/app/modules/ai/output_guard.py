@@ -72,6 +72,7 @@ def validate_model_output(raw_output: str, *, context: GuardContext) -> GuardRes
     if settings.AI_FACT_CHECK_ENABLED:
         fact_result = verify_facts(cleaned, context.facts)
         if not fact_result.passed:
+            # reason_code puede ser PRICE_HALLUCINATION, FACTUAL_MISMATCH o STOCK_CONTRADICTION
             return GuardResult(is_valid=False, reason_code=fact_result.reason_code)
 
     return GuardResult(is_valid=True, sanitized_text=cleaned)
