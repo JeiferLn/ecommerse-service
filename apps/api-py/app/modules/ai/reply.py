@@ -1,3 +1,19 @@
+"""Pipeline principal de respuesta del asistente de IA.
+
+Responsabilidades (en orden de ejecución):
+  1. Cargar historial de BD (solo para contexto del LLM; nunca para extraer precios/stock).
+  2. Fact-check de la respuesta con FactSet construido SOLO desde la BD/tools.
+  3. RAG con filtro company_id y vigencia de documentos.
+  4. Quejas: clasificación de severidad y handoff contextual.
+  5. Memoria de conversación en tres niveles (turno/sesión/cliente).
+  6. Observabilidad: emitir eventos de la sección 15.
+
+El output guard y el security gate no se debilitan.
+El router de intents no se reabre.
+"""
+
+from __future__ import annotations
+
 import contextlib
 import logging
 import re
@@ -11,6 +27,17 @@ from app.core.text import fold
 from app.models import Company, Message
 from app.modules.ai.catalog_context import build_catalog_context
 from app.modules.ai.commerce_prompt import CommerceSettings, format_commerce_prompt_block
+from app.modules.ai.complaint_handler import classify_complaint
+from app.modules.ai.fact_check import FactSet, verify_facts
+from app.modules.ai.memory import ConversationMemory
+from app.modules.ai.observability import (
+    track_complaint_detected,
+    track_fact_mismatch,
+    track_handoff,
+    track_rag_stale,
+    track_reply_blocked,
+    track_reply_generated,
+)
 from app.modules.ai.prompts import build_sales_assistant_system_prompt
 from app.modules.ai.providers import HANDOFF_MARKER, PRODUCT_LINE_RE, ChatMessage, get_chat_provider
 from app.modules.ai.sales_scope import (
@@ -18,7 +45,7 @@ from app.modules.ai.sales_scope import (
     is_clearly_off_topic_sales_query,
     looks_like_off_topic_assistant_reply,
 )
-from app.modules.knowledge.retrieval import RetrievedChunk, retrieve
+from app.modules.knowledge.retrieval import RetrievedChunk, retrieve, stale_citation
 
 logger = logging.getLogger("app.ai.reply")
 
@@ -60,6 +87,9 @@ ENGLISH_WORDS_RE = re.compile(
 )
 SPANISH_MARKS_RE = re.compile(r"[áéíóúñ¿¡]", re.IGNORECASE)
 
+# Detectar si el modelo citó un documento no vigente
+_STALE_TAG_RE = re.compile(r"\[INFORMACIÓN NO VIGENTE\]", re.IGNORECASE)
+
 
 @dataclass
 class GenerateReplyResult:
@@ -69,6 +99,8 @@ class GenerateReplyResult:
     """URLs públicas de imágenes a enviar por WhatsApp (Twilio MediaUrl)."""
     suggested_product_ids: list[str] | None = None
     """Productos de los que habla la respuesta (para lista o tarjeta en el chat)."""
+    complaint_severity: str | None = None
+    """Severidad de la queja si se detectó una (LOW/MEDIUM/HIGH/CRITICAL)."""
 
 
 def is_product_focused_query(text: str) -> bool:
@@ -94,6 +126,8 @@ def sanitize_model_output(raw: str) -> str:
         (r"^\s*Safety\s*:\s*\w+\s*", re.IGNORECASE | re.MULTILINE),
         (r"<think>[\s\S]*?</think>", re.IGNORECASE),
         (r"</?think>", re.IGNORECASE),
+        # Eliminar marcas de documento no vigente que el modelo haya reproducido
+        (r"\[INFORMACIÓN NO VIGENTE\]", re.IGNORECASE),
     ):
         cleaned = re.sub(pattern, "", cleaned, flags=flags | re.ASCII)
     cleaned = cleaned.strip()
@@ -103,7 +137,7 @@ def sanitize_model_output(raw: str) -> str:
 
 
 def looks_like_internal_reasoning(text: str) -> bool:
-    """Detecta monólogos / CoT que no deben llegar al cliente (modelos free suelen filtrarlos)."""
+    """Detecta monólogos / CoT que no deben llegar al cliente."""
     trimmed = text.strip()
     if len(trimmed) > 650:
         return True
@@ -125,14 +159,21 @@ def is_handoff(content: str) -> bool:
 
 
 def build_knowledge_fallback(chunks: list[RetrievedChunk]) -> str | None:
-    """Si el modelo falla pero hay RAG, resume el fragmento más relevante."""
+    """Si el modelo falla pero hay RAG, resume el fragmento más relevante.
+
+    Si el chunk no es vigente, usa la fórmula de citación condicional.
+    """
     best = chunks[0] if chunks else None
     if not best or not best.content.strip():
         return None
     cleaned = re.sub(r"^#+\s*", "", best.content, flags=re.MULTILINE)
     cleaned = re.sub(r"\s+", " ", cleaned.replace("**", "")).strip()
     snippet = f"{cleaned[:277].strip()}…" if len(cleaned) > 280 else cleaned
-    return f'Según nuestra información de "{best.document_title}": {snippet}'
+    if best.is_current:
+        return f'Según nuestra información de "{best.document_title}": {snippet}'
+    # Documento no vigente → citación condicional
+    prefix = stale_citation(best)
+    return f"{prefix}: {snippet}"
 
 
 def build_catalog_overview_fallback(catalog_block: str, customer_text: str) -> str | None:
@@ -146,6 +187,28 @@ def build_catalog_overview_fallback(catalog_block: str, customer_text: str) -> s
     return f"Ahora mismo tenemos: {', '.join(names)}. ¿Quieres precio o más detalles de alguno?"
 
 
+def _apply_stale_rewrite(content: str, chunks: list[RetrievedChunk]) -> str:
+    """Si el modelo incluyó contenido de un chunk no vigente, añade la cita condicional.
+
+    Solo aplica si el modelo reprodujo literalmente parte del contenido de un
+    documento marcado como [STALE] en el bloque RAG.
+    """
+    stale_chunks = [c for c in chunks if not c.is_current]
+    if not stale_chunks:
+        return content
+    # Si el contenido ya incluye la fórmula "Según la información publicada", está bien.
+    if re.search(r"según\s+la\s+información\s+publicada", content, re.IGNORECASE):
+        return content
+    # Si el modelo afirma algo que puede venir de un chunk no vigente, añadir disclaimer.
+    for chunk in stale_chunks:
+        # Buscar coincidencia parcial (primeras 30 chars del chunk en el reply)
+        snippet = fold(chunk.content[:40].strip())
+        if snippet and fold(content).startswith(snippet[:20]):
+            prefix = stale_citation(chunk)
+            return f"{prefix}: {content}"
+    return content
+
+
 async def generate_reply(
     session: AsyncSession, *, company_id: str, conversation_id: str, customer_text: str
 ) -> GenerateReplyResult:
@@ -154,6 +217,7 @@ async def generate_reply(
     rag_chunks: list[RetrievedChunk] = []
     rag_block = ""
     image_urls: list[str] = []
+    conv_memory = ConversationMemory()
 
     try:
         recent = (
@@ -173,9 +237,55 @@ async def generate_reply(
             logger.info("Off-topic sales query blocked conversation=%s", conversation_id)
             return GenerateReplyResult(build_sales_scope_redirect(catalog.company_name), False)
 
+        # ------------------------------------------------------------------
+        # Quejas: severidad + handoff contextual
+        # ------------------------------------------------------------------
+        complaint_ctx = None
+        folded_customer = fold(customer_text)
+        if re.search(
+            r"\b(queja|reclamo|problema|dano|roto|no llego|nunca llego|reembolso|devolucion|"
+            r"demanda|fraude|incorrecto|equivocado|molesto|decepcionado|urgente|tarde|demorado)\b",
+            folded_customer,
+        ):
+            complaint_ctx = classify_complaint(customer_text)
+            track_complaint_detected(
+                company_id=company_id,
+                conversation_id=conversation_id,
+                severity=complaint_ctx.severity,
+            )
+            if complaint_ctx.needs_handoff:
+                track_handoff(
+                    company_id=company_id,
+                    conversation_id=conversation_id,
+                    reason="complaint",
+                    complaint_severity=complaint_ctx.severity,
+                )
+                from app.modules.ai.complaint_handler import build_complaint_reply
+                reply_text = build_complaint_reply(complaint_ctx, company_name=catalog.company_name)
+                track_reply_generated(
+                    company_id=company_id,
+                    conversation_id=conversation_id,
+                    guard_passed=True,
+                    intent="COMPLAINT",
+                )
+                return GenerateReplyResult(
+                    reply_text,
+                    True,
+                    complaint_severity=complaint_ctx.severity,
+                )
+
         product_focused = is_product_focused_query(customer_text)
         if not product_focused:
             rag_block, rag_chunks = await retrieve(session, company_id, customer_text)
+
+            # Observabilidad: avisar por cada chunk no vigente incluido
+            for chunk in rag_chunks:
+                if not chunk.is_current:
+                    track_rag_stale(
+                        company_id=company_id,
+                        conversation_id=conversation_id,
+                        document_title=chunk.document_title,
+                    )
 
         # Sin catálogo ni documentos: no hay con qué responder.
         if catalog.product_count == 0 and not rag_chunks:
@@ -188,6 +298,10 @@ async def generate_reply(
             if product_focused or is_catalog_overview_query(customer_text)
             else []
         )
+
+        # Actualizar memoria de conversación (nivel 2) con productos mencionados
+        for product in catalog.matched_products[:3]:
+            conv_memory.note_product(product.name if hasattr(product, "name") else "")
 
         company = await session.get(Company, company_id)
         configured, commerce_block = format_commerce_prompt_block(
@@ -223,6 +337,11 @@ async def generate_reply(
 
         if is_handoff(content):
             logger.warning("AI handoff marker for conversation=%s", conversation_id)
+            track_handoff(
+                company_id=company_id,
+                conversation_id=conversation_id,
+                reason="model_requested",
+            )
             return GenerateReplyResult(fallback, True)
 
         if not content or looks_like_internal_reasoning(content):
@@ -236,11 +355,88 @@ async def generate_reply(
                 or catalog_fallback
                 or fallback
             )
+            track_reply_generated(
+                company_id=company_id,
+                conversation_id=conversation_id,
+                guard_passed=False,
+            )
             return GenerateReplyResult(text, False, image_urls, suggested)
 
         if looks_like_off_topic_assistant_reply(content):
             logger.warning("AI off-topic tutorial blocked conversation=%s", conversation_id)
+            track_reply_blocked(
+                company_id=company_id,
+                conversation_id=conversation_id,
+                reason_code="OFF_TOPIC_CONTENT",
+            )
             return GenerateReplyResult(build_sales_scope_redirect(catalog.company_name), False)
+
+        # ------------------------------------------------------------------
+        # Fact-check estricto: FactSet construido SOLO desde catalog (BD).
+        # El historial de conversación NO es fuente de precios ni stock.
+        # ------------------------------------------------------------------
+        if settings.AI_FACT_CHECK_ENABLED:
+            facts = FactSet(
+                allowed_prices={
+                    float(p.price)
+                    for product in catalog.matched_products
+                    for p in (getattr(product, "variants", None) or [])
+                    if getattr(p, "price", None) is not None
+                },
+                allowed_skus={
+                    str(p.sku)
+                    for product in catalog.matched_products
+                    for p in (getattr(product, "variants", None) or [])
+                    if getattr(p, "sku", None)
+                },
+                allowed_variants={
+                    str(p.variant_label)
+                    for product in catalog.matched_products
+                    for p in (getattr(product, "variants", None) or [])
+                    if getattr(p, "variant_label", None)
+                },
+            )
+            fact_result = verify_facts(content, facts)
+            if not fact_result.passed:
+                event = fact_result.event_name or "factual_mismatch"
+                track_fact_mismatch(
+                    company_id=company_id,
+                    conversation_id=conversation_id,
+                    event_name=event,
+                    reason_code=fact_result.reason_code or "UNKNOWN",
+                    violating_items=fact_result.violating_items,
+                )
+                logger.warning(
+                    "Fact-check FAILED conversation=%s reason=%s items=%s",
+                    conversation_id,
+                    fact_result.reason_code,
+                    fact_result.violating_items,
+                )
+                # Volver al fallback RAG/catalog sin la respuesta alucinada
+                fallback_text = build_knowledge_fallback(rag_chunks) or build_catalog_overview_fallback(
+                    catalog.catalog_block, customer_text
+                ) or fallback
+                track_reply_blocked(
+                    company_id=company_id,
+                    conversation_id=conversation_id,
+                    reason_code=fact_result.reason_code or "FACT_CHECK_FAILED",
+                )
+                return GenerateReplyResult(fallback_text, False, image_urls, suggested)
+
+        # ------------------------------------------------------------------
+        # RAG no vigente: reescribir con citación condicional si aplica
+        # ------------------------------------------------------------------
+        if rag_chunks:
+            content = _apply_stale_rewrite(content, rag_chunks)
+
+        # ------------------------------------------------------------------
+        # Queja LOW/MEDIUM: reconocer + continuar (sin pitch de ventas)
+        # ------------------------------------------------------------------
+        if complaint_ctx is not None:
+            from app.modules.ai.complaint_handler import build_complaint_reply
+            ack_text = build_complaint_reply(complaint_ctx, company_name=catalog.company_name)
+            # Prepend el reconocimiento antes de la respuesta del modelo
+            content = f"{ack_text} {content}".strip()
 
         text = content.replace(HANDOFF_MARKER, "", 1).strip() or fallback
         wants_images = wants_product_images(customer_text)
@@ -248,7 +444,14 @@ async def generate_reply(
             text = f"{text}\n\nTe envío {'la foto' if len(image_urls) == 1 else 'las fotos'} del producto."
         elif wants_images:
             text = f"{text}\n\nPor ahora no tengo fotos cargadas de ese producto en el catálogo."
+
+        track_reply_generated(
+            company_id=company_id,
+            conversation_id=conversation_id,
+            guard_passed=True,
+        )
         return GenerateReplyResult(text, False, image_urls if wants_images else [], suggested)
+
     except Exception as error:  # noqa: BLE001
         logger.error("AI reply failed: %s", error)
         # Si el modelo falló pero ya teníamos documentos, responde con ellos.

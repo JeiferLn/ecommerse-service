@@ -1,3 +1,4 @@
+from app.modules.ai.complaint_handler import ComplaintSeverity, build_complaint_reply, classify_complaint
 from app.modules.ai.sales_scope import build_sales_scope_redirect
 
 
@@ -34,11 +35,33 @@ def render_product_variant(
     return f"Para {product_name} tenemos disponibles las siguientes opciones: {variants_str}. ¿Cuál prefieres?"
 
 
-def render_complaint() -> str:
-    return (
-        "Lamentamos profundamente el inconveniente con tu compra. Tu caso es prioritario para nosotros "
-        "y te estamos transfiriendo de inmediato con un asesor humano de la tienda para brindarte una solución."
-    )
+def render_complaint(
+    customer_text: str = "",
+    company_name: str = "",
+    severity: ComplaintSeverity | None = None,
+) -> str:
+    """Reconoce la queja según su severidad y crea handoff si aplica.
+
+    Nunca cierra con pitch de ventas.
+    """
+    if customer_text:
+        ctx = classify_complaint(customer_text)
+    else:
+        from app.modules.ai.complaint_handler import ComplaintContext, _ACKNOWLEDGEMENTS
+
+        sev: ComplaintSeverity = severity or "MEDIUM"
+        ctx = ComplaintContext(
+            severity=sev,
+            summary=f"[{sev}] Queja detectada",
+            needs_handoff=sev in ("HIGH", "CRITICAL"),
+            acknowledgement=_ACKNOWLEDGEMENTS[sev],
+        )
+    return build_complaint_reply(ctx, company_name=company_name)
+
+
+def render_complaint_by_severity(severity: ComplaintSeverity, company_name: str = "") -> str:
+    """Plantilla directa por severidad (para uso en el router o tests)."""
+    return render_complaint(severity=severity, company_name=company_name)
 
 
 def render_handoff() -> str:

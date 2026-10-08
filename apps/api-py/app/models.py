@@ -433,6 +433,13 @@ class KnowledgeDocument(Base):
     file_key: Mapped[str | None] = mapped_column("fileKey", Text)
     file_name: Mapped[str | None] = mapped_column("fileName", Text)
     mime_type: Mapped[str | None] = mapped_column("mimeType", Text)
+    # Vigencia del documento (añadido en migración 202610071945)
+    is_current: Mapped[bool] = mapped_column("isCurrent", Boolean, default=True, server_default=text("true"))
+    """False si el documento ha sido reemplazado o marcado como obsoleto."""
+    valid_until: Mapped[datetime | None] = mapped_column("validUntil", Timestamp)
+    """Fecha límite de vigencia. NULL = sin vencimiento."""
+    version: Mapped[int] = mapped_column("version", Integer, default=1, server_default=text("1"))
+    """Versión del documento para trazabilidad."""
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
