@@ -16,9 +16,7 @@ import { useSession } from "@/providers/session-provider";
 
 type CloudTestStatus = {
   configured: boolean;
-  displayPhoneNumber: string | null;
-  phoneNumberIdConfigured: boolean;
-  graphApiVersion: string;
+  provider: string;
 };
 
 type CloudTestSendResult = {
@@ -38,7 +36,7 @@ export function AdminWhatsAppCloudTestSection() {
   const { user, isLoading: sessionLoading } = useSession();
   const [fromNumber, setFromNumber] = useState("");
   const [toNumber, setToNumber] = useState("");
-  const [text, setText] = useState("Hola, prueba de Meta");
+  const [text, setText] = useState("Hola, prueba de Commerce AI");
   const [result, setResult] = useState<CloudTestSendResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,13 +51,6 @@ export function AdminWhatsAppCloudTestSection() {
     queryFn: () => apiFetch<CloudTestStatus>("/admin/whatsapp-cloud-test"),
     enabled: user?.role === "admin",
   });
-
-  useEffect(() => {
-    const preset = statusQuery.data?.displayPhoneNumber;
-    if (preset && !fromNumber) {
-      setFromNumber(preset);
-    }
-  }, [statusQuery.data?.displayPhoneNumber, fromNumber]);
 
   const send = useMutation({
     mutationFn: () =>
@@ -94,31 +85,22 @@ export function AdminWhatsAppCloudTestSection() {
     <div className="flex flex-col">
       <PageHeader
         title="WhatsApp Test"
-        description="Envía un mensaje real con la Cloud API de Meta (número de prueba). Ideal para el video de App Review: la app envía y WhatsApp lo recibe."
+        description="Envía un mensaje real desde tu número de WhatsApp en Twilio. La app dispara el envío y el celular lo recibe."
       />
 
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={configured ? "positive" : "attention"} className="w-fit">
-            {configured ? "Cloud API configurada" : "Falta configurar .env"}
+            {configured ? "Twilio configurado" : "Faltan credenciales de Twilio"}
           </StatusPill>
-          {statusQuery.data?.graphApiVersion ? (
-            <span className="font-data text-xs text-muted-foreground">
-              Graph {statusQuery.data.graphApiVersion}
-            </span>
-          ) : null}
         </div>
 
         {!configured && !statusQuery.isLoading ? (
           <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-pretty text-muted-foreground">
-            En{" "}
-            <span className="font-data text-foreground">apps/api-py/.env</span> pon el token
-            temporal, Phone number ID y número de prueba de{" "}
-            <span className="text-foreground">Meta → WhatsApp → API Setup</span>:{" "}
-            <span className="font-data text-foreground">META_WA_ACCESS_TOKEN</span>,{" "}
-            <span className="font-data text-foreground">META_WA_PHONE_NUMBER_ID</span>,{" "}
-            <span className="font-data text-foreground">META_WA_DISPLAY_PHONE_NUMBER</span>. El
-            destino debe estar en la lista de números de prueba de Meta.
+            En <span className="font-data text-foreground">apps/api-py/.env</span> hacen falta{" "}
+            <span className="font-data text-foreground">TWILIO_ACCOUNT_SID</span> y{" "}
+            <span className="font-data text-foreground">TWILIO_AUTH_TOKEN</span>. El número que
+            envía es el sender de WhatsApp de esa cuenta de Twilio.
           </p>
         ) : null}
 
@@ -128,24 +110,23 @@ export function AdminWhatsAppCloudTestSection() {
         >
           <div className="flex items-center gap-2 text-sm font-medium">
             <MessageCircle className="size-4 text-primary" aria-hidden />
-            E-commerce AI · prueba Cloud API
+            E-commerce AI · envío por Twilio
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="wa-from">Número que envía (prueba Meta)</Label>
+            <Label htmlFor="wa-from">Número que envía (Twilio)</Label>
             <Input
               id="wa-from"
               name="from"
               inputMode="tel"
               autoComplete="tel"
-              placeholder="+1555…"
+              placeholder="+1415…"
               value={fromNumber}
               onChange={(event) => setFromNumber(event.target.value)}
               required
             />
             <p className="text-xs text-muted-foreground">
-              El número de prueba que ves en API Setup. El envío real usa el Phone number ID del
-              .env.
+              El sender de WhatsApp de tu cuenta de Twilio, en formato internacional con +.
             </p>
           </div>
 
@@ -162,7 +143,8 @@ export function AdminWhatsAppCloudTestSection() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              Debe estar agregado como número de prueba en el panel de Meta.
+              El WhatsApp que debe recibir el mensaje. Si el sender es el sandbox de Twilio, ese
+              número tiene que haber aceptado el código de unión.
             </p>
           </div>
 

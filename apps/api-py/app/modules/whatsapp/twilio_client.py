@@ -1,18 +1,21 @@
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 
 import httpx
 
 from app.core.config import get_settings
+from app.core.errors import bad_request, service_unavailable
 from app.modules.platform.overrides import platform_overrides
-from app.modules.whatsapp.phone import to_twilio_whatsapp_address
+from app.modules.whatsapp.phone import normalize_whatsapp_e164, to_twilio_whatsapp_address
 
 logger = logging.getLogger("app.whatsapp.twilio")
 
 TIMEOUT = httpx.Timeout(15.0)
 SENDERS_URL = "https://messaging.twilio.com/v2/Channels/Senders"
+E164 = re.compile(r"^\+[1-9]\d{7,14}$", re.ASCII)
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,41 @@ async def send_text(*, from_: str, to: str, text: str) -> SendResult:
     return await _dispatch(from_=from_, to=to, body=text)
 
 
+def admin_test_status() -> dict[str, bool | str]:
+    """Estado de la prueba de admin: envío real por el sender de Twilio, sin Cloud API de Meta."""
+    return {"configured": account_credentials() is not None, "provider": "twilio"}
+
+
+def _e164(raw: str, label: str) -> str:
+    number = normalize_whatsapp_e164(raw)
+    if not E164.match(number):
+        raise bad_request(f"{label}: usa formato internacional con +, ej. +573001112233")
+    return number
+
+
+async def send_admin_test_text(*, from_: str, to: str, text: str) -> dict[str, str | None]:
+    """Mensaje de la pantalla de admin. Siempre sale por Twilio, aunque el modo simulado esté activo."""
+    body = (text or "").strip()
+    if not body:
+        raise bad_request("El mensaje no puede estar vacío")
+    if len(body) > 1600:
+        raise bad_request("El mensaje es demasiado largo (máx. 1600)")
+    sender = _e164(from_, "Número de Twilio")
+    recipient = _e164(to, "Número destino")
+    if account_credentials() is None:
+        raise service_unavailable(
+            "Faltan TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN en apps/api-py/.env."
+        )
+    result = await _dispatch(from_=sender, to=recipient, body=body, live=True)
+    return {
+        "messageId": result.wamid,
+        "from": sender,
+        "to": recipient,
+        "text": body,
+        "provider": "twilio",
+    }
+
+
 async def send_media(*, from_: str, to: str, media_url: str, caption: str | None = None) -> SendResult:
     return await _dispatch(from_=from_, to=to, body=(caption or "").strip() or None, media_url=media_url)
 
@@ -101,9 +139,14 @@ async def _dispatch(
     media_url: str | None = None,
     content_sid: str | None = None,
     content_variables: dict[str, str] | None = None,
+    live: bool = False,
 ) -> SendResult:
-    account = await credentials()
+    account = account_credentials() if live else await credentials()
     if not account:
+        if live:
+            raise service_unavailable(
+                "Faltan TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN en apps/api-py/.env."
+            )
         wamid = f"SM_sim_{int(time.time() * 1000)}"
         logger.info(
             "Envío local simulado (sin Twilio) to %s from %s%s%s%s",
@@ -136,6 +179,15 @@ async def _dispatch(
         )
     if response.status_code >= 400:
         logger.error("Twilio API error %s: %s", response.status_code, response.text)
-        raise RuntimeError(f"Twilio respondió {response.status_code}")
+        message = f"Twilio respondió {response.status_code}"
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict) and payload.get("message"):
+            message = str(payload["message"])
+        if live:
+            raise bad_request(message)
+        raise RuntimeError(message)
     data = response.json()
     return SendResult(simulated=False, wamid=data.get("sid") if isinstance(data, dict) else None)

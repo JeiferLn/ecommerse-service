@@ -12,7 +12,7 @@ from app.core.schemas import QueryModel, RequestModel
 from app.core.security import CurrentUser, require_roles
 from app.core.validation import boolean, integer, matches, one_of, string
 from app.core.validation import text as length
-from app.modules.whatsapp import meta_cloud
+from app.modules.whatsapp import twilio_client
 from app.modules.whatsapp.connection_service import WhatsAppConnectionService
 from app.modules.whatsapp.inbox_service import WhatsAppInboxService
 from app.modules.whatsapp.playground_service import AssistantPlaygroundService
@@ -77,12 +77,12 @@ class UpdateConversationHandlerBody(RequestModel):
 
 
 class MetaCloudTestSendBody(RequestModel):
-    """Demo App Review: enviar texto por Cloud API del número de prueba de Meta."""
+    """Demo de admin: texto real desde el sender de WhatsApp en Twilio."""
 
     from_display_number: Annotated[
         str,
         string("fromDisplayNumber must be a string"),
-        length(min_len=8, min_msg="Indica el número de prueba desde el que envías"),
+        length(min_len=8, min_msg="Indica el número de Twilio desde el que envías"),
     ]
     to: Annotated[
         str,
@@ -334,12 +334,12 @@ async def unassign_whatsapp_connection(company_id: str, session: DbSession) -> A
 
 @meta_cloud_test_router.get("")
 async def get_meta_cloud_test_status() -> Any:
-    return ok(meta_cloud.cloud_status())
+    return ok(twilio_client.admin_test_status())
 
 
 @meta_cloud_test_router.post("/send", status_code=201)
 async def send_meta_cloud_test_message(body: MetaCloudTestSendBody) -> Any:
-    data = await meta_cloud.send_text(
-        to=body.to, text=body.text, from_display=body.from_display_number
+    data = await twilio_client.send_admin_test_text(
+        from_=body.from_display_number, to=body.to, text=body.text
     )
-    return ok(data, "Mensaje enviado por WhatsApp Cloud API")
+    return ok(data, "Mensaje enviado por Twilio")
