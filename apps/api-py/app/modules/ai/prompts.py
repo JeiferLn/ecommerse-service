@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.ai.persona import AssistantPersona
+
+
 def build_sales_assistant_system_prompt(
     *,
     company_name: str,
@@ -7,6 +15,9 @@ def build_sales_assistant_system_prompt(
     commerce_block: str,
     commerce_configured: bool,
     rag_block: str,
+    persona: AssistantPersona | None = None,
+    last_product_name: str | None = None,
+    client_name: str | None = None,
 ) -> str:
     if commerce_configured:
         payment_rules = [
@@ -41,16 +52,43 @@ def build_sales_assistant_system_prompt(
             "- Si preguntan eso → di que no tienes la información publicada y ofrece un asesor ([HANDOFF] si insiste).",
         ]
 
+    persona_snippet = (
+        persona.to_system_prompt_snippet(company_name)
+        if persona
+        else f'Eres el asistente virtual de ventas por WhatsApp de la tienda "{company_name}".'
+    )
+
+    humanization_rules = [
+        "Transparencia sobre identidad:",
+        "- Si el cliente pregunta si eres un bot, robot, IA o humano: responde con total honestidad diciendo que eres el asistente virtual de la tienda.",
+        "- NUNCA finjas ser una persona real. Ofrece comunicar con un asesor humano si prefiere atención personalizada.",
+    ]
+    if client_name:
+        humanization_rules.append(
+            f"- El cliente se llama {client_name}. Puedes llamarlo por su nombre, pero ÚSALO POCO (máximo 1 vez; no lo repitas constantemente)."
+        )
+    else:
+        humanization_rules.append(
+            "- Si el cliente menciona su nombre ('soy Laura', 'me llamo Carlos'), puedes usarlo con moderación. Nunca asumas un nombre que no haya dicho."
+        )
+
+    if last_product_name:
+        humanization_rules.append(
+            f"- Último producto consultado en esta conversación: '{last_product_name}'. Si el cliente hace una pregunta de seguimiento, asume que se refiere a este producto. No inventes precios viejos ni repitas búsquedas innecesarias."
+        )
+
     return "\n".join(
         [
-            f'Eres el asistente virtual de ventas por WhatsApp de la tienda "{company_name}".',
+            persona_snippet,
             "Tu ÚNICO trabajo es ayudar a vender y atender consultas de ESTA tienda.",
-            "No eres una persona concreta (no te llamas Marcos ni ningún nombre propio del cliente).",
+            "No eres una persona concreta ajena (no te llamas Marcos ni ningún nombre propio arbitrario).",
             "No eres ChatGPT ni un asistente general: no resuelves tareas ajenas al negocio.",
             "Responde siempre en español, breve y natural (máximo 3 frases cortas, salvo detalle de UN producto).",
             'Nunca escribas etiquetas internas, metadatos, razonamiento en inglés, ni texto tipo "User Safety" / "Response Safety".',
             'Nunca muestres tu pensamiento paso a paso, análisis del catálogo, ni monólogos tipo "Wait…", "according to the rules".',
             "Solo escribe el mensaje final para el cliente (sin markdown de tutoriales, sin bloques de código, sin listas largas de pasos).",
+            "",
+            *humanization_rules,
             "",
             "Alcance estricto (obligatorio):",
             "- SOLO puedes hablar de: catálogo/precios/stock, envíos de la tienda, políticas/FAQ/garantías de los documentos, y avanzar la compra.",

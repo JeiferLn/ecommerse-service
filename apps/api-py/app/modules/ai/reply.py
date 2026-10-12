@@ -29,6 +29,12 @@ from app.modules.ai.catalog_context import build_catalog_context
 from app.modules.ai.commerce_prompt import CommerceSettings, format_commerce_prompt_block
 from app.modules.ai.complaint_handler import classify_complaint
 from app.modules.ai.fact_check import FactSet, verify_facts
+from app.modules.ai.humanization import (
+    extract_client_name,
+    is_bot_identity_inquiry,
+    render_bot_identity,
+    split_ai_message,
+)
 from app.modules.ai.memory import ConversationMemory
 from app.modules.ai.observability import (
     track_complaint_detected,
@@ -38,6 +44,7 @@ from app.modules.ai.observability import (
     track_reply_blocked,
     track_reply_generated,
 )
+from app.modules.ai.persona import AssistantPersona
 from app.modules.ai.prompts import build_sales_assistant_system_prompt
 from app.modules.ai.providers import HANDOFF_MARKER, PRODUCT_LINE_RE, ChatMessage, get_chat_provider
 from app.modules.ai.sales_scope import (
@@ -101,6 +108,12 @@ class GenerateReplyResult:
     """Productos de los que habla la respuesta (para lista o tarjeta en el chat)."""
     complaint_severity: str | None = None
     """Severidad de la queja si se detectó una (LOW/MEDIUM/HIGH/CRITICAL)."""
+    messages: list[str] = field(default_factory=list)
+    """Mensajes resultantes del splitting semántico."""
+
+    def __post_init__(self) -> None:
+        if not self.messages and self.text:
+            self.messages = [self.text]
 
 
 def is_product_focused_query(text: str) -> bool:
@@ -210,7 +223,12 @@ def _apply_stale_rewrite(content: str, chunks: list[RetrievedChunk]) -> str:
 
 
 async def generate_reply(
-    session: AsyncSession, *, company_id: str, conversation_id: str, customer_text: str
+    session: AsyncSession,
+    *,
+    company_id: str,
+    conversation_id: str,
+    customer_text: str,
+    persona: AssistantPersona | None = None,
 ) -> GenerateReplyResult:
     settings = get_settings()
     fallback = settings.AI_FALLBACK_TEXT
@@ -232,6 +250,33 @@ async def generate_reply(
         # Follow-ups ("¿qué precio?", "muéstramelas") necesitan contexto del producto ya mencionado.
         prior_inbound = " ".join(body for direction, body in reversed(recent) if direction == "inbound")
         catalog = await build_catalog_context(session, company_id, f"{prior_inbound} {customer_text}".strip())
+
+        # ------------------------------------------------------------------
+        # Transparencia de bot: respuesta honesta inmediata si preguntan
+        # ------------------------------------------------------------------
+        if is_bot_identity_inquiry(customer_text):
+            bot_reply = render_bot_identity(
+                company_name=catalog.company_name,
+                persona=persona,
+                conversation_id=conversation_id,
+                message_counter=len(recent),
+            )
+            track_reply_generated(
+                company_id=company_id,
+                conversation_id=conversation_id,
+                guard_passed=True,
+                intent="BOT_IDENTITY",
+            )
+            split_msgs = split_ai_message(
+                bot_reply,
+                max_chars=settings.AI_MESSAGE_SPLIT_MAX_CHARS,
+                pause_ms=settings.AI_MESSAGE_SPLIT_PAUSE_MS,
+            )
+            return GenerateReplyResult(
+                bot_reply,
+                False,
+                messages=split_msgs,
+            )
 
         if is_clearly_off_topic_sales_query(customer_text):
             logger.info("Off-topic sales query blocked conversation=%s", conversation_id)
@@ -321,6 +366,9 @@ async def generate_reply(
         if not history or history[-1].content != customer_text:
             history.append(ChatMessage("user", customer_text))
 
+        client_name = extract_client_name(customer_text)
+        last_product = conv_memory.last_product()
+
         system = build_sales_assistant_system_prompt(
             company_name=catalog.company_name,
             catalog_block=catalog.catalog_block,
@@ -329,6 +377,9 @@ async def generate_reply(
             commerce_block=commerce_block,
             commerce_configured=configured,
             rag_block=rag_block,
+            persona=persona,
+            last_product_name=last_product,
+            client_name=client_name,
         )
         result = await get_chat_provider().complete(
             [ChatMessage("system", system), *history], max_tokens=220, temperature=0.2
@@ -450,7 +501,18 @@ async def generate_reply(
             conversation_id=conversation_id,
             guard_passed=True,
         )
-        return GenerateReplyResult(text, False, image_urls if wants_images else [], suggested)
+        split_msgs = split_ai_message(
+            text,
+            max_chars=settings.AI_MESSAGE_SPLIT_MAX_CHARS,
+            pause_ms=settings.AI_MESSAGE_SPLIT_PAUSE_MS,
+        )
+        return GenerateReplyResult(
+            text,
+            False,
+            image_urls if wants_images else [],
+            suggested,
+            messages=split_msgs,
+        )
 
     except Exception as error:  # noqa: BLE001
         logger.error("AI reply failed: %s", error)

@@ -1,16 +1,28 @@
 from app.modules.ai.complaint_handler import ComplaintSeverity, build_complaint_reply, classify_complaint
+from app.modules.ai.humanization import (
+    GREETING_VARIANTS,
+    HANDOFF_VARIANTS,
+    UNAVAILABLE_VARIANTS,
+    UNKNOWN_VARIANTS,
+    pick_variant,
+)
 from app.modules.ai.sales_scope import build_sales_scope_redirect
 
 
-def render_greeting(company_name: str) -> str:
+def render_greeting(
+    company_name: str,
+    conversation_id: str = "",
+    message_counter: int = 0,
+) -> str:
     name = company_name.strip() or "nuestra tienda"
-    return f"¡Hola! Te damos la bienvenida a {name}. ¿En qué te podemos ayudar hoy?"
+    template = pick_variant(GREETING_VARIANTS, conversation_id, message_counter)
+    return template.format(company=name)
 
 
 def render_product_price(
     product_name: str, price: float | int | str, currency: str = "COP", extra_info: str | None = None
 ) -> str:
-    price_str = f"{price:,}" if isinstance(price, int | float) else str(price)
+    price_str = f"{price:,}" if isinstance(price, int | float) else price
     msg = f"El precio de {product_name} es de ${price_str} {currency}."
     if extra_info:
         msg = f"{msg} {extra_info}"
@@ -47,7 +59,7 @@ def render_complaint(
     if customer_text:
         ctx = classify_complaint(customer_text)
     else:
-        from app.modules.ai.complaint_handler import ComplaintContext, _ACKNOWLEDGEMENTS
+        from app.modules.ai.complaint_handler import _ACKNOWLEDGEMENTS, ComplaintContext
 
         sev: ComplaintSeverity = severity or "MEDIUM"
         ctx = ComplaintContext(
@@ -64,8 +76,11 @@ def render_complaint_by_severity(severity: ComplaintSeverity, company_name: str 
     return render_complaint(severity=severity, company_name=company_name)
 
 
-def render_handoff() -> str:
-    return "Con gusto te comunico con un asesor de la tienda. En un momento continuará atendiéndote por aquí."
+def render_handoff(
+    conversation_id: str = "",
+    message_counter: int = 0,
+) -> str:
+    return pick_variant(HANDOFF_VARIANTS, conversation_id, message_counter)
 
 
 def render_off_topic(company_name: str) -> str:
@@ -76,19 +91,23 @@ def render_injection_block(company_name: str) -> str:
     return build_sales_scope_redirect(company_name)
 
 
-def render_unknown(company_name: str) -> str:
+def render_unknown(
+    company_name: str,
+    conversation_id: str = "",
+    message_counter: int = 0,
+) -> str:
     name = company_name.strip() or "la tienda"
-    return (
-        f"No logré comprender tu consulta. En {name} te puedo ayudar con información de catálogo, "
-        "precios, existencias y compras. ¿Buscas algún producto o prefieres hablar con un asesor?"
-    )
+    template = pick_variant(UNKNOWN_VARIANTS, conversation_id, message_counter)
+    return template.format(company=name)
 
 
-def render_unavailable(topic: str = "este servicio") -> str:
-    return (
-        f"En este momento no cuento con la información exacta sobre {topic}. "
-        "Un asesor de nuestro equipo te responderá con gusto para confirmarte los detalles."
-    )
+def render_unavailable(
+    topic: str = "este servicio",
+    conversation_id: str = "",
+    message_counter: int = 0,
+) -> str:
+    template = pick_variant(UNAVAILABLE_VARIANTS, conversation_id, message_counter)
+    return template.format(topic=topic)
 
 
 def render_order_status(order_number: str, status: str, total: str | None = None) -> str:
@@ -107,3 +126,18 @@ def render_rate_limit(scope: str) -> str:
     if scope == "conversation":
         return "Has alcanzado el límite de mensajes automáticos para esta consulta. Un asesor te atenderá pronto."
     return "El asistente automático no está disponible en este momento. Un asesor de la tienda te atenderá pronto."
+
+
+def render_bot_identity(
+    company_name: str,
+    conversation_id: str = "",
+    message_counter: int = 0,
+) -> str:
+    """Plantilla de identidad del bot: respuesta honesta que nunca finge ser humano."""
+    from app.modules.ai.humanization import render_bot_identity as _render
+
+    return _render(
+        company_name=company_name,
+        conversation_id=conversation_id,
+        message_counter=message_counter,
+    )

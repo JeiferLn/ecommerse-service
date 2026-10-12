@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = Field(default=3, gt=0)
     AI_CIRCUIT_BREAKER_RESET_SECONDS: int = Field(default=60, gt=0)
     AI_MAX_TOKENS_CONVERSATIONAL: int = Field(default=220, gt=0)
+    AI_MESSAGE_SPLIT_MAX_CHARS: int = Field(default=700, gt=0)
+    AI_MESSAGE_SPLIT_PAUSE_MS: int = Field(default=300, ge=0)
     AI_HTTP_REFERER: str | None = None
     AI_APP_TITLE: str = "Commerce AI SaaS"
     WHATSAPP_HANDLER_CHOICE_TEXT: str = (
