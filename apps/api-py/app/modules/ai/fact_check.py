@@ -26,7 +26,11 @@ PRICE_RE = re.compile(
     re.IGNORECASE | re.ASCII,
 )
 
-SKU_RE = re.compile(r"\bsku\s*[:#-]?\s*([a-z0-9_-]+)\b", re.IGNORECASE | re.ASCII)
+SKU_RE = re.compile(
+    r"\bsku\s*[:#-]\s*([a-z0-9_-]+)\b"
+    r"|\bsku\s+(?:es\s+|seria\s+|sería\s+)?([a-z0-9][a-z0-9_-]+)\b",
+    re.IGNORECASE | re.ASCII,
+)
 
 # Plazos de entrega: "en 3 días", "de 2 a 5 días hábiles", "máximo 7 días"
 DEADLINE_RE = re.compile(
@@ -153,8 +157,12 @@ def verify_facts(text: str, facts: FactSet) -> FactCheckResult:  # noqa: C901
     # ------------------------------------------------------------------
     # 2. SKUs
     # ------------------------------------------------------------------
+    sku_stopwords = {"es", "de", "del", "el", "la", "en", "un", "una", "los", "las", "para", "por", "que"}
     for match in SKU_RE.finditer(text):
-        sku = match.group(1).upper()
+        raw_sku = match.group(1) or match.group(2) or ""
+        if not raw_sku or raw_sku.lower() in sku_stopwords:
+            continue
+        sku = raw_sku.upper()
         if facts.allowed_skus and sku not in {s.upper() for s in facts.allowed_skus}:
             return FactCheckResult(
                 passed=False,
@@ -210,12 +218,11 @@ def verify_facts(text: str, facts: FactSet) -> FactCheckResult:  # noqa: C901
     # ------------------------------------------------------------------
     # 5. Disponibilidad / stock
     # ------------------------------------------------------------------
-    if facts.in_stock is False:
-        if re.search(
-            r"\b(si\s+(hay|tenemos|contamos)|disponible(s)?\s+para\s+compra|en\s+stock)\b",
-            normalized,
-        ):
-            return FactCheckResult(
+    if facts.in_stock is False and re.search(
+        r"\b(si\s+(hay|tenemos|contamos)|disponible(s)?\s+para\s+compra|en\s+stock)\b",
+        normalized,
+    ):
+        return FactCheckResult(
                 passed=False,
                 reason_code="STOCK_CONTRADICTION",
                 event_name="factual_mismatch",

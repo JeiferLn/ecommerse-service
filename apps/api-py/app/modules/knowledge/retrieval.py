@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,33 +91,32 @@ async def retrieve(session: AsyncSession, company_id: str, query: str) -> tuple[
         embeddings = await get_embedding_provider().embed([trimmed])
         if not embeddings:
             return "", []
-        rows = (
-            await session.execute(
-                text(
-                    """
-                    SELECT c."content" AS content,
-                           d."title" AS document_title,
-                           d."type"::text AS document_type,
-                           (c."embedding" <=> CAST(:vec AS vector)) AS distance,
-                           d."isCurrent" AS is_current,
-                           d."validUntil" AS valid_until,
-                           d."updatedAt" AS updated_at
-                    FROM "KnowledgeChunk" c
-                    INNER JOIN "KnowledgeDocument" d ON d."id" = c."documentId"
-                    WHERE c."companyId" = :company_id
-                      AND d."status" = 'active'
-                      AND c."embedding" IS NOT NULL
-                    ORDER BY c."embedding" <=> CAST(:vec AS vector)
-                    LIMIT :top_k
-                    """
-                ),
-                {"vec": vector_to_sql_literal(embeddings[0]), "company_id": company_id, "top_k": top_k},
-            )
-        ).all()
+        result = await session.execute(
+            text(
+                """
+                SELECT c."content" AS content,
+                       d."title" AS document_title,
+                       d."type"::text AS document_type,
+                       (c."embedding" <=> CAST(:vec AS vector)) AS distance,
+                       d."isCurrent" AS is_current,
+                       d."validUntil" AS valid_until,
+                       d."updatedAt" AS updated_at
+                FROM "KnowledgeChunk" c
+                INNER JOIN "KnowledgeDocument" d ON d."id" = c."documentId"
+                WHERE c."companyId" = :company_id
+                  AND d."status" = 'active'
+                  AND c."embedding" IS NOT NULL
+                ORDER BY c."embedding" <=> CAST(:vec AS vector)
+                LIMIT :top_k
+                """
+            ),
+            {"vec": vector_to_sql_literal(embeddings[0]), "company_id": company_id, "top_k": top_k},
+        )
+        rows = result.mappings().all()
         chunks = [
             _make_chunk(row)
             for row in rows
-            if float(row.distance) <= MAX_DISTANCE
+            if float(row["distance"]) <= MAX_DISTANCE
         ]
         if not chunks:
             chunks = await _lexical_fallback(session, company_id, trimmed, top_k)
@@ -126,23 +128,34 @@ async def retrieve(session: AsyncSession, company_id: str, query: str) -> tuple[
         return format_rag_block(chunks), chunks
 
 
-def _make_chunk(row: object) -> RetrievedChunk:
+def _make_chunk(row: Mapping[str, Any] | Any) -> RetrievedChunk:
     """Construye RetrievedChunk determinando vigencia."""
-    from datetime import datetime, timezone
+    if isinstance(row, Mapping):
+        content = str(row["content"])
+        document_title = str(row["document_title"])
+        document_type = str(row["document_type"])
+        distance = float(row["distance"])
+        is_current_val = row.get("is_current")
+        valid_until = row.get("valid_until")
+    else:
+        content = str(getattr(row, "content", ""))
+        document_title = str(getattr(row, "document_title", ""))
+        document_type = str(getattr(row, "document_type", ""))
+        distance = float(getattr(row, "distance", 0.0))
+        is_current_val = getattr(row, "is_current", True)
+        valid_until = getattr(row, "valid_until", None)
 
-    is_current: bool = bool(getattr(row, "is_current", True))
-    valid_until = getattr(row, "valid_until", None)
+    is_current: bool = bool(is_current_val) if is_current_val is not None else True
     if valid_until is not None:
-        # Comparar con now() en UTC
-        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
         if valid_until < now:
             is_current = False
 
     return RetrievedChunk(
-        content=row.content,
-        document_title=row.document_title,
-        document_type=row.document_type,
-        distance=float(row.distance),
+        content=content,
+        document_title=document_title,
+        document_type=document_type,
+        distance=distance,
         is_current=is_current,
     )
 
@@ -179,21 +192,19 @@ async def _lexical_fallback(
         )
     ).all()
     scored: list[RetrievedChunk] = []
-    from datetime import datetime, timezone
+    now = datetime.now(tz=UTC).replace(tzinfo=None)
 
-    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-
-    for document in documents:
+    for doc_id, doc_title, doc_type, doc_is_current_col, doc_valid_until in documents:
         # Vigencia en fallback léxico
-        doc_is_current = bool(document.is_current) if document.is_current is not None else True
-        if document.valid_until is not None and document.valid_until < now:
-            doc_is_current = False
+        is_current = doc_is_current_col if doc_is_current_col is not None else True
+        if doc_valid_until is not None and doc_valid_until < now:
+            is_current = False
 
-        title_haystack = fold(f"{document.title} {document.type}")
+        title_haystack = fold(f"{doc_title} {doc_type}")
         contents = (
             await session.scalars(
                 select(KnowledgeChunk.content)
-                .where(KnowledgeChunk.document_id == document.id)
+                .where(KnowledgeChunk.document_id == doc_id)
                 .order_by(KnowledgeChunk.chunk_index)
             )
         ).all()
@@ -204,10 +215,10 @@ async def _lexical_fallback(
                 scored.append(
                     RetrievedChunk(
                         content=content,
-                        document_title=document.title,
-                        document_type=document.type,
+                        document_title=doc_title,
+                        document_type=doc_type,
                         distance=1 - hits / len(token_list),
-                        is_current=doc_is_current,
+                        is_current=is_current,
                     )
                 )
     return sorted(scored, key=lambda chunk: chunk.distance)[:top_k]
