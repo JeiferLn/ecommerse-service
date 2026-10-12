@@ -36,3 +36,24 @@ __pycache__/
 # Misc
 .DS_Store
 .vercel/
+
+# Copias de skills de otros editores de IA.
+# La copia del equipo queda en .cursor/skills.
+.agent/
+.agents/
+.augment/
+.claude/
+.codebuddy/
+.codewhale/
+.continue/
+.factory/
+.gemini/
+.kilocode/
+.kiro/
+.opencode/
+.qoder/
+.roo/
+.trae/
+.warp/
+.windsurf/
+.github/prompts/
